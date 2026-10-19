@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createAgent } from '../src/sim/agents';
+import { triggerWorldEvent } from '../src/sim/events';
 import { checkTier, extensionSite, paveFrontier, stampExtension, TIER_AT } from '../src/sim/growth';
 import { capacity, completeProject, findSite, members, newHousehold, tickPlanner } from '../src/sim/planner';
 import { BLUEPRINTS } from '../src/world/blueprints';
@@ -162,6 +163,7 @@ describe('homes that grow', () => {
 describe('town tiers', () => {
   it('a village becomes a town, with a charter day', () => {
     const sim = new Sim(7);
+    const logged = sim.activity.length;
     const saved = TIER_AT[1];
     TIER_AT[1] = [10, 5];
     try {
@@ -172,6 +174,26 @@ describe('town tiers', () => {
     expect(sim.tier).toBe(1);
     expect(sim.events.festival?.name).toBe('Charter day');
     expect(sim.agents.every((a) => a.memories.some((m) => m.kind === 'proudTown'))).toBe(true);
+    // One announcement, and no seasonal festival "called early".
+    const said = sim.activity.slice(logged).map((e) => e.text);
+    expect(said).toEqual(["Northwind is now a town! There's a charter day in the park"]);
+  });
+
+  it('a charter during a festival turns the festival into the charter day', () => {
+    const sim = new Sim(7);
+    triggerWorldEvent(sim, 'festival');
+    const until = sim.events.festival!.until;
+    const logged = sim.activity.length;
+    const saved = TIER_AT[1];
+    TIER_AT[1] = [10, 5];
+    try {
+      checkTier(sim);
+    } finally {
+      TIER_AT[1] = saved;
+    }
+    expect(sim.events.festival).toMatchObject({ name: 'Charter day', until });
+    const said = sim.activity.slice(logged).map((e) => e.text);
+    expect(said).toEqual(['Northwind is now a town! The spring fair in the park becomes a charter day']);
   });
 
   it('paving stays out of farm plots', () => {

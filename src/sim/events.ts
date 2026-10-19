@@ -139,8 +139,7 @@ export function tickEvents(sim: Sim, dt: number): void {
   }
   if (ev.seasonal && sim.time >= ev.seasonal.at) {
     if (!ev.festival) {
-      ev.festival = { until: sim.time + 180, attendees: new Set(), name: ev.seasonal.name };
-      lightBonfire(sim);
+      startFestival(sim, ev.seasonal.name);
       sim.log(`${ev.seasonal.name} in the park tonight!`, 'event', 'good');
     }
     ev.seasonal = null;
@@ -211,6 +210,12 @@ function endBirthday(sim: Sim, b: Birthday): void {
   );
 }
 
+/** Everyone into the park for the next three hours. Callers announce it. */
+export function startFestival(sim: Sim, name: string): void {
+  sim.events.festival = { until: sim.time + 180, attendees: new Set(), name };
+  lightBonfire(sim);
+}
+
 /** Cold-weather festivals gather round a bonfire in the middle of the park. */
 function lightBonfire(sim: Sim): void {
   if (sim.season < 2) return;
@@ -273,8 +278,7 @@ export function triggerWorldEvent(sim: Sim, key: WorldEventKey): void {
   const m = sim.map;
   switch (key) {
     case 'festival':
-      ev.festival = { until: sim.time + 180, attendees: new Set(), name: FESTIVALS[sim.season] };
-      lightBonfire(sim);
+      startFestival(sim, FESTIVALS[sim.season]);
       sim.log(`${FESTIVALS[sim.season]} in the park, called early!`, 'event', 'good');
       break;
     case 'trader':

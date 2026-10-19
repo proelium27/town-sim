@@ -1,6 +1,6 @@
 import type { GroundKey } from '../assets/manifest';
 import { type Building, Cell } from '../world/map';
-import { triggerWorldEvent } from './events';
+import { startFestival } from './events';
 import { addMemory } from './social';
 import type { Sim } from './sim';
 
@@ -103,6 +103,8 @@ export const TIERS = ['Village', 'Town', 'City'] as const;
 /** People and buildings needed for each tier. */
 export const TIER_AT: [number, number][] = [[0, 0], [30, 18], [50, 30]];
 
+const CHARTER_DAY = 'Charter day';
+
 /** Promote the settlement when it's grown enough, with a Charter Day in the park. */
 export function checkTier(sim: Sim): void {
   const next = sim.tier + 1;
@@ -110,14 +112,22 @@ export function checkTier(sim: Sim): void {
   const [pop, blds] = TIER_AT[next];
   if (sim.agents.length < pop || sim.map.buildings.length < blds) return;
   sim.tier = next;
-  sim.log(`Northwind is now a ${TIERS[next].toLowerCase()}! There's a charter day in the park`, 'event', 'good');
-  sim.milestone(`Northwind became a ${TIERS[next].toLowerCase()}`);
+  const tier = TIERS[next].toLowerCase();
+  sim.milestone(`Northwind became a ${tier}`);
   for (const a of sim.agents) addMemory(sim, a, 'proudTown');
-  if (!sim.events.festival) {
-    triggerWorldEvent(sim, 'festival');
-    sim.events.festival!.name = 'Charter day';
+  const fest = sim.events.festival;
+  if (!fest) {
+    startFestival(sim, CHARTER_DAY);
+    sim.log(`Northwind is now a ${tier}! There's a charter day in the park`, 'event', 'good');
+  } else if (fest.name === CHARTER_DAY) {
+    sim.log(`Northwind is now a ${tier}! The charter day in the park goes on`, 'event', 'good');
+  } else {
+    // Everyone's already out in the park: the festival becomes the charter day.
+    sim.log(`Northwind is now a ${tier}! The ${(fest.name ?? 'festival').toLowerCase()} in the park becomes a charter day`, 'event', 'good');
+    fest.name = CHARTER_DAY;
   }
 }
+
 
 const paveCache = new WeakMap<object, { version: number; cells: number[] }>();
 const STREETS = new Set<GroundKey>(['sidewalk', 'plaza', 'crossH', 'crossV', 'asphalt']);
