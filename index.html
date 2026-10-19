@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Townsfolk</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="stage" aria-label="Town view"></div>
+
+    <header class="topbar">
+      <div class="brand"><span class="name">Townsfolk</span><span class="clock" id="clock">Mon · 07:00</span></div>
+      <div class="stats" id="stats"></div>
+      <div class="speed" role="group" aria-label="Simulation speed" id="speed">
+        <button data-speed="0" title="Pause (Space)" aria-label="Pause"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="3" height="8" /><rect x="7" y="2" width="3" height="8" /></svg></button>
+        <button data-speed="1" title="Normal (1)">1×</button>
+        <button data-speed="2" title="Fast (2)">2×</button>
+        <button data-speed="3" title="Fastest (3)">3×</button>
+      </div>
+    </header>
+
+    <aside class="tracker" id="tracker" aria-label="People"></aside>
+    <section class="activity" id="activity" aria-label="Activity log"></section>
+    <aside class="inspector" id="inspector" aria-label="Inspector" hidden></aside>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

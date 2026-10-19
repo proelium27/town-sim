@@ -1,0 +1,97 @@
+/*
+  Scene: someone keeps the town open on a second monitor through a sunny workday, glancing over
+  to see who is at their desk, who wandered off for coffee, and who is quietly falling apart.
+  Bright daylight pixel art in the middle; the chrome is a light paper notebook around it.
+  Strategy: restrained. Warm paper neutrals, ink text, one cobalt accent for selection and
+  primary state, plus a fixed six-colour data palette for needs.
+*/
+:root {
+  --paper: oklch(0.975 0.006 85);
+  --paper-2: oklch(0.945 0.008 85);
+  --paper-3: oklch(0.905 0.01 85);
+  --line: oklch(0.86 0.01 85);
+  --line-soft: oklch(0.92 0.008 85);
+  --ink: oklch(0.24 0.015 260);
+  --ink-2: oklch(0.45 0.015 260);
+  --ink-3: oklch(0.6 0.012 260);
+  --accent: oklch(0.52 0.17 262);
+  --accent-soft: oklch(0.52 0.17 262 / 0.1);
+  --accent-ink: oklch(0.985 0.005 262);
+
+  --good: oklch(0.6 0.14 150);
+  --warn: oklch(0.72 0.15 75);
+  --bad: oklch(0.58 0.19 27);
+
+  --n-energy: oklch(0.75 0.15 80);
+  --n-hunger: oklch(0.66 0.17 45);
+  --n-hygiene: oklch(0.7 0.1 210);
+  --n-social: oklch(0.66 0.16 355);
+  --n-fun: oklch(0.6 0.15 300);
+  --n-work: oklch(0.55 0.15 262);
+  --n-mood: oklch(0.62 0.14 150);
+
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --top-h: 44px;
+  --left-w: 288px;
+  --right-w: 0px;
+  --log-h: 168px;
+  --r: 6px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  color-scheme: light;
+}
+body.inspecting { --right-w: 352px; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--paper-2); color: var(--ink); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
+button, input { font: inherit; color: inherit; }
+button { background: none; border: 0; padding: 0; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+#stage { position: fixed; inset: 0; }
+#stage canvas { display: block; image-rendering: pixelated; }
+
+/* ------------------------------------------------------------ top bar */
+.topbar {
+  position: fixed; top: 0; left: 0; right: 0; height: var(--top-h);
+  display: flex; align-items: center; gap: 24px; padding: 0 12px 0 16px;
+  background: var(--paper); border-bottom: 1px solid var(--line); z-index: 3;
+}
+.brand { display: flex; align-items: baseline; gap: 12px; min-width: calc(var(--left-w) - 16px); }
+.brand .name { font-weight: 700; letter-spacing: -0.01em; font-size: 15px; }
+.clock { font-family: var(--mono); font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.stats { flex: 1; display: flex; gap: 20px; color: var(--ink-2); font-size: 12px; min-width: 0; overflow: hidden; white-space: nowrap; }
+.stats b { color: var(--ink); font-weight: 600; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.speed { display: flex; padding: 2px; border: 1px solid var(--line); border-radius: var(--r); background: var(--paper-2); }
+.speed button {
+  min-width: 36px; height: 28px; padding: 0 8px; border-radius: 4px; color: var(--ink-2);
+  font: 12px var(--mono); display: grid; place-items: center;
+  transition: background 150ms var(--ease), color 150ms var(--ease);
+}
+.speed button svg { width: 12px; height: 12px; fill: currentColor; }
+.speed button:hover { background: var(--paper-3); color: var(--ink); }
+.speed button[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); }
+
+/* ------------------------------------------------------------ left tracker */
+.tracker {
+  position: fixed; top: var(--top-h); left: 0; bottom: 0; width: var(--left-w);
+  background: var(--paper); border-right: 1px solid var(--line); z-index: 2;
+  display: flex; flex-direction: column;
+}
+
+/* ------------------------------------------------------------ bottom activity */
+.activity {
+  position: fixed; left: var(--left-w); right: var(--right-w); bottom: 0; height: var(--log-h);
+  background: var(--paper); border-top: 1px solid var(--line); z-index: 2;
+  display: flex; flex-direction: column;
+  transition: right 220ms var(--ease);
+}
+
+/* ------------------------------------------------------------ right inspector */
+.inspector {
+  position: fixed; top: var(--top-h); right: 0; bottom: 0; width: 352px;
+  background: var(--paper); border-left: 1px solid var(--line); z-index: 2;
+  overflow-y: auto; scrollbar-width: thin;
+}
+.inspector[hidden] { display: none; }

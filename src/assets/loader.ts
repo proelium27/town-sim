@@ -1,0 +1,211 @@
+import { Assets, Rectangle, Texture, TextureSource } from 'pixi.js';
+import { CHARACTER_BASES, type FrameRef, type Facing, SHEETS, type SheetKey, TILE, characterFrame } from './manifest';
+
+TextureSource.defaultOptions.scaleMode = 'nearest';
+
+export interface Outfit {
+  base: number;
+  /** Hue rotation in degrees applied to clothing pixels. */
+  shirtHue: number;
+  /** Hue rotation applied to hair pixels. */
+  hairHue: number;
+  hairLight: number;
+}
+
+/** Loads sheets once and hands out cached frame textures. */
+export class Art {
+  private sheets = {} as Record<SheetKey, Texture>;
+  private images = {} as Record<SheetKey, HTMLImageElement | ImageBitmap>;
+  private frames = new Map<string, Texture>();
+  private outfits = new Map<string, Record<Facing, Texture[]>>();
+  private custom = new Map<string, Texture>();
+
+  async load(): Promise<void> {
+    const base = import.meta.env.BASE_URL;
+    await Promise.all(
+      (Object.keys(SHEETS) as SheetKey[]).map(async (k) => {
+        const tex = await Assets.load<Texture>(base + SHEETS[k].url);
+        tex.source.scaleMode = 'nearest';
+        this.sheets[k] = tex;
+        this.images[k] = tex.source.resource as HTMLImageElement | ImageBitmap;
+      }),
+    );
+  }
+
+  rect(f: FrameRef): Rectangle {
+    if (f.px) return new Rectangle(f.px.x, f.px.y, f.px.w, f.px.h);
+    const step = TILE + SHEETS[f.sheet].spacing;
+    const w = f.w ?? 1;
+    const h = f.h ?? 1;
+    if (SHEETS[f.sheet].spacing === 0 || (w === 1 && h === 1)) return new Rectangle(f.col * step, f.row * step, w * TILE, h * TILE);
+    // Multi-tile frames on spaced sheets are stitched (see frame()).
+    return new Rectangle(f.col * step, f.row * step, w * TILE, h * TILE);
+  }
+
+  frame(f: FrameRef): Texture {
+    const key = `${f.sheet}:${f.col}:${f.row}:${f.w ?? 1}:${f.h ?? 1}:${f.px ? `${f.px.x},${f.px.y},${f.px.w},${f.px.h}` : ''}`;
+    let t = this.frames.get(key);
+    if (t) return t;
+    const spacing = SHEETS[f.sheet].spacing;
+    const w = f.w ?? 1;
+    const h = f.h ?? 1;
+    if (spacing > 0 && (w > 1 || h > 1) && !f.px) {
+      // Stitch tiles together, dropping the 1px gutters between them.
+      const cv = document.createElement('canvas');
+      cv.width = w * TILE;
+      cv.height = h * TILE;
+      const ctx = cv.getContext('2d')!;
+      const step = TILE + spacing;
+      for (let ty = 0; ty < h; ty++) for (let tx = 0; tx < w; tx++) {
+        ctx.drawImage(this.images[f.sheet] as CanvasImageSource, (f.col + tx) * step, (f.row + ty) * step, TILE, TILE, tx * TILE, ty * TILE, TILE, TILE);
+      }
+      t = Texture.from(cv);
+      t.source.scaleMode = 'nearest';
+    } else {
+      t = new Texture({ source: this.sheets[f.sheet].source, frame: this.rect(f) });
+    }
+    this.frames.set(key, t);
+    return t;
+  }
+
+  /** Walk-cycle textures for an outfit: [stand, stepA, stand, stepB] per facing. */
+  character(o: Outfit): Record<Facing, Texture[]> {
+    const key = `${o.base}:${o.shirtHue}:${o.hairHue}:${o.hairLight}`;
+    const cached = this.outfits.get(key);
+    if (cached) return cached;
+    const out = {} as Record<Facing, Texture[]>;
+    for (const facing of ['down', 'up', 'left', 'right'] as Facing[]) {
+      const steps = ([0, 1, 2] as const).map((s) => this.recolor(characterFrame(o.base % CHARACTER_BASES, facing, s), o));
+      out[facing] = [steps[0], steps[1], steps[0], steps[2]];
+    }
+    this.outfits.set(key, out);
+    return out;
+  }
+
+  private recolor(f: FrameRef, o: Outfit): Texture {
+    const cv = document.createElement('canvas');
+    cv.width = TILE;
+    cv.height = TILE;
+    const ctx = cv.getContext('2d', { willReadFrequently: true })!;
+    const r = this.rect(f);
+    ctx.drawImage(this.images[f.sheet] as CanvasImageSource, r.x, r.y, r.width, r.height, 0, 0, TILE, TILE);
+    const img = ctx.getImageData(0, 0, TILE, TILE);
+    const d = img.data;
+    for (let p = 0; p < d.length; p += 4) {
+      if (d[p + 3] < 10) continue;
+      const [h, s, l] = rgbToHsl(d[p], d[p + 1], d[p + 2]);
+      const y = (p / 4 / TILE) | 0;
+      // Skin sits in a narrow warm band; leave it alone so faces stay natural.
+      const skin = h > 10 && h < 40 && s > 0.25 && s < 0.75 && l > 0.55 && y >= 3 && y <= 9;
+      if (skin || s < 0.18 || l < 0.12) continue;
+      const hairZone = y < 6;
+      const nh = (h + (hairZone ? o.hairHue : o.shirtHue) + 360) % 360;
+      const nl = hairZone ? Math.min(0.9, Math.max(0.08, l * o.hairLight)) : l;
+      const [rr, gg, bb] = hslToRgb(nh, s, nl);
+      d[p] = rr;
+      d[p + 1] = gg;
+      d[p + 2] = bb;
+    }
+    ctx.putImageData(img, 0, 0);
+    const t = Texture.from(cv);
+    t.source.scaleMode = 'nearest';
+    return t;
+  }
+
+  /** Small procedural props the Kenney packs don't include, drawn in the same palette. */
+  drawn(key: 'monitor' | 'toilet' | 'basin' | 'whiteboard' | 'coffee' | 'doorMat' | 'shower' | 'counterTop' | 'net'): Texture {
+    const cached = this.custom.get(key);
+    if (cached) return cached;
+    const cv = document.createElement('canvas');
+    const W = key === 'whiteboard' ? TILE * 3 : TILE;
+    cv.width = W;
+    cv.height = TILE;
+    const g = cv.getContext('2d')!;
+    const r = (x: number, y: number, w: number, h: number, c: string) => {
+      g.fillStyle = c;
+      g.fillRect(x, y, w, h);
+    };
+    switch (key) {
+      case 'monitor':
+        r(4, 3, 9, 6, '#2b2f3a');
+        r(5, 4, 7, 4, '#5fb3d9');
+        r(6, 5, 3, 1, '#d8f1fb');
+        r(8, 9, 1, 2, '#2b2f3a');
+        r(6, 11, 5, 1, '#2b2f3a');
+        r(10, 12, 4, 1, '#3d4250');
+        break;
+      case 'toilet':
+        r(4, 1, 8, 4, '#d9dde3');
+        r(4, 1, 8, 1, '#ffffff');
+        r(5, 5, 6, 8, '#eef1f4');
+        r(6, 6, 4, 5, '#9fb3c2');
+        r(5, 13, 6, 1, '#8c96a3');
+        break;
+      case 'basin':
+        r(2, 4, 12, 7, '#eef1f4');
+        r(4, 6, 8, 3, '#9fc7dd');
+        r(7, 2, 2, 3, '#a7adb5');
+        r(2, 11, 12, 1, '#8c96a3');
+        break;
+      case 'shower':
+        r(1, 1, 14, 14, '#cfe3ea');
+        r(1, 1, 14, 1, '#ffffff');
+        for (let x = 3; x < 14; x += 3) r(x, 4, 1, 9, '#b4cfd9');
+        r(7, 7, 2, 2, '#7d8b95');
+        break;
+      case 'whiteboard':
+        r(1, 2, W - 2, 10, '#8f9aa6');
+        r(2, 3, W - 4, 8, '#f4f6f8');
+        r(5, 5, 14, 1, '#d1495b');
+        r(5, 7, 20, 1, '#3d6fb4');
+        r(30, 5, 10, 4, '#3a9a6a');
+        r(6, 12, 3, 2, '#5b6470');
+        r(W - 9, 12, 3, 2, '#5b6470');
+        break;
+      case 'coffee':
+        r(3, 2, 10, 11, '#3a3633');
+        r(4, 3, 8, 3, '#5a524c');
+        r(5, 7, 6, 4, '#211e1c');
+        r(7, 9, 2, 2, '#f0e8da');
+        r(11, 4, 1, 1, '#e05a3a');
+        break;
+      case 'doorMat':
+        r(1, 4, 14, 8, '#7d5b3c');
+        r(2, 5, 12, 6, '#946b46');
+        break;
+      case 'counterTop':
+        r(0, 0, 16, 16, '#b78a5c');
+        r(0, 0, 16, 3, '#cfd3d8');
+        break;
+      case 'net':
+        r(7, 0, 2, 16, '#f4f6f8');
+        break;
+    }
+    const t = Texture.from(cv);
+    t.source.scaleMode = 'nearest';
+    this.custom.set(key, t);
+    return t;
+  }
+}
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h *= 60;
+  return [h, s, l];
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+}
