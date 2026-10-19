@@ -1,5 +1,6 @@
 import { ageOf } from './agents';
 import { MIN_PER_DAY, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
+import { fallIll } from './health';
 import { TRADER_EVERY } from './market';
 import { FESTIVALS } from './seasons';
 import { spawnTrader } from './traffic';
@@ -253,7 +254,7 @@ function endParty(sim: Sim): void {
   sim.log(people.length ? `The party wound down. ${people.length} people had a good time` : 'Nobody showed up to the party', 'event', people.length ? 'good' : 'bad');
 }
 
-export type WorldEventKey = 'festival' | 'harvest' | 'newcomers' | 'trader' | 'drought' | 'storm' | 'snowstorm';
+export type WorldEventKey = 'festival' | 'harvest' | 'newcomers' | 'trader' | 'drought' | 'storm' | 'snowstorm' | 'outbreak';
 
 export const WORLD_EVENTS: { key: WorldEventKey; label: string; hint: string; tone: 'good' | 'bad' }[] = [
   { key: 'festival', label: 'Hold a festival', hint: 'Everyone gathers in the park for a few hours', tone: 'good' },
@@ -262,6 +263,7 @@ export const WORLD_EVENTS: { key: WorldEventKey; label: string; hint: string; to
   { key: 'trader', label: 'Call a trader', hint: 'A cart comes to buy surplus and sell what is short', tone: 'good' },
   { key: 'drought', label: 'Drought', hint: 'Crops stop growing for two days', tone: 'bad' },
   { key: 'storm', label: 'Storm', hint: 'Rain, flattened crops and fallen trees', tone: 'bad' },
+  { key: 'outbreak', label: 'Outbreak', hint: 'A flu starts going around town', tone: 'bad' },
   { key: 'snowstorm', label: 'Blizzard', hint: 'Heavy snow and bitter cold for six hours', tone: 'bad' },
 ];
 
@@ -278,6 +280,13 @@ export function triggerWorldEvent(sim: Sim, key: WorldEventKey): void {
     case 'trader':
       spawnTrader(sim);
       break;
+    case 'outbreak': {
+      const well = sim.agents.filter((a) => !a.illness);
+      for (let k = 0; k < 3 && well.length; k++) fallIll(sim, well.splice(sim.rng.int(0, well.length - 1), 1)[0], 'flu', '');
+      sim.log('A flu is going around town', 'event', 'bad');
+      sim.outbreak = sim.time;
+      break;
+    }
     case 'snowstorm':
       if (ev.snowstorm) break;
       ev.rain = { until: sim.time + 360 };
@@ -312,6 +321,7 @@ export function triggerWorldEvent(sim: Sim, key: WorldEventKey): void {
         fallen++;
       }
       for (const a of sim.agents) addMemory(sim, a, 'storm');
+      for (const a of sim.agents) if (m.room[a.at] < 0 && sim.rng.chance(0.12)) fallIll(sim, a, 'injury', 'caught out in the storm');
       sim.log(`A storm rolled through${hit ? `, flattening ${hit.name}` : ''} and toppling ${fallen} trees`, 'event', 'bad');
       break;
     }

@@ -195,6 +195,11 @@ function proposals(sim: Sim): Proposal[] {
   if (sim.agents.length >= 22 && count('workshop') === 0 && sim.stock.wood >= 40) {
     out.push({ bp: 'workshop', score: 0.6 * mw, reason: 'we could make our own planks, bricks and furniture', forAgents: [], proposer: sim.agents.find((a) => a.role === 'builder') ?? charismatic(), name: 'Northwind Workshop' });
   }
+  const sick = sim.agents.filter((a) => a.illness).length;
+  if (count('clinic') === 0 && sim.agents.length >= 14 && (sick >= 3 || sim.time - sim.outbreak < 3 * 1440)) {
+    const patient = sim.agents.find((a) => a.illness && ageOf(sim, a) >= ADULT_AGE);
+    out.push({ bp: 'clinic', score: (1.1 + sick * 0.08) * cw, reason: sick >= 3 ? `${sick} people are sick and there's nowhere to treat them` : 'the flu went through town and there was nowhere to treat anyone', forAgents: [], proposer: patient ?? charismatic(), name: 'Northwind Clinic' });
+  }
   if (sim.unburied.length && !sim.projects.some((p) => p.blueprint === 'cemetery')) {
     const dead = sim.person(sim.unburied[0])!;
     const mourner = sim.agents.filter((a) => a.id === dead.partner || dead.children.includes(a.id) || dead.parents.includes(a.id)).find((a) => ageOf(sim, a) >= ADULT_AGE);
@@ -426,6 +431,7 @@ export function allocateRoles(sim: Sim): void {
   const kids = sim.agents.filter((a) => ageOf(sim, a) >= 5 && ageOf(sim, a) < ADULT_AGE).length;
   const demand: [RoleKey, number, number | null][] = [];
   for (const s of schools) if (kids) demand.push(['teacher', 1, s.id]);
+  for (const c of m.buildings.filter((b) => b.kind === 'clinic')) demand.push(['doctor', 1, c.id]);
   for (const d of diners) demand.push(['cook', 1, d.id]);
   const hw = PRIORITY_WEIGHT[sim.priorities.housing];
   const mw = PRIORITY_WEIGHT[sim.priorities.materials];

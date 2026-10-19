@@ -3,6 +3,7 @@ import { ageOf } from '../sim/agents';
 import { xpToNext } from '../sim/ai';
 import { billText, MIN_PER_DAY, NEED_KEYS, NEEDS, ROLES, SEASON_DAYS, SEASONS, SKILL_KEYS, SKILL_LABEL, TRAITS } from '../sim/defs';
 import { APT_LABEL, APTITUDES } from '../sim/careers';
+import { frailty, ILLNESS } from '../sim/health';
 import { chill } from '../sim/seasons';
 import { kinship, moodParts, moodTarget, moodWord, relationLabel, type Kin } from '../sim/social';
 import type { Agent } from '../sim/types';
@@ -171,7 +172,10 @@ export class Inspector {
     fb.setAttribute('aria-pressed', String(following));
     fb.textContent = following ? 'Following' : 'Follow';
     const tools = role.station === 'labor' ? (a.tool > 0 ? ` · tools ${Math.round(a.tool * 100)}%` : ' · no tools') : '';
-    set('money', a.role === 'child' ? `${duration(a.workedToday)} of chores today` : `$${Math.round(a.money)} · ${a.tasksDone} tasks done · ${duration(a.workedToday)} worked today${tools}`);
+    const ill = a.illness;
+    const sickLine = ill ? `Has ${ILLNESS[ill.kind].label}${ill.treated ? ', seen by the doctor' : ''}${ill.medicine ? ', on medicine' : ''}${this.sim.time < ill.caredUntil ? ', family looking after them' : ''} · ` : '';
+    const frail = frailty(this.sim, a) > 0.75 ? 'Frail · ' : '';
+    set('money', sickLine + frail + (a.role === 'child' ? `${duration(a.workedToday)} of chores today` : `$${Math.round(a.money)} · ${a.tasksDone} tasks done · ${duration(a.workedToday)} worked today${tools}`));
     set('doing', a.action.stage === 'travel' && a.action.kind !== 'wander' && a.action.kind !== 'stroll' ? `→ ${a.action.label}` : a.action.label);
     set('why', a.action.reason || 'Just going with the flow');
     const th = a.thoughts[a.thoughts.length - 1];
@@ -199,7 +203,8 @@ export class Inspector {
       (m.querySelector('i') as HTMLElement).style.width = `${v}%`;
       (m.querySelector('.val') as HTMLElement).textContent = String(Math.round(v));
       m.classList.toggle('low', v < 25);
-      m.hidden = !!NEEDS[k as keyof typeof NEEDS]?.seasonal && v >= 99.5 && chill(this.sim) === 0;
+      const def = NEEDS[k as keyof typeof NEEDS];
+      m.hidden = !!def && v >= 99.5 && ((!!def.seasonal && chill(this.sim) === 0) || !!def.hideWhenFull);
       if (k === 'mood') (m.querySelector('b') as HTMLElement).style.left = `${moodTarget(a)}%`;
     }
     set('moodword', `${moodWord(a.mood)}, heading toward ${Math.round(moodTarget(a))}`);

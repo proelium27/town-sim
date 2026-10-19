@@ -4,7 +4,7 @@ export const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 // ------------------------------------------------------------------ needs
 
-export type NeedKey = 'energy' | 'hunger' | 'hygiene' | 'social' | 'fun' | 'work' | 'warmth';
+export type NeedKey = 'energy' | 'hunger' | 'hygiene' | 'social' | 'fun' | 'work' | 'warmth' | 'health';
 
 export interface NeedDef {
   label: string;
@@ -16,6 +16,8 @@ export interface NeedDef {
   weight: number;
   /** Only shown while it matters (Warmth outside the cold months). */
   seasonal?: boolean;
+  /** Only shown when it's below full (Health). */
+  hideWhenFull?: boolean;
 }
 
 /** Every need, in display order. UI and mood read from here, so adding a need is one entry. */
@@ -27,6 +29,7 @@ export const NEEDS: Record<NeedKey, NeedDef> = {
   fun: { label: 'Fun', color: 'var(--n-fun)', low: 'Bored', weight: 0.3 },
   work: { label: 'Productivity', color: 'var(--n-work)', low: 'Unproductive', weight: 0.15 },
   warmth: { label: 'Warmth', color: 'var(--n-warmth)', low: 'Freezing', weight: 0.45, seasonal: true },
+  health: { label: 'Health', color: 'var(--n-health)', low: 'Feeling ill', weight: 0.5, hideWhenFull: true },
 };
 export const NEED_KEYS = Object.keys(NEEDS) as NeedKey[];
 export const NEED_LABEL = Object.fromEntries(NEED_KEYS.map((k) => [k, NEEDS[k].label])) as Record<NeedKey, string>;
@@ -41,7 +44,7 @@ export const YEAR_DAYS = SEASON_DAYS * SEASONS.length;
 
 // ------------------------------------------------------------------ goods
 
-export type Good = 'food' | 'wood' | 'stone' | 'firewood' | 'planks' | 'bricks' | 'furniture' | 'tools';
+export type Good = 'food' | 'wood' | 'stone' | 'firewood' | 'planks' | 'bricks' | 'furniture' | 'tools' | 'herbs' | 'medicine';
 
 export interface GoodDef {
   label: string;
@@ -63,6 +66,8 @@ export const GOODS: Record<Good, GoodDef> = {
   bricks: { label: 'Bricks', color: 'oklch(0.6 0.13 35)', cap: 60, hud: false },
   furniture: { label: 'Furniture', color: 'oklch(0.62 0.09 55)', cap: 10, hud: false },
   tools: { label: 'Tools', color: 'oklch(0.7 0.03 240)', cap: 20, hud: false },
+  herbs: { label: 'Herbs', color: 'oklch(0.7 0.13 140)', cap: 30, hud: false },
+  medicine: { label: 'Medicine', color: 'oklch(0.72 0.1 175)', cap: 20, hud: false },
 };
 export const GOOD_KEYS = Object.keys(GOODS) as Good[];
 export type Stock = Record<Good, number>;
@@ -91,7 +96,7 @@ export const SKILL_LABEL: Record<SkillKey, string> = {
 export type RoleKey =
   | 'engineer' | 'designer' | 'writer' | 'manager' | 'receptionist' | 'barista' | 'shopkeeper' | 'librarian'
   | 'builder' | 'farmer' | 'woodcutter' | 'laborer' | 'teacher' | 'cook' | 'child' | 'retired'
-  | 'carpenter' | 'mason' | 'toolmaker';
+  | 'carpenter' | 'mason' | 'toolmaker' | 'doctor';
 
 export interface RoleDef {
   key: RoleKey;
@@ -146,6 +151,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   laborer: { key: 'laborer', title: 'Laborer', craft: 'Labor', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
   carpenter: { key: 'carpenter', title: 'Carpenter', craft: 'Carpentry', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
   mason: { key: 'mason', title: 'Mason', craft: 'Masonry', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
+  doctor: { key: 'doctor', title: 'Doctor', craft: 'Medicine', workplace: 'building', station: 'counter', tasks: ['Morning rounds', 'See patients', 'Mix remedies', 'Write up notes'], flexible: true },
   toolmaker: { key: 'toolmaker', title: 'Toolmaker', craft: 'Toolmaking', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
   teacher: { key: 'teacher', title: 'Teacher', craft: 'Teaching', workplace: 'building', station: 'counter', tasks: ['Morning lessons', 'Grade homework', 'Reading circle', 'Science hour'], flexible: true },
   cook: { key: 'cook', title: 'Diner Cook', craft: 'Cooking', workplace: 'building', station: 'counter', tasks: ['Breakfast service', 'Lunch rush', 'Prep the soup', 'Dinner service'], flexible: true },
@@ -209,7 +215,8 @@ export type MemoryKind =
   | 'newPartner' | 'newBaby' | 'grief' | 'movedIn' | 'builtSomething' | 'townGrowing' | 'sleptRough' | 'proposed'
   | 'grewUp' | 'harvest' | 'school' | 'festival' | 'drought' | 'storm'
   | 'birthday' | 'myBirthday' | 'familyDinner' | 'paidRespects' | 'eveningWalk'
-  | 'snowDay' | 'cozyFire' | 'coldHome' | 'blizzard' | 'madeSomething' | 'toolBroke' | 'unpaid' | 'broke' | 'qualified';
+  | 'snowDay' | 'cozyFire' | 'coldHome' | 'blizzard' | 'madeSomething' | 'toolBroke' | 'unpaid' | 'broke' | 'qualified'
+  | 'feelingIll' | 'hurt' | 'recovered' | 'frail' | 'caredFor' | 'lookedAfter';
 
 export interface MemoryDef {
   label: string;
@@ -278,4 +285,10 @@ export const MEMORIES: Record<MemoryKind, MemoryDef> = {
   unpaid: { label: 'The town could not pay me', mood: -5, duration: D, major: true, maxStack: 1 },
   broke: { label: "Can't afford groceries", mood: -7, duration: D, major: true, maxStack: 1 },
   qualified: { label: 'Finished my apprenticeship', mood: 8, duration: 1.5 * D, major: true, maxStack: 1 },
+  feelingIll: { label: 'Under the weather', mood: -5, duration: 12 * H, major: false, maxStack: 1 },
+  hurt: { label: 'Got hurt', mood: -6, duration: D, major: true, maxStack: 1 },
+  recovered: { label: 'Back on my feet', mood: 5, duration: 12 * H, major: false, maxStack: 1 },
+  frail: { label: 'Growing frail', mood: -3, duration: 4 * D, major: true, maxStack: 1 },
+  caredFor: { label: 'Family looked after me', mood: 6, duration: 8 * H, major: false, maxStack: 2 },
+  lookedAfter: { label: 'Looked after family', mood: 3, duration: 12 * H, major: false, maxStack: 3 },
 };

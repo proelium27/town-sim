@@ -33,6 +33,7 @@
   --n-work: oklch(0.72 0.13 255);
   --n-mood: oklch(0.76 0.15 150);
   --n-warmth: oklch(0.72 0.16 35);
+  --n-health: oklch(0.72 0.12 168);
 
   --font: Rubik, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --gap: 12px;

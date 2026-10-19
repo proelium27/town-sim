@@ -5,7 +5,7 @@ import type { Agent } from './types';
 import { targetOf } from './workshop';
 
 /** What a unit of each good is worth when the town has just the right amount. */
-export const BASE_PRICE: Record<Good, number> = { food: 3, wood: 1, stone: 1, firewood: 1.5, planks: 2, bricks: 2, furniture: 24, tools: 10 };
+export const BASE_PRICE: Record<Good, number> = { food: 3, wood: 1, stone: 1, firewood: 1.5, planks: 2, bricks: 2, furniture: 24, tools: 10, herbs: 1.5, medicine: 8 };
 /** The office earns from outside clients and pays this share in tax. */
 export const TAX = 0.15;
 /** Town jobs are paid from the treasury at this share of the nominal rate. */
@@ -25,6 +25,8 @@ export function wantOf(sim: Sim, g: Good): number {
     }
     case 'wood': return 90;
     case 'stone': return 60;
+    case 'herbs': return 12;
+    case 'medicine': return Math.max(4, Math.ceil(people / 5));
     case 'firewood': return homes * (sim.season >= 2 ? 12 : 4);
     default: return Math.max(2, targetOf(sim, g));
   }

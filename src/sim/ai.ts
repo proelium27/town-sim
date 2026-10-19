@@ -7,6 +7,7 @@ import { CARRY, laborPlan } from './labor';
 import { buildCap, completeProject, shortOf, supplied } from './planner';
 import { chill, HEARTH_FULL } from './seasons';
 import { learnBoost, lessonAptitude } from './careers';
+import { fallIll, needsCare, offSick, tickIllness } from './health';
 import { askFamilyForHelp, payWage, price, spend } from './market';
 import { canMake, RECIPES, STATION_OF } from './workshop';
 import { clamp } from './rng';
@@ -162,7 +163,7 @@ function updateNeeds(sim: Sim, a: Agent, dt: number, stage: Stage): void {
     const own = room && room.id === sim.town.households[a.household].room;
     const fire = sim.fuel[a.household] > 0;
     if (!room && k === 'party' && sim.events.festival) n.warmth += 0.5 * dt;
-    else if (!room) n.warmth -= c * (sim.events.snowstorm ? 0.7 : 0.35) * dt;
+    else if (!room) n.warmth -= c * (sim.events.snowstorm ? 0.7 : 0.35) * (working || a.moving ? 0.75 : 1) * dt;
     else if (own) n.warmth += fire ? 1.2 * dt : -c * 0.12 * dt;
     else n.warmth += 0.8 * dt;
     if (own && !fire && c > 0.3 && !asleep) addMemory(sim, a, 'coldHome');
@@ -170,6 +171,8 @@ function updateNeeds(sim: Sim, a: Agent, dt: number, stage: Stage): void {
   } else n.warmth += 0.6 * dt;
   a.bladder -= 0.32 * dt * (asleep ? 0.3 : 1);
   if (k === 'coffee' && performing) a.bladder -= 0.4 * dt;
+  tickIllness(sim, a, dt);
+  if (a.illness) n.energy -= a.illness.severity * 0.04 * dt;
   for (const key of NEED_KEYS) n[key] = clamp(n[key], 0, 100);
   // Kids playing outside grow a love of the outdoors.
   if (stage === 'child' && performing && (k === 'play' || k === 'stroll' || k === 'wander') && sim.map.room[a.at] < 0) a.aptitude.outdoors = Math.min(100, a.aptitude.outdoors + 0.03 * dt);
@@ -425,10 +428,38 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   }
 
   // ---- work
-  if (stage === 'adult') workOptions(sim, a, o, workTime, h);
+  const sick = offSick(a);
+  if (stage === 'adult' && !sick) workOptions(sim, a, o, workTime, h);
+  // ---- illness: to bed, or to the clinic if there is one
+  if (a.illness && a.illness.severity > 0.2) {
+    const sev = a.illness.severity;
+    const clinic = sim.map.buildings.some((b) => b.kind === 'clinic');
+    if (clinic && sev > 0.35) o.push(spotOption(sim, a, 'rest', 1.3 + sev, `Ill (${Math.round(a.needs.health)})`, ['rest'], () => 'Resting at the clinic', 120));
+    if (homed) o.push(spotOption(sim, a, 'rest', 1.05 + sev, `Ill (${Math.round(a.needs.health)})`, ['sleep'], () => 'In bed, feeling ill', 90, homeOnly));
+  }
+  // ---- family who are ill or frail get a visit
+  if ((stage === 'adult' || stage === 'elder') && !sick && !sleepTime) {
+    const who = needsCare(sim, a);
+    // Someone at home who's seriously ill is worth taking time off work for.
+    if (who && (!workTime || (who.household === a.household && (who.illness?.severity ?? 0) > 0.5))) {
+      const sev = who.illness?.severity ?? 0;
+      const score = 0.62 + sev * 0.6 + (who.household === a.household ? 0.15 : 0);
+      o.push({
+        kind: 'care', score, reason: `${first(who)} needs looking after`,
+        begin: () => {
+          const room = sim.roomOf(who);
+          const cell = room ? randomCellIn(sim, room.x, room.y, room.w, room.h) : who.at;
+          if (cell < 0) return false;
+          const path = cell === a.at ? [] : sim.nav.findPath(a.at, cell, 40000);
+          if (!path) return false;
+          return start(sim, a, 'care', `Looking after ${first(who)}`, `${first(who)} needs looking after`, { cell, path, cost: path.length }, 30, score, { partnerId: who.id });
+        },
+      });
+    }
+  }
 
   // ---- school
-  if (schoolTime) {
+  if (schoolTime && !sick) {
     o.push(spotOption(sim, a, 'learn', 1.15, 'School day', ['learn'], () => 'In class at school', sim.rng.range(60, 120)));
   }
 
@@ -490,7 +521,7 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   // Cold: back home to the fire, or into the café or library if there's no firewood.
   if (n.warmth < 60 && chill(sim) > 0 && !sim.roomOf(a) && stage !== 'toddler') {
     const fire = homed && sim.fuel[a.household] > 0;
-    o.push(spotOption(sim, a, 'relax', (1 - n.warmth / 100) * 1.5, `Cold (${Math.round(n.warmth)})`, ['sit'], (p) => (p.household === a.household ? 'Warming up by the fire' : `Warming up ${where_(sim, p)}`), 30, (p) => (fire ? homeOnly(p) : ['cafe', 'library', 'lobby'].includes(roomKind(sim, p) ?? ''))));
+    o.push(spotOption(sim, a, 'relax', (1 - n.warmth / 100) * 1.5 + (n.warmth < 35 ? 0.5 : 0), `Cold (${Math.round(n.warmth)})`, ['sit'], (p) => (p.household === a.household ? 'Warming up by the fire' : `Warming up ${where_(sim, p)}`), 30, (p) => (fire ? homeOnly(p) : ['cafe', 'library', 'lobby'].includes(roomKind(sim, p) ?? ''))));
   }
   // After dinner, a couple at home together goes out for a walk, side by side.
   if (chill(sim) < 0.5 && loc === 'home' && inWindow(h, 19.25, 21) && n.hunger > 50 && !sleepTime && n.energy > 40 && stage !== 'toddler' && !sim.events.rain && !a.memories.some((x) => x.kind === 'eveningWalk')) {
@@ -696,6 +727,8 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
     case 'mine': return a.action.projectId !== undefined ? 'These rocks have to go before we can build.' : 'Time to break some stone.';
     case 'haul': return `${o.reason}. I'll fetch it from the storehouse.`;
     case 'split': return 'Logs to split before the cold sets in.';
+    case 'rest': return 'I need to lie down for a while.';
+    case 'care': return `I'll go and see how ${o.reason.split(' ')[0]} is doing.`;
     case 'craft': return `${o.reason}. Off to the workshop.`;
     case 'stoke': return `${o.reason}. I'll bring them some firewood.`;
     case 'build': return `${a.action.label}. Let's get this up.`;
@@ -712,6 +745,10 @@ function urgent(sim: Sim, a: Agent): boolean {
   if (a.bladder < 12 && k !== 'toilet') return true;
   if (a.needs.hunger < 10 && k !== 'eat' && k !== 'cook' && k !== 'snack' && k !== 'sleep') return true;
   if (sim.events.standup && isOffice(a) && isWorkTime(sim, a) && k !== 'meet' && k !== 'toilet') return true;
+  // Freezing outdoors: stop and go somewhere warm.
+  if (a.needs.warmth < 20 && sim.map.room[a.at] < 0 && k !== 'relax' && chill(sim) > 0) return true;
+  // Too ill to carry on: down tools and go lie down.
+  if (offSick(a) && ['work', 'teach', 'learn', 'build', 'chop', 'mine', 'farm', 'haul', 'split', 'stoke', 'craft', 'meet'].includes(k)) return true;
   return false;
 }
 
@@ -1016,6 +1053,40 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       if (kid) think(sim, a, `Dropped ${first(kid)} at school.`, 'good');
       return finish(sim, a);
     }
+    case 'rest': {
+      n.energy = Math.min(100, n.energy + 0.25 * dt);
+      const ill = a.illness;
+      if (ill && sim.roomOf(a)?.kind === 'clinic') {
+        // Seen by the doctor if they're in; medicine if the clinic has any.
+        const doc = sim.agents.find((d) => d.role === 'doctor' && d.action.kind === 'work' && d.action.stage === 'perform' && sim.roomOf(d)?.kind === 'clinic');
+        if (doc && !ill.treated) {
+          ill.treated = true;
+          if (!ill.medicine && sim.stock.medicine >= 1) {
+            sim.stock.medicine -= 1;
+            ill.medicine = true;
+          }
+          think(sim, a, `${first(doc)} says I'll be fine${ill.medicine ? ' with this medicine' : ''}.`, 'good');
+          sim.log(`Dr. ${first(doc)} treated ${first(a)}${ill.medicine ? ' with medicine' : ''}`, 'life', 'good', doc, a);
+        }
+      }
+      if (!ill || tick()) finish(sim, a);
+      return;
+    }
+    case 'care': {
+      const who = sim.agent(act.partnerId);
+      if (!who) return finish(sim, a);
+      a.facing = faceToward(a, who);
+      bondNearby(sim, a, who, dt);
+      if (sim.rng.chance(0.01 * dt)) say(sim, a, who.illness ? 'get well soon' : 'how are you feeling?', 'good', 3);
+      if (tick()) {
+        if (who.illness) who.illness.caredUntil = sim.time + 240;
+        addMemory(sim, who, 'caredFor', a);
+        addMemory(sim, a, 'lookedAfter', who);
+        think(sim, who, `${first(a)} came to look after me.`, 'good');
+        finish(sim, a);
+      }
+      return;
+    }
     case 'mourn': {
       a.facing = 'up';
       if (sim.rng.chance(0.01 * dt)) say(sim, a, '…', 'neutral', 3);
@@ -1137,6 +1208,10 @@ function performGather(sim: Sim, a: Agent, dt: number, tick: () => boolean): voi
   const act = a.action;
   const p = sim.prop(act.propId);
   if (!p) return finish(sim, a);
+  if (sim.rng.chance(0.00008 * dt)) {
+    fallIll(sim, a, 'injury', act.kind === 'chop' ? 'an axe slipped' : 'a rock fell');
+    return finish(sim, a);
+  }
   a.workedToday += dt;
   payWage(sim, a, 0.3 * dt);
   a.needs.work = Math.min(100, a.needs.work + 0.4 * dt);
@@ -1199,6 +1274,7 @@ function performFarm(sim: Sim, a: Agent, dt: number, tick: () => boolean): void 
     const amount = (a.carry?.kind === 'food' ? a.carry.amount : 0) + FOOD_PER_CROP * (1 + a.skills.craft.level * 0.04);
     a.carry = { kind: 'food', amount };
     if (amount >= 8) addMemory(sim, a, 'harvest');
+    if (sim.rng.chance(0.15)) sim.stock.herbs += 1;
   } else {
     p.growth = Math.min(1, (p.growth ?? 0) + 0.06 + a.skills.craft.level * 0.006);
   }
@@ -1209,6 +1285,10 @@ function performFarm(sim: Sim, a: Agent, dt: number, tick: () => boolean): void 
 
 function performWork(sim: Sim, a: Agent, dt: number, tick: () => boolean): void {
   const n = a.needs;
+  if (a.role === 'doctor' && sim.stock.herbs >= 2 && Math.floor(sim.time / 45) !== Math.floor((sim.time - dt) / 45)) {
+    sim.stock.herbs -= 2;
+    sim.stock.medicine += 1;
+  }
   if (!a.task) a.task = newTask(sim, a);
   const t = a.task;
   if (t) {

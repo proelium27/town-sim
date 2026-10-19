@@ -30,7 +30,7 @@ export interface Thought {
 export type ActionKind =
   | 'idle' | 'wander' | 'stroll' | 'work' | 'meet' | 'eat' | 'snack' | 'coffee' | 'cook'
   | 'sleep' | 'toilet' | 'shower' | 'socialize' | 'play' | 'music' | 'read' | 'relax' | 'shop' | 'party' | 'repair'
-  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach' | 'mourn' | 'escort' | 'split' | 'stoke' | 'craft';
+  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach' | 'mourn' | 'escort' | 'split' | 'stoke' | 'craft' | 'rest' | 'care';
 
 export interface Action {
   kind: ActionKind;
@@ -148,6 +148,11 @@ export interface Agent {
   /** Who they're apprenticed to, and until when. */
   mentor?: number;
   apprenticeUntil?: number;
+  illness?: import('./health').Illness;
+  /** Over a cold or flu recently: can't catch one again until then. */
+  immuneUntil?: number;
+  /** What past illnesses have taken out of them, added to age-related frailty. */
+  wear: number;
 }
 
 export interface Project {

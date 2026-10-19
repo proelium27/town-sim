@@ -2,6 +2,7 @@ import { ageOf, createAgent } from './agents';
 import { ADULT_AGE, RETIRE_AGE, ROLES } from './defs';
 import { graveSlots } from '../world/blueprints';
 import { beginCareer, chooseCareer, finishApprenticeships } from './careers';
+import { tickTownHealth } from './health';
 import { allocateRoles, capacity, familyOf, members, moveTo, newHousehold, setRole } from './planner';
 import { addMemory, first, rel, say, think } from './social';
 import type { Agent } from './types';
@@ -19,7 +20,7 @@ export function tickLife(sim: Sim, dt: number): void {
   finishApprenticeships(sim);
   romance(sim);
   births(sim);
-  deaths(sim);
+  tickTownHealth(sim);
   sim.timers.arrival -= 120;
   if (sim.timers.arrival <= 0) {
     sim.timers.arrival = sim.rng.range(1.2, 2.4) * 1440;
@@ -107,16 +108,6 @@ function births(sim: Sim): void {
     for (const gp of [...a.parents, ...b.parents].map((id) => sim.agent(id)).filter(Boolean) as Agent[]) addMemory(sim, gp, 'newBaby', baby);
     sim.log(`${first(a)} and ${first(b)} welcomed a baby, ${first(baby)}`, 'family', 'good', a, b);
     sim.milestone(`${baby.name} was born`);
-  }
-}
-
-function deaths(sim: Sim): void {
-  for (const a of [...sim.agents]) {
-    const age = ageOf(sim, a);
-    if (age < 70) continue;
-    // Roughly one in four makes it to 80; almost no one past 92.
-    if (!sim.rng.chance(Math.min(0.5, ((age - 70) / 22) ** 2 * 0.12))) continue;
-    die(sim, a, `old age at ${Math.floor(age)}`);
   }
 }
 

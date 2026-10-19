@@ -168,6 +168,23 @@ function stampWorkshop(m: TownMap, x: number, y: number, doorTop: boolean, name:
   return b;
 }
 
+function stampClinic(m: TownMap, x: number, y: number, doorTop: boolean, name: string, time = 0): Building {
+  const [s, b] = begin(m, 'clinic', name, x, y, 9, 7, 4, doorTop, time);
+  s.wallRect(0, 0, 9, 7);
+  const r = s.room(name, 'clinic', 1, 1, 7, 5, 'floorTile', name);
+  b.rooms.push(r.id);
+  s.door(4, 0, 'floorTile');
+  // The doctor's desk by the door, three beds along the back.
+  s.prop('desk', 1, 1, 2, 1);
+  s.seat('officeChairDown', 2, 2, 'up', 'work');
+  s.prop('bookshelf', 7, 1, 1, 1);
+  for (const dx of [1, 3, 5]) {
+    s.prop('bedSingle', dx, 4, 1, 2, { blocks: false, cost: 6 });
+    s.spot('rest', dx, 4, 'down');
+  }
+  return b;
+}
+
 function stampCemetery(m: TownMap, x: number, y: number, doorTop: boolean, name: string, time = 0): Building {
   const [s, b] = begin(m, 'cemetery', name, x, y, 9, 7, 4, doorTop, time);
   s.fill(0, 0, 9, 7, 'grass');
@@ -187,7 +204,7 @@ export function graveSlots(b: Building): { x: number; y: number }[] {
   return out;
 }
 
-export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park' | 'cemetery' | 'workshop', Blueprint> = {
+export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park' | 'cemetery' | 'workshop' | 'clinic', Blueprint> = {
   house: {
     kind: 'house', noun: 'a new home', coins: 40, w: 11, h: 8, cost: { wood: 40, stone: 20 }, refined: { wood: 16, stone: 10, planks: 16, bricks: 8, furniture: 2 }, work: 300, doorX: 4, outdoor: false,
     stamp: (m, x, y, top, name, hh) => stampHouse(m, x, y, top, name, hh ?? 0, true),
@@ -198,6 +215,7 @@ export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'di
   diner: { kind: 'cafe', noun: 'a diner', coins: 80, w: 11, h: 8, cost: { wood: 35, stone: 25 }, refined: { wood: 10, stone: 8, planks: 18, bricks: 14, furniture: 2 }, work: 380, doorX: 9, outdoor: false, stamp: (m, x, y, top, name) => stampDiner(m, x, y, top, name) },
   park: { kind: 'park', noun: 'a little park', coins: 25, w: 8, h: 8, cost: { wood: 6, stone: 8 }, work: 100, doorX: 3, outdoor: true, stamp: (m, x, y, top, name) => stampPark(m, x, y, top, name) },
   workshop: { kind: 'workshop', noun: 'a workshop', coins: 70, w: 11, h: 8, cost: { wood: 35, stone: 25 }, work: 320, doorX: 5, outdoor: false, stamp: (m, x, y, top, name) => stampWorkshop(m, x, y, top, name) },
+  clinic: { kind: 'clinic', noun: 'a clinic', coins: 60, w: 9, h: 7, cost: { wood: 25, stone: 20 }, refined: { wood: 8, planks: 12, bricks: 12, furniture: 1 }, work: 260, doorX: 4, outdoor: false, stamp: (m, x, y, top, name) => stampClinic(m, x, y, top, name) },
   cemetery: { kind: 'cemetery', noun: 'a cemetery', coins: 15, w: 9, h: 7, cost: { wood: 4, stone: 10 }, work: 100, doorX: 4, outdoor: true, stamp: (m, x, y, top, name) => stampCemetery(m, x, y, top, name) },
 };
 

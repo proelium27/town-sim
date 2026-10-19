@@ -46,6 +46,8 @@ export class Sim {
   ledger = { sales: 0, taxes: 0, wages: 0, trade: 0, projects: 0 };
   lastLedger = { sales: 0, taxes: 0, wages: 0, trade: 0, projects: 0 };
   ledgerDay = 0;
+  /** When the last outbreak began (or -Infinity). */
+  outbreak = -Infinity;
   /** Consecutive days each household has been broke and miserable. */
   hardDays: number[] = [];
   nextAgentId = 1;
