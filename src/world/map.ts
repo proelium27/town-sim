@@ -129,6 +129,8 @@ export class TownMap {
   groundDirty: number[] = [];
   /** Bumped on any ground change (paths, fields), for baked layers. */
   groundVersion = 0;
+  /** Like groundVersion, but ignores grass wearing to a trail and back (which happens constantly). */
+  lawnVersion = 0;
 
   constructor(
     readonly w: number,
@@ -188,8 +190,12 @@ export class TownMap {
     if (!this.inBounds(x, y)) return;
     const i = this.idx(x, y);
     if (this.ground[i] === g) return;
+    const wear = (k: GroundKey) => k === 'grass' || k === 'worn' || k === 'trail';
+    if (!wear(this.ground[i]) || !wear(g)) this.lawnVersion++;
     this.ground[i] = g;
     this.groundDirty.push(i);
+    // Neighbours too: a trail's grassy edges depend on what's next to it.
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) if (this.inBounds(x + dx, y + dy)) this.groundDirty.push(this.idx(x + dx, y + dy));
     this.groundVersion++;
     this.refreshCell(i);
   }

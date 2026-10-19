@@ -45,7 +45,11 @@ export class WorldView {
   readonly smoke = new Smoke();
   /** Rain puddles on paths and pavement; faded in by how wet the ground is. */
   readonly puddles = new Graphics();
+  /** The lawnVersion and groundVersion the puddles were drawn for. */
   private puddleVersion = -1;
+  private puddleGround = -1;
+  /** Real seconds before wear alone (trails coming and going) may redraw the puddles again. */
+  private puddleWait = 0;
   private sprites = new Map<number, Sprite>();
   private keys = new Map<number, string>();
   private propVersion = -1;
@@ -179,7 +183,6 @@ export class WorldView {
     this.entities.addChild(s);
   }
 
-  /** Bring the scene in line with the map. Cheap when nothing changed. */
   /** Per-frame effects: smoke from homes where someone is cooking, puddles after rain. dt in real seconds. */
   updateFx(dt: number): void {
     const sim = this.sim;
@@ -193,12 +196,17 @@ export class WorldView {
     const wet = sim.events.wet ?? 0;
     this.puddles.visible = wet > 0.02;
     this.puddles.alpha = Math.min(1, wet * 1.2);
-    if (this.puddles.visible && this.puddleVersion !== this.map.groundVersion) this.drawPuddles();
+    if (!this.puddles.visible) return;
+    const m = this.map;
+    this.puddleWait -= dt;
+    if (this.puddleVersion !== m.lawnVersion || (this.puddleGround !== m.groundVersion && this.puddleWait <= 0)) this.drawPuddles();
   }
 
   private drawPuddles(): void {
     const m = this.map;
-    this.puddleVersion = m.groundVersion;
+    this.puddleVersion = m.lawnVersion;
+    this.puddleGround = m.groundVersion;
+    this.puddleWait = 5;
     const g = this.puddles.clear();
     const WET = new Set(['dirt', 'trail', 'worn', 'sidewalk', 'plaza', 'asphalt']);
     for (let i = 0; i < m.ground.length; i++) {
@@ -215,10 +223,14 @@ export class WorldView {
     }
   }
 
+  /** Bring the scene in line with the map. Cheap when nothing changed. */
   sync(): void {
     const m = this.map;
     if (m.groundDirty.length) {
-      for (const i of m.groundDirty) this.paintGround(i);
+      for (const i of m.groundDirty) {
+        this.paintGround(i);
+        this.shading.touch(i);
+      }
       m.groundDirty.length = 0;
       this.groundTex.source.update();
     }
