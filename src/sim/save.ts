@@ -69,7 +69,8 @@ export function loadSim(text: string): Sim {
   sim.nav = new Nav(sim.town.map);
   // Anything added since the save was made starts from a sensible default.
   sim.stock = { ...emptyStock(), ...sim.stock };
-  for (const a of [...sim.agents, ...sim.deceased]) {
+  sim.departed ??= [];
+  for (const a of [...sim.agents, ...sim.deceased, ...sim.departed]) {
     for (const k of NEED_KEYS) a.needs[k] ??= 80;
     backfillAgent(a);
   }
@@ -79,7 +80,6 @@ export function loadSim(text: string): Sim {
   sim.events.snowstorm ??= null;
   if (sim.fuel.length < sim.town.households.length) sim.fuel = sim.town.households.map((_, i) => sim.fuel[i] ?? 8);
   for (const a of sim.agents) a.needs.warmth ??= 100;
-  sim.departed ??= [];
   sim.hardDays ??= [];
   return sim;
 }

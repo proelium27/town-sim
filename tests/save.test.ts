@@ -27,6 +27,17 @@ describe('saving and loading', () => {
     expect(b.map.propsOn(b.map.props[0].x, b.map.props[0].y)).toContain(b.map.props[0]);
   });
 
+  it('backfills new fields on people who moved away, too', () => {
+    const a = new Sim(7, { agents: true });
+    const gone = a.agents.pop()!;
+    delete (gone as Partial<typeof gone>).tool;
+    delete (gone as Partial<typeof gone>).lastBirthday;
+    a.departed.push(gone);
+    const b = loadSim(saveSim(a));
+    expect(b.departed[0].tool).toBe(0);
+    expect(b.departed[0].lastBirthday).toBe(0);
+  });
+
   it('rejects files that are not saves', () => {
     expect(() => loadSim('{"hello":1}')).toThrow(/not a Townsfolk save/);
   });
