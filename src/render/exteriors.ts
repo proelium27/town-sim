@@ -95,8 +95,10 @@ interface Exterior {
   b: Building;
   view: Container;
   alpha: number;
-  /** Lit-window rectangles in world px, for night lighting while the roof is on. */
-  windows: { x: number; y: number; w: number; h: number }[];
+  /** Lit-window rectangles in world px, each with the rooms behind it, for night lighting while the roof is on. */
+  windows: { x: number; y: number; w: number; h: number; rooms: number[] }[];
+  /** Top of the chimney in world px, for smoke. */
+  chimney?: { x: number; y: number };
 }
 
 /**
@@ -152,7 +154,12 @@ export class Exteriors {
 
   /** Window rectangles of roofed buildings, tagged with the rooms behind them. */
   litWindows(): { x: number; y: number; w: number; h: number; rooms: number[] }[] {
-    return this.list.filter((e) => e.alpha > 0.5).flatMap((e) => e.windows.map((w) => ({ ...w, rooms: e.b.rooms })));
+    return this.list.filter((e) => e.alpha > 0.5).flatMap((e) => e.windows);
+  }
+
+  /** Chimney tops of buildings whose roof is showing. */
+  chimneys(): { id: number; x: number; y: number }[] {
+    return this.list.filter((e) => e.chimney && e.alpha > 0.5).map((e) => ({ id: e.b.id, ...e.chimney! }));
   }
 
   /**
@@ -181,7 +188,7 @@ export class Exteriors {
     const roofH = (b.h - F) * T;
     const fy = Y + roofH;
     const view = new Container();
-    const windows: Exterior['windows'] = [];
+    const windows: Omit<Exterior['windows'][number], 'rooms'>[] = [];
     const doorTop = b.door.y < b.y;
     const doorX = b.door.x;
     const doorW = look.door === 'glass' || look.door === 'barn' ? 2 : 1;
@@ -281,13 +288,21 @@ export class Exteriors {
     // Eave shadow on the top of the wall.
     g.rect(X, fy, W, 3).fill({ color: EDGE, alpha: 0.32 });
     view.setChildIndex(g, view.children.length - 1);
-    if (look.chimney) this.chimney(view, X + Math.round(W * (hash(b.id, 30) < 0.5 ? 0.72 : 0.22)), Y + Math.round(roofH * 0.18), look.roofColor);
+    const chimney = look.chimney ? { x: X + Math.round(W * (hash(b.id, 30) < 0.5 ? 0.72 : 0.22)), y: Y + Math.round(roofH * 0.18) } : undefined;
+    if (chimney) this.chimney(view, chimney.x, chimney.y, look.roofColor);
     if (doorTop) this.porch(view, doorX * T, Y, look);
 
     view.zIndex = (b.y + b.h) * T + 0.25;
     view.cacheAsTexture(true);
     this.parent.addChild(view);
-    return { b, view, alpha: 1, windows };
+    // Each window lights up for the room just behind the front wall at its column.
+    const behind = windows.map((w) => {
+      if (w.w > 3 * T) return { ...w, rooms: b.rooms };
+      const col = Math.floor((w.x + w.w / 2) / T);
+      const r = this.map.roomAt(col, b.y + b.h - 2) ?? this.map.roomAt(col, b.y + b.h - 3);
+      return { ...w, rooms: r ? [r.id] : b.rooms };
+    });
+    return { b, view, alpha: 1, windows: behind, chimney: chimney && { x: chimney.x + 4, y: chimney.y - 1 } };
   }
 
   /** Shingled gable roof seen from the south: lit upper slope, shaded lower slope, ridge, eave. */

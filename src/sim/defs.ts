@@ -196,7 +196,7 @@ export type MemoryKind =
   | 'meeting' | 'skillUp' | 'playedMusic' | 'goodRead' | 'commuteScare'
   | 'newPartner' | 'newBaby' | 'grief' | 'movedIn' | 'builtSomething' | 'townGrowing' | 'sleptRough' | 'proposed'
   | 'grewUp' | 'harvest' | 'school' | 'festival' | 'drought' | 'storm'
-  | 'birthday' | 'myBirthday' | 'familyDinner' | 'paidRespects';
+  | 'birthday' | 'myBirthday' | 'familyDinner' | 'paidRespects' | 'eveningWalk';
 
 export interface MemoryDef {
   label: string;
@@ -255,4 +255,5 @@ export const MEMORIES: Record<MemoryKind, MemoryDef> = {
   myBirthday: { label: 'My birthday party', mood: 12, duration: 1.5 * D, major: true, maxStack: 1 },
   familyDinner: { label: 'Dinner with the family', mood: 6, duration: 10 * H, major: false, maxStack: 1 },
   paidRespects: { label: 'Visited a grave', mood: 3, duration: 2 * D, major: false, maxStack: 2 },
+  eveningWalk: { label: 'Evening walk together', mood: 5, duration: D, major: false, maxStack: 1 },
 };

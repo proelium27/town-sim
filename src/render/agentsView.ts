@@ -7,7 +7,7 @@ import type { Agent } from '../sim/types';
 import type { Sim } from '../sim/sim';
 import type { VehicleLight } from './lighting';
 import type { WorldView } from './worldView';
-import { ageOf } from '../sim/agents';
+import { ageOf, hasUmbrella } from '../sim/agents';
 import { ADULT_AGE } from '../sim/defs';
 
 /** Badge shown over an agent's head when a need is low. */
@@ -45,6 +45,23 @@ interface AgentSprite {
   anim: number;
   carry: Graphics;
   carrySig: string;
+  umbrella: Graphics;
+}
+
+const UMBRELLAS = [0xc8473a, 0x3a7bc8, 0xf2c14e, 0x4a9a5a, 0x8a5ab8, 0x2a241e];
+
+/** A little pixel umbrella held over the head, canopy colour by person. */
+function drawUmbrella(id: number): Graphics {
+  const c = UMBRELLAS[id % UMBRELLAS.length];
+  const g = new Graphics();
+  g.rect(0, 0, 1, 8).fill(0x3a3430);
+  g.rect(-7, -1, 14, 2).fill(c);
+  g.rect(-6, -3, 12, 2).fill(c);
+  g.rect(-4, -4, 8, 1).fill(c);
+  g.rect(-5, -3, 3, 1).fill({ color: 0xffffff, alpha: 0.35 });
+  g.rect(-7, 1, 14, 1).fill({ color: EDGE, alpha: 0.45 });
+  g.rect(0, -5, 1, 1).fill(EDGE);
+  return g;
 }
 
 const FONT = 'Rubik, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
@@ -88,7 +105,7 @@ export class AgentsView {
     for (const a of this.sim.agents) if (!this.sprites.has(a.id)) this.add(a);
     for (const [id, s] of this.sprites) {
       if (live.has(id)) continue;
-      for (const d of [s.body, s.shadow, s.tag, s.badges, s.bubble, s.carry]) d.destroy({ children: true });
+      for (const d of [s.body, s.shadow, s.tag, s.badges, s.bubble, s.carry, s.umbrella]) d.destroy({ children: true });
       this.sprites.delete(id);
       if (this.selected === id) this.selected = null;
       if (this.hovered === id) this.hovered = null;
@@ -113,9 +130,11 @@ export class AgentsView {
     bubbleText.anchor.set(0.5, 0.5);
     bubble.addChild(bubbleBg, bubbleText);
     const carry = new Graphics();
-    this.world.entities.addChild(carry);
+    const umbrella = drawUmbrella(a.id);
+    umbrella.visible = false;
+    this.world.entities.addChild(carry, umbrella);
     this.overlay.addChild(tag, badges, bubble);
-    this.sprites.set(a.id, { body, shadow, frames, tag, name, badges, badgeSig: '', bubble, bubbleText, bubbleBg, bubbleSig: '', anim: a.id * 0.37, carry, carrySig: '' });
+    this.sprites.set(a.id, { body, shadow, frames, tag, name, badges, badgeSig: '', bubble, bubbleText, bubbleBg, bubbleSig: '', anim: a.id * 0.37, carry, carrySig: '', umbrella });
   }
 
   /** Agent under a screen point, if any. */
@@ -158,8 +177,17 @@ export class AgentsView {
       const scale = age < 4 ? 0.55 : age < ADULT_AGE ? 0.62 + (age / ADULT_AGE) * 0.38 : 1;
       s.body.scale.set(scale);
       s.shadow.scale.set(scale);
-      const x = (a.px + (a.x - a.px) * alpha + 0.5) * TILE;
-      const y = (a.py + (a.y - a.py) * alpha + 1) * TILE - 2;
+      // Walking with someone: side by side rather than in single file.
+      let ox = 0;
+      let oy = 0;
+      const mate = a.walkWith !== undefined ? sim.agent(a.walkWith) : undefined;
+      if (mate && a.moving && mate.moving && Math.hypot(mate.x - a.x, mate.y - a.y) < 2) {
+        const side = a.id < mate.id ? -1 : 1;
+        if (a.facing === 'left' || a.facing === 'right') oy = side * 3;
+        else ox = side * 5;
+      }
+      const x = (a.px + (a.x - a.px) * alpha + 0.5) * TILE + ox;
+      const y = (a.py + (a.y - a.py) * alpha + 1) * TILE - 2 + oy;
       const moving = a.moving && speed > 0;
       if (moving) s.anim += dtSec * 7 * Math.max(1, speed);
       const facing: Facing = a.action.kind === 'sleep' && a.action.stage === 'perform' ? 'down' : a.facing;
@@ -191,6 +219,12 @@ export class AgentsView {
       s.carry.visible = !!a.carry;
       s.carry.position.set(Math.round(x), Math.round(y - 17 * scale));
       s.carry.zIndex = s.body.zIndex + 0.1;
+      const brolly = !!sim.events.rain && !lying && sim.map.room[a.at] < 0 && hasUmbrella(a);
+      s.umbrella.visible = brolly;
+      if (brolly) {
+        s.umbrella.position.set(Math.round(x + (a.facing === 'left' ? -1 : 1)), Math.round(y - 19 * scale));
+        s.umbrella.zIndex = s.body.zIndex + 0.2;
+      }
       s.shadow.zIndex = Math.round(y) - 8;
       s.shadow.visible = s.body.rotation === 0;
 

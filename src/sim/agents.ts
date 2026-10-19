@@ -251,6 +251,9 @@ export function createAgents(sim: Sim): void {
   }
 }
 
+/** Most people own an umbrella; the rest get wet and hurry. */
+export const hasUmbrella = (a: Agent): boolean => ((a.id * 2654435761) >>> 0) % 10 < 7;
+
 /** Fills fields added since an older save was made. */
 export function backfillAgent(a: Agent): void {
   a.lastBirthday ??= 0;

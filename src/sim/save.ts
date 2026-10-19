@@ -74,5 +74,6 @@ export function loadSim(text: string): Sim {
     backfillAgent(a);
   }
   sim.events.birthdays ??= [];
+  sim.events.wet ??= 0;
   return sim;
 }

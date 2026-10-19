@@ -13,6 +13,8 @@ export interface EventState {
   coffeeBroken: boolean;
   drought: { until: number } | null;
   festival: { until: number; attendees: Set<number> } | null;
+  /** How wet the ground is, 0..1: rises in rain, dries over a few hours. */
+  wet: number;
   /** Birthday parties happening right now, one per host. */
   birthdays: Birthday[];
   /** Day the schedule below was planned for. */
@@ -40,7 +42,7 @@ export function birthdayOf(birth: number): number {
 }
 
 export function initialEvents(): EventState {
-  return { standup: null, pizza: null, party: null, rain: null, coffeeBroken: false, drought: null, festival: null, birthdays: [], plannedDay: -1, plan: [] };
+  return { standup: null, pizza: null, party: null, rain: null, coffeeBroken: false, drought: null, festival: null, wet: 0, birthdays: [], plannedDay: -1, plan: [] };
 }
 
 /** Lays out the day's happenings at midnight (or on the first tick). */
@@ -69,8 +71,9 @@ function planDay(sim: Sim): void {
 
 const officeStaff = (sim: Sim) => sim.agents.filter((a) => ROLES[a.role].workplace === 'office');
 
-export function tickEvents(sim: Sim, _dt: number): void {
+export function tickEvents(sim: Sim, dt: number): void {
   const ev = sim.events;
+  ev.wet = Math.max(0, Math.min(1, ev.wet + (ev.rain ? dt / 45 : -dt / 240)));
   if (ev.plannedDay !== sim.day) planDay(sim);
   while (ev.plan.length && ev.plan[0].at <= sim.time) {
     const e = ev.plan.shift()!;
@@ -166,10 +169,10 @@ function endBirthday(sim: Sim, b: Birthday): void {
     shiftOpinion(sim, host, g, sim.rng.range(2, 5));
   }
   const family = guests.filter((g) => kinship(sim, host, g)).length;
+  const friends = guests.length - family;
+  const who = [family && `${family} family`, friends && `${friends} friend${friends === 1 ? '' : 's'}`].filter(Boolean).join(' and ');
   sim.log(
-    guests.length
-      ? `${first(host)}'s birthday wound down: ${family} family${guests.length > family ? ` and ${guests.length - family} friends` : ''} came to celebrate`
-      : `Nobody came to ${first(host)}'s birthday`,
+    guests.length ? `${first(host)}'s birthday wound down: ${who} came to celebrate` : `Nobody came to ${first(host)}'s birthday`,
     'family',
     guests.length ? 'good' : 'bad',
     host,

@@ -208,7 +208,7 @@ function proposals(sim: Sim): Proposal[] {
 
 // ------------------------------------------------------------------ choosing a site
 
-const BUILDABLE = new Set<GroundKey>(['grass', 'sand']);
+const BUILDABLE = new Set<GroundKey>(['grass', 'sand', 'worn', 'trail']);
 const STREET = new Set<GroundKey>(['sidewalk', 'plaza', 'dirt', 'crossH', 'crossV']);
 
 interface Site {
@@ -355,7 +355,7 @@ export function completeProject(sim: Sim, pr: Project): void {
     hhId = homeless ? residents[0].household : newHousehold(sim, pr.name).id;
   }
   const b = bp.stamp(m, pr.x, pr.y, pr.doorTop, pr.name, hhId);
-  for (const i of pr.path) if (m.ground[i] === 'grass' || m.ground[i] === 'sand') m.setGround(m.cx(i), m.cy(i), 'dirt');
+  for (const i of pr.path) if (BUILDABLE.has(m.ground[i])) m.setGround(m.cx(i), m.cy(i), 'dirt');
   m.setGround(b.door.x, b.door.y, 'plaza');
   // Anyone standing where a wall now is steps out the front door.
   for (const a of sim.agents) {
