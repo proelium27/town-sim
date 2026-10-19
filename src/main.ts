@@ -6,8 +6,9 @@ import { AgentsView } from './render/agentsView';
 import { WorldView } from './render/worldView';
 import { Sim, STEP } from './sim/sim';
 import { ActivityLog } from './ui/activity';
+import { Hud } from './ui/hud';
 import { Inspector } from './ui/inspector';
-import { Tracker, statusOf } from './ui/tracker';
+import { Tracker } from './ui/tracker';
 
 /** Real milliseconds per sim step at 1x: 20 steps per second, so one game minute per real second. */
 const STEP_MS = 1000 * STEP;
@@ -17,13 +18,16 @@ async function boot(): Promise<void> {
   const app = new Application();
   await app.init({
     resizeTo: window,
-    background: '#e9e4d8',
+    background: '#1f2a1d',
     antialias: false,
     roundPixels: true,
     resolution: Math.min(2, window.devicePixelRatio || 1),
     autoDensity: true,
   });
   document.getElementById('stage')!.appendChild(app.canvas);
+
+  // Name tags are Pixi text; give the UI font a moment so they don't render in the fallback.
+  await Promise.race([document.fonts.load('600 11px Rubik'), new Promise((r) => setTimeout(r, 1500))]).catch(() => {});
 
   const art = new Art();
   await art.load();
@@ -35,15 +39,24 @@ async function boot(): Promise<void> {
 
   const camera = new Camera();
   camera.bounds = { w: sim.map.w * TILE, h: sim.map.h * TILE };
+  /** Panels float over the map: the map may scroll under them, but the camera centers on the clear middle. */
   const layout = () => {
-    const css = getComputedStyle(document.body);
-    const left = parseFloat(css.getPropertyValue('--left-w')) || 0;
-    const right = parseFloat(css.getPropertyValue('--right-w')) || 0;
-    const top = parseFloat(css.getPropertyValue('--top-h')) || 0;
-    const bottom = parseFloat(css.getPropertyValue('--log-h')) || 0;
-    camera.cx = left + (window.innerWidth - left - right) / 2;
-    camera.cy = top + (window.innerHeight - top - bottom) / 2;
-    camera.view = { left, top, right: window.innerWidth - right, bottom: window.innerHeight - bottom };
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const edge = (id: string) => {
+      const el = document.getElementById(id)!;
+      return el.hidden ? null : el.getBoundingClientRect();
+    };
+    const roster = edge('tracker');
+    const ins = edge('inspector');
+    const hud = edge('hud');
+    const left = roster ? roster.right : 0;
+    const right = ins ? ins.left : W;
+    const top = hud ? hud.bottom : 0;
+    camera.cx = (left + right) / 2;
+    camera.cy = (top + H) / 2;
+    // Clamp to the clear area so the map's own edges (and anyone standing there) can always be brought into view.
+    camera.view = { left, top, right, bottom: H };
     camera.clampTarget();
   };
   window.addEventListener('resize', layout);
@@ -70,7 +83,12 @@ async function boot(): Promise<void> {
     }
     refreshUi();
   };
-  const tracker = new Tracker(document.getElementById('tracker')!, sim, art, (id) => select(id, true));
+  const tracker = new Tracker(document.getElementById('tracker')!, sim, art, (id) => select(id, true), () => {
+    document.body.classList.toggle('roster-collapsed', tracker.collapsed);
+    layout();
+  });
+  if (window.innerWidth < 900) tracker.toggle(true);
+  const hud = new Hud(sim);
   const activity = new ActivityLog(document.getElementById('activity')!, sim, (id) => select(id, true));
   const inspector = new Inspector(document.getElementById('inspector')!, sim, art, {
     select: (id) => select(id, true),
@@ -90,16 +108,8 @@ async function boot(): Promise<void> {
   });
   setSpeed(1);
 
-  const clockEl = document.getElementById('clock')!;
-  const statsEl = document.getElementById('stats')!;
   const refreshUi = () => {
-    clockEl.textContent = sim.clock();
-    const working = sim.agents.filter((a) => statusOf(a) === 'working').length;
-    const asleep = sim.agents.filter((a) => statusOf(a) === 'asleep').length;
-    const mood = Math.round(sim.agents.reduce((s, a) => s + a.mood, 0) / sim.agents.length);
-    const ev = sim.events;
-    const happening = [ev.standup && 'Standup in progress', ev.pizza && 'Pizza in the kitchen', ev.party && 'Party in the lounge', ev.coffeeBroken && 'Coffee machine broken'].filter(Boolean).join(' · ');
-    statsEl.innerHTML = `<span><b>${working}</b> working</span><span><b>${asleep}</b> asleep</span><span>Mood <b>${mood}</b></span><span>Tasks done <b>${sim.tasksCompleted}</b></span><span>${ev.rain ? 'Raining' : sim.hour > 6 && sim.hour < 20 ? 'Clear' : 'Night'}</span>${happening ? `<span class="happening">${happening}</span>` : ''}`;
+    hud.update();
     tracker.update(selected);
     activity.update(selected);
     inspector.update();
@@ -154,6 +164,8 @@ async function boot(): Promise<void> {
     } else if (e.key >= '1' && e.key <= '3') setSpeed(Number(e.key));
     else if (e.code === 'Escape') select(null);
     else if (e.code === 'KeyF' && selected !== null) following = !following;
+    else if (e.code === 'KeyP') tracker.toggle();
+    else if (e.code === 'KeyL') activity.toggle();
     else if (e.key === '/') {
       e.preventDefault();
       tracker.focusSearch();

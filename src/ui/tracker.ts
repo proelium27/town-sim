@@ -14,9 +14,11 @@ export function statusOf(a: Agent): Exclude<Filter, 'all' | 'attention'> | 'asle
   return 'break';
 }
 
-const needsAttention = (a: Agent) => a.mood < 35 || badgesFor(a).some((b) => b.urgent);
+export const needsAttention = (a: Agent) => a.mood < 35 || badgesFor(a).some((b) => b.urgent);
 
-/** Left sidebar: searchable roster with each person's status, active task and progress. */
+const STATUS_LABEL = { working: 'Working', asleep: 'Asleep', break: 'Off task' } as const;
+
+/** Left panel: compact searchable roster. Collapses to a strip of portraits. */
 export class Tracker {
   private list: HTMLUListElement;
   private search: HTMLInputElement;
@@ -27,16 +29,21 @@ export class Tracker {
   private emptyEl: HTMLElement;
 
   constructor(
-    root: HTMLElement,
+    private root: HTMLElement,
     private sim: Sim,
     art: Art,
     onSelect: (id: number) => void,
+    private onToggle: () => void = () => {},
   ) {
     root.innerHTML = `
       <div class="tr-head">
-        <div class="tr-title"><h2>People</h2><span class="count num" id="tr-count"></span></div>
+        <div class="tr-title">
+          <h1 class="wordmark">Townsfolk</h1>
+          <span class="count num" id="tr-count"></span>
+          <button class="icon-btn tr-toggle" data-act="collapse" aria-expanded="true" aria-label="Collapse people list" title="Collapse (P)"><svg viewBox="0 0 16 16"><path d="M10 3 5 8l5 5"/></svg></button>
+        </div>
         <label class="search"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
-          <input type="search" placeholder="Search names, roles, tasks" aria-label="Search people" /></label>
+          <input type="search" placeholder="Search people, jobs, tasks" aria-label="Search people" /><kbd>/</kbd></label>
         <div class="seg" role="tablist" aria-label="Filter people">
           <button role="tab" data-f="all" aria-selected="true">All</button>
           <button role="tab" data-f="working" aria-selected="false">Working</button>
@@ -55,22 +62,22 @@ export class Tracker {
       const li = document.createElement('li');
       li.innerHTML = `
         <button class="person" data-id="${a.id}">
-          <img class="avatar" src="${art.portrait(a.outfit)}" alt="" width="32" height="32" />
-          <span class="who"><b>${esc(a.name)}</b><span class="role">${ROLES[a.role].title}</span></span>
-          <span class="st" data-f="st"></span>
+          <span class="face"><img class="avatar" src="${art.portrait(a.outfit)}" alt="" width="32" height="32" /><span class="dot" data-f="dot"></span></span>
+          <span class="who"><b>${esc(a.name.split(' ')[0])}</b> <span class="role">${ROLES[a.role].title}</span></span>
           <span class="doing" data-f="doing"></span>
-          <span class="task"><span class="t" data-f="task"></span><span class="pct num" data-f="pct"></span></span>
-          <span class="prog"><i data-f="prog"></i></span>
-          <span class="minis">
-            <span class="mini" title="Mood"><span class="lbl">Mood</span><span class="bar" style="--c:var(--n-mood)"><i data-f="mood"></i></span></span>
-            <span class="mini" title="Energy"><span class="lbl">Energy</span><span class="bar" style="--c:var(--n-energy)"><i data-f="energy"></i></span></span>
+          <span class="vitals" aria-hidden="true">
+            <span class="vbar" style="--c:var(--n-mood)" title="Mood"><i data-f="mood"></i></span>
+            <span class="vbar" style="--c:var(--n-energy)" title="Energy"><i data-f="energy"></i></span>
           </span>
+          <span class="tprog" aria-hidden="true"><i data-f="prog"></i></span>
         </button>`;
       this.list.appendChild(li);
       this.rows.set(a.id, li);
     }
-    this.list.addEventListener('click', (e) => {
-      const b = (e.target as HTMLElement).closest('[data-id]') as HTMLElement | null;
+    root.addEventListener('click', (e) => {
+      const t = e.target as HTMLElement;
+      if (t.closest('[data-act="collapse"]')) return this.toggle();
+      const b = t.closest('[data-id]') as HTMLElement | null;
       if (b) onSelect(Number(b.dataset.id));
     });
     this.search.addEventListener('input', () => this.update(null));
@@ -83,6 +90,20 @@ export class Tracker {
     });
   }
 
+  get collapsed(): boolean {
+    return this.root.classList.contains('collapsed');
+  }
+
+  toggle(force?: boolean): void {
+    const c = force ?? !this.collapsed;
+    this.root.classList.toggle('collapsed', c);
+    const btn = this.root.querySelector('[data-act="collapse"]') as HTMLElement;
+    btn.setAttribute('aria-expanded', String(!c));
+    btn.setAttribute('aria-label', c ? 'Expand people list' : 'Collapse people list');
+    btn.title = c ? 'Expand (P)' : 'Collapse (P)';
+    this.onToggle();
+  }
+
   update(selected: number | null): void {
     const q = this.search.value.trim().toLowerCase();
     let shown = 0;
@@ -90,40 +111,40 @@ export class Tracker {
     for (const a of this.sim.agents) {
       const li = this.rows.get(a.id)!;
       const st = statusOf(a);
+      const attn = needsAttention(a);
       if (st === 'working') working++;
       const hay = `${a.name} ${ROLES[a.role].title} ${a.task?.title ?? ''} ${a.action.label}`.toLowerCase();
       const pass =
         (!q || hay.includes(q)) &&
-        (this.filter === 'all' || (this.filter === 'attention' ? needsAttention(a) : this.filter === st));
+        (this.filter === 'all' || (this.filter === 'attention' ? attn : this.filter === st));
       li.hidden = !pass;
       if (pass) shown++;
       const btn = li.firstElementChild as HTMLElement;
       btn.setAttribute('aria-current', String(a.id === selected));
+      const cls = `person ${st}${attn ? ' attn' : ''}`;
+      if (btn.className !== cls) btn.className = cls;
       const set = (f: string, v: string) => {
         const el = li.querySelector(`[data-f="${f}"]`) as HTMLElement;
         if (el.textContent !== v) el.textContent = v;
       };
-      const stEl = li.querySelector('[data-f="st"]') as HTMLElement;
-      const stLabel = st === 'working' ? 'Working' : st === 'asleep' ? 'Asleep' : needsAttention(a) ? 'Needs help' : 'Off task';
-      if (stEl.textContent !== stLabel) {
-        stEl.textContent = stLabel;
-        stEl.className = `st ${st} ${needsAttention(a) ? 'attn' : ''}`;
-      }
-      set('doing', a.action.stage === 'travel' && a.action.kind !== 'wander' && a.action.kind !== 'stroll' ? `Heading out: ${a.action.label}` : a.action.label);
+      set('doing', a.action.stage === 'travel' && a.action.kind !== 'wander' && a.action.kind !== 'stroll' ? `→ ${a.action.label}` : a.action.label);
       const t = a.task;
-      set('task', t ? t.title : 'No task');
       const pct = t ? Math.min(100, Math.floor((t.progress / t.total) * 100)) : 0;
-      set('pct', t ? `${pct}%` : '');
       (li.querySelector('[data-f="prog"]') as HTMLElement).style.width = `${pct}%`;
-      (li.querySelector('[data-f="mood"]') as HTMLElement).style.width = `${a.mood}%`;
-      (li.querySelector('[data-f="energy"]') as HTMLElement).style.width = `${a.needs.energy}%`;
-      btn.title = `${a.name}: ${moodWord(a.mood)} mood`;
+      (li.querySelector('[data-f="mood"]') as HTMLElement).style.height = `${a.mood}%`;
+      (li.querySelector('[data-f="energy"]') as HTMLElement).style.height = `${a.needs.energy}%`;
+      const label = `${a.name}, ${ROLES[a.role].title}. ${attn ? 'Needs help' : STATUS_LABEL[st]}: ${a.action.label}. ${moodWord(a.mood)} mood, energy ${Math.round(a.needs.energy)}.${t ? ` Task: ${t.title}, ${pct}%.` : ''}`;
+      if (btn.title !== label) {
+        btn.title = label;
+        btn.setAttribute('aria-label', label);
+      }
     }
-    this.countEl.textContent = `${working}/${this.sim.agents.length} working`;
+    this.countEl.textContent = `${working}/${this.sim.agents.length} at work`;
     this.emptyEl.hidden = shown > 0;
   }
 
   focusSearch(): void {
+    if (this.collapsed) this.toggle(false);
     this.search.focus();
   }
 }

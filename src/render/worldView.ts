@@ -3,6 +3,8 @@ import type { Art } from '../assets/loader';
 import { CARS, type CarColor, GROUND, PROPS, type PropKey, TILE } from '../assets/manifest';
 import type { DrawnKey, Prop, TownMap } from '../world/map';
 import { Cell } from '../world/map';
+import { Lighting } from './lighting';
+import { Shading } from './shading';
 
 const WALL_TOP = 0xddd0b8;
 const WALL_TOP_HI = 0xf1e8d6;
@@ -25,12 +27,18 @@ export class WorldView {
   /** Props, agents and vehicles, sorted by their feet. */
   readonly entities = new Container({ sortableChildren: true });
   readonly overlay = new Container();
+  /** Baked lawn detail, cast shadows and ambient occlusion (between ground and walls). */
+  readonly shading: Shading;
+  /** Time-of-day grade and night lights (above entities). */
+  readonly lighting: Lighting;
 
   constructor(
     readonly art: Art,
     readonly map: TownMap,
   ) {
-    this.root.addChild(this.ground, this.walls, this.flat, this.entities, this.overlay);
+    this.shading = new Shading(map);
+    this.lighting = new Lighting(map);
+    this.root.addChild(this.ground, this.shading.layer, this.walls, this.flat, this.entities, this.lighting.layer, this.overlay);
     this.buildGround();
     this.buildWalls();
     for (const p of map.props) this.addProp(p);

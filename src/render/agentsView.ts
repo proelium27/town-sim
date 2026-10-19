@@ -5,6 +5,7 @@ import type { Camera } from '../engine/camera';
 import type { Car } from '../sim/traffic';
 import type { Agent } from '../sim/types';
 import type { Sim } from '../sim/sim';
+import type { VehicleLight } from './lighting';
 import type { WorldView } from './worldView';
 
 /** Badge shown over an agent's head when a need is low. */
@@ -42,7 +43,15 @@ interface AgentSprite {
   anim: number;
 }
 
-const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+const FONT = 'Rubik, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+// Overlay palette, matching the UI tokens in styles.css.
+const PANEL = 0x2a241e;
+const EDGE = 0x15110d;
+const CREAM = 0xf6efe0;
+const MARIGOLD = 0xf2c14e;
+const BAD = 0xc8473a;
+const GOOD = 0xdff2d2;
+const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Moving things (agents, cars) plus screen-space overlays: name tags, need badges, speech bubbles, weather. */
 export class AgentsView {
@@ -50,7 +59,8 @@ export class AgentsView {
   readonly sky = new Graphics();
   readonly rain = new Graphics();
   private sprites = new Map<number, AgentSprite>();
-  private cars = new Map<number, Sprite>();
+  private cars = new Map<number, { body: Sprite; shadow: Graphics }>();
+  private lastSync = 0;
   private ring = new Graphics();
   selected: number | null = null;
   hovered: number | null = null;
@@ -71,14 +81,14 @@ export class AgentsView {
     const shadow = new Graphics().ellipse(0, 0, 5, 2).fill({ color: 0x1b1a17, alpha: 0.22 });
     this.world.entities.addChild(shadow, body);
     const tag = new Container();
-    const name = new Text({ text: a.name.split(' ')[0], style: { fontFamily: FONT, fontSize: 11, fontWeight: '600', fill: 0x1f2433 } });
+    const name = new Text({ text: a.name.split(' ')[0], style: { fontFamily: FONT, fontSize: 11, fontWeight: '600', fill: CREAM } });
     name.anchor.set(0.5, 0);
     const tagBg = new Graphics();
     tag.addChild(tagBg, name);
     const badges = new Container();
     const bubble = new Container();
     const bubbleBg = new Graphics();
-    const bubbleText = new Text({ text: '', style: { fontFamily: FONT, fontSize: 11, fontWeight: '600', fill: 0x1f2433 } });
+    const bubbleText = new Text({ text: '', style: { fontFamily: FONT, fontSize: 11, fontWeight: '500', fill: EDGE } });
     bubbleText.anchor.set(0.5, 0.5);
     bubble.addChild(bubbleBg, bubbleText);
     this.overlay.addChild(tag, badges, bubble);
@@ -147,12 +157,16 @@ export class AgentsView {
       s.tag.visible = onScreen && (sel || hov || z >= 2.6);
       if (s.tag.visible) {
         const bg = s.tag.children[0] as Graphics;
-        const w = s.name.width + 10;
-        bg.clear().roundRect(-w / 2, 0, w, 16, 4).fill({ color: sel ? 0x3b5bd9 : 0xfbf8f1, alpha: sel ? 1 : 0.92 });
-        if (!sel) bg.stroke({ color: 0x1f2433, alpha: 0.12, width: 1 });
-        s.name.style.fill = sel ? 0xffffff : 0x1f2433;
-        s.name.position.set(0, 1);
-        s.tag.position.set(Math.round(sx), Math.round(sy + 3));
+        const w = Math.ceil(s.name.width) + 12;
+        // Pill with a hard pixel drop shadow, like the UI panels.
+        bg.clear()
+          .roundRect(-w / 2, 2, w, 17, 8).fill({ color: EDGE, alpha: 0.55 })
+          .roundRect(-w / 2, 0, w, 17, 8).fill({ color: sel ? MARIGOLD : PANEL, alpha: sel ? 1 : 0.94 })
+          .stroke({ color: EDGE, width: 1.5, alignment: 1 });
+        const fill = sel ? EDGE : CREAM;
+        if (s.name.style.fill !== fill) s.name.style.fill = fill;
+        s.name.position.set(0, 1.5);
+        s.tag.position.set(Math.round(sx), Math.round(sy + 4));
       }
       // Need badges
       const badges = badgesFor(a);
@@ -161,12 +175,15 @@ export class AgentsView {
         s.badgeSig = sig;
         s.badges.removeChildren().forEach((c) => c.destroy());
         badges.forEach((b, i) => {
-          const g = new Graphics().roundRect(-8, -8, 16, 16, 5).fill({ color: 0xfbf8f1 }).stroke({ color: b.color, width: b.urgent ? 2 : 1.25 });
-          const t = new Text({ text: b.glyph, style: { fontFamily: FONT, fontSize: 10, fontWeight: '700', fill: b.color } });
+          const g = new Graphics()
+            .roundRect(-9, -7, 18, 18, 6).fill({ color: EDGE, alpha: 0.55 })
+            .roundRect(-9, -9, 18, 18, 6).fill({ color: b.urgent ? b.color : PANEL })
+            .stroke({ color: b.urgent ? EDGE : b.color, width: 1.5, alignment: 1 });
+          const t = new Text({ text: b.glyph, style: { fontFamily: FONT, fontSize: 11, fontWeight: '700', fill: b.urgent ? CREAM : b.color } });
           t.anchor.set(0.5);
           const c = new Container();
           c.addChild(g, t);
-          c.x = (i - (badges.length - 1) / 2) * 19;
+          c.x = (i - (badges.length - 1) / 2) * 21;
           s.badges.addChild(c);
         });
       }
@@ -181,22 +198,31 @@ export class AgentsView {
         if (bsig !== s.bubbleSig) {
           s.bubbleSig = bsig;
           s.bubbleText.text = bub.text;
-          s.bubbleText.style.fill = bub.tone === 'bad' ? 0xffffff : 0x1f2433;
-          const w = Math.max(18, s.bubbleText.width + 10);
-          s.bubbleBg.clear().roundRect(-w / 2, -9, w, 18, 6).fill({ color: bub.tone === 'bad' ? 0xc8473a : bub.tone === 'good' ? 0xe9f6e4 : 0xfbf8f1 }).stroke({ color: 0x1f2433, alpha: 0.15, width: 1 });
-          s.bubbleBg.moveTo(-3, 9).lineTo(0, 13).lineTo(3, 9).fill({ color: bub.tone === 'bad' ? 0xc8473a : bub.tone === 'good' ? 0xe9f6e4 : 0xfbf8f1 });
+          s.bubbleText.style.fill = bub.tone === 'bad' ? CREAM : EDGE;
+          const w = Math.max(20, Math.ceil(s.bubbleText.width) + 14);
+          const fill = bub.tone === 'bad' ? BAD : bub.tone === 'good' ? GOOD : CREAM;
+          // Comic-style bubble: outlined body and tail, hard shadow underneath.
+          s.bubbleBg.clear()
+            .roundRect(-w / 2, -8, w, 19, 7).fill({ color: EDGE, alpha: 0.45 })
+            .poly([-4, 9, 0, 15, 4, 9]).fill(EDGE)
+            .roundRect(-w / 2, -10, w, 19, 7).fill(fill).stroke({ color: EDGE, width: 1.5, alignment: 1 })
+            .poly([-3, 8, 0, 12.5, 3, 8]).fill(fill);
         }
-        s.bubble.position.set(Math.round(sx), Math.round(headY - (badges.length ? 32 : 12)));
+        s.bubble.position.set(Math.round(sx), Math.round(headY - (badges.length ? 34 : 14)));
       }
     }
 
     // Selection / hover ring under the feet
     this.ring.clear();
-    for (const [id, color, w] of [[this.hovered, 0x1f2433, 1], [this.selected, 0x3b5bd9, 1.5]] as const) {
+    const pulse = reducedMotion ? 0 : (Math.sin(performance.now() / 260) + 1) / 2;
+    for (const [id, color] of [[this.hovered, CREAM], [this.selected, MARIGOLD]] as const) {
       if (id === null) continue;
       const s = this.sprites.get(id);
       if (!s) continue;
-      this.ring.ellipse(s.body.x, s.body.y, 7, 3).stroke({ color, width: w, alpha: id === this.selected ? 1 : 0.5 });
+      const sel = id === this.selected;
+      const r = sel ? 8 + pulse : 7;
+      this.ring.ellipse(s.body.x, s.body.y, r + 1, r / 2 + 1).stroke({ color: EDGE, width: 1, alpha: 0.5 });
+      this.ring.ellipse(s.body.x, s.body.y, r, r / 2).stroke({ color, width: sel ? 1.5 : 1, alpha: sel ? 1 : 0.8 });
       this.ring.zIndex = s.body.zIndex - 1;
     }
 
@@ -209,19 +235,25 @@ export class AgentsView {
       seen.add(c.id);
       let s = this.cars.get(c.id);
       if (!s) {
-        s = new Sprite(this.carTexture(c));
-        s.anchor.set(0.5, 0.75);
-        this.world.entities.addChild(s);
+        const body = new Sprite(this.carTexture(c));
+        body.anchor.set(0.5, 0.75);
+        const horizontal = c.lane === 'E' || c.lane === 'W';
+        const shadow = new Graphics().roundRect(-body.width / 2 + 1, -3, body.width, horizontal ? 7 : 6, 3).fill({ color: 0x15110d, alpha: 0.28 });
+        this.world.entities.addChild(shadow, body);
+        s = { body, shadow };
         this.cars.set(c.id, s);
       }
       const x = (c.px + (c.x - c.px) * alpha) * TILE;
       const y = (c.py + (c.y - c.py) * alpha) * TILE;
-      s.position.set(Math.round(x), Math.round(y));
-      s.zIndex = Math.round(y + 6);
+      s.body.position.set(Math.round(x), Math.round(y));
+      s.body.zIndex = Math.round(y + 6);
+      s.shadow.position.set(Math.round(x) + 2, Math.round(y) + s.body.height * 0.25);
+      s.shadow.zIndex = s.body.zIndex - 1;
     }
     for (const [id, s] of this.cars) {
       if (!seen.has(id)) {
-        s.destroy();
+        s.body.destroy();
+        s.shadow.destroy();
         this.cars.delete(id);
       }
     }
@@ -233,13 +265,37 @@ export class AgentsView {
     return this.art.frame(f);
   }
 
-  /** Day/night tint and rain, drawn in screen space over the world but under the UI. */
+  /** Headlight anchors for every car on the road, in world pixels. */
+  vehicleLights(): VehicleLight[] {
+    const out: VehicleLight[] = [];
+    for (const c of this.sim.cars) {
+      const s = this.cars.get(c.id);
+      if (!s) continue;
+      const [dx, dy] = c.lane === 'E' ? [1, 0] : c.lane === 'W' ? [-1, 0] : c.lane === 'S' ? [0, 1] : [0, -1];
+      out.push({ x: s.body.x, y: s.body.y - s.body.height * 0.25, dx, dy });
+    }
+    return out;
+  }
+
+  /** Rooms with someone awake in them, so their lights come on after dark. */
+  private occupiedRooms(): Set<number> {
+    const out = new Set<number>();
+    for (const a of this.sim.agents) {
+      if (a.action.kind === 'sleep' && a.action.stage === 'perform') continue;
+      const r = this.sim.map.roomAt(Math.round(a.x), Math.round(a.y));
+      if (r) out.add(r.id);
+    }
+    return out;
+  }
+
+  /** World lighting (grade, lamps, windows, headlights) plus screen-space rain streaks over everything. */
   updateWeather(hour: number, raining: boolean, realMs: number, w: number, h: number): void {
-    // Darkness ramps across dusk (18-21) and dawn (5-7).
-    const dark = hour < 5 || hour >= 21 ? 1 : hour < 7 ? (7 - hour) / 2 : hour >= 18 ? (hour - 18) / 3 : 0;
+    if (realMs - this.lastSync > 1000) {
+      this.lastSync = realMs;
+      this.world.shading.sync();
+    }
+    this.world.lighting.update(hour, raining, this.occupiedRooms(), this.vehicleLights());
     this.sky.clear();
-    if (dark > 0.01) this.sky.rect(0, 0, w, h).fill({ color: 0x1a2350, alpha: dark * 0.42 });
-    if (raining) this.sky.rect(0, 0, w, h).fill({ color: 0x5a6a80, alpha: 0.12 });
     this.rain.clear();
     if (!raining) return;
     const t = realMs / 1000;

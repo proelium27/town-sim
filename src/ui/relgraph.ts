@@ -56,7 +56,7 @@ export class RelationGraph {
       const B = this.nodes[j];
       const o = ((A.a.relations.get(B.a.id)?.opinion ?? 0) + (B.a.relations.get(A.a.id)?.opinion ?? 0)) / 2;
       if (Math.abs(o) < FRIEND * 0.8) continue;
-      ctx.strokeStyle = o > 0 ? 'rgba(60,150,90,0.18)' : 'rgba(200,70,60,0.2)';
+      ctx.strokeStyle = o > 0 ? 'rgba(130,200,130,0.16)' : 'rgba(235,110,95,0.2)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(A.x, A.y);
@@ -66,7 +66,7 @@ export class RelationGraph {
     for (const nd of this.nodes) {
       const r = center.relations.get(nd.a.id)!;
       const s = Math.min(1, Math.abs(r.opinion) / 70);
-      ctx.strokeStyle = r.opinion >= 0 ? `rgba(46,140,80,${0.25 + s * 0.7})` : `rgba(200,60,50,${0.3 + s * 0.7})`;
+      ctx.strokeStyle = r.opinion >= 0 ? `rgba(120,200,120,${0.25 + s * 0.7})` : `rgba(235,100,85,${0.3 + s * 0.7})`;
       ctx.lineWidth = 1 + s * 3.5;
       ctx.setLineDash(Math.abs(r.opinion) < 5 ? [2, 4] : []);
       ctx.beginPath();
@@ -76,21 +76,21 @@ export class RelationGraph {
       ctx.setLineDash([]);
     }
     const node = (a: Agent, x: number, y: number, big: boolean, op?: number) => {
-      ctx.fillStyle = '#fbf8f1';
+      ctx.fillStyle = '#2a241e';
       ctx.beginPath();
       ctx.arc(x, y, big ? 13 : 9, 0, Math.PI * 2);
       ctx.fill();
       ctx.lineWidth = big ? 2 : 1.5;
-      ctx.strokeStyle = big ? '#3b5bd9' : op === undefined ? '#999' : op >= FRIEND ? '#2e8c50' : op <= RIVAL ? '#c83c32' : '#8a8f9c';
+      ctx.strokeStyle = big ? '#f2c14e' : op === undefined ? '#8a8072' : op >= FRIEND ? '#7cc47c' : op <= RIVAL ? '#eb6455' : '#8a8072';
       ctx.stroke();
       ctx.fillStyle = `hsl(${a.outfit.shirtHue} 45% 55%)`;
       ctx.beginPath();
       ctx.arc(x, y, big ? 8 : 5, 0, Math.PI * 2);
       ctx.fill();
-      ctx.font = `${big ? 650 : 500} 11px -apple-system, system-ui, sans-serif`;
+      ctx.font = `${big ? 600 : 500} 11px Rubik, -apple-system, system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillStyle = big ? '#1f2433' : '#535a6b';
+      ctx.fillStyle = big ? '#f6efe0' : '#c9bfae';
       ctx.fillText(first(a), x, y + (big ? 16 : 11));
     };
     for (const nd of this.nodes) node(nd.a, nd.x, nd.y, false, center.relations.get(nd.a.id)!.opinion);

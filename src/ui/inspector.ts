@@ -12,11 +12,16 @@ const NEED_COLOR: Record<string, string> = {
   social: 'var(--n-social)', fun: 'var(--n-fun)', work: 'var(--n-work)',
 };
 
+type Tab = 'needs' | 'day' | 'people' | 'mind';
+const TABS: [Tab, string][] = [['needs', 'Needs'], ['day', 'Day'], ['people', 'People'], ['mind', 'Mind']];
+
 /** Right panel: everything about one person. Skeleton built per selection, values patched in place. */
 export class Inspector {
   private agentId: number | null = null;
   private graph: RelationGraph;
   private sigs: Record<string, string> = {};
+  /** Remembered across selections, so flipping between people keeps your place. */
+  private tab: Tab = 'needs';
 
   constructor(
     private root: HTMLElement,
@@ -31,6 +36,7 @@ export class Inspector {
       if (el.dataset.act === 'close') hooks.select(null);
       if (el.dataset.act === 'follow') hooks.follow();
       if (el.dataset.act === 'person') hooks.select(Number(el.dataset.id));
+      if (el.dataset.act === 'tab') this.setTab(el.dataset.tab as Tab);
       this.sigs.head = '';
     });
   }
@@ -49,51 +55,61 @@ export class Inspector {
       <header class="ins-head">
         <img class="avatar big" src="${this.art.portrait(a.outfit)}" alt="" width="48" height="48" />
         <div class="ins-id">
-          <h2>${esc(a.name)}</h2>
-          <p>${role.title} at ${esc(wp.name)} · ${a.age}</p>
+          <h2>${esc(a.name)} <span class="age num" title="Age">${a.age}</span></h2>
+          <p>${role.title} · ${esc(wp.name)}</p>
         </div>
         <button class="icon-btn" data-act="close" aria-label="Close inspector" title="Close (Esc)"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
       </header>
-      <div class="chips">${a.traits.map((t) => `<span class="chip" title="${esc(TRAITS[t].description)}">${TRAITS[t].name}</span>`).join('')}</div>
-      <div class="ins-actions"><button class="btn" data-act="follow" data-f="follow">Follow</button><span class="money num" data-f="money"></span></div>
+      <div class="ins-meta">
+        <div class="chips">${a.traits.map((t) => `<span class="chip" title="${esc(TRAITS[t].description)}">${TRAITS[t].name}</span>`).join('')}</div>
+        <button class="btn" data-act="follow" data-f="follow" title="Follow (F)">Follow</button>
+      </div>
+      <p class="money num" data-f="money"></p>
 
-      <section class="now">
-        <div class="now-row"><span class="k">Doing</span><b data-f="doing"></b></div>
-        <div class="now-row"><span class="k">Because</span><span data-f="why"></span></div>
-        <div class="now-row"><span class="k">Thinking</span><span class="thought" data-f="thought"></span></div>
+      <section class="now" aria-label="Right now">
+        <p class="doing" data-f="doing"></p>
+        <p class="why"><span class="k">Because</span> <span data-f="why"></span></p>
+        <p class="thought" data-f="thought"></p>
+        <div class="taskcard">
+          <div class="task-row"><span class="k">Task</span><b data-f="task"></b><span class="num" data-f="taskpct"></span></div>
+          <span class="prog"><i data-f="taskbar"></i></span>
+          <div class="task-meta" data-f="taskmeta"></div>
+        </div>
       </section>
 
-      <h3>Current task</h3>
-      <div class="taskcard">
-        <div class="task-row"><b data-f="task"></b><span class="num" data-f="taskpct"></span></div>
-        <span class="prog"><i data-f="taskbar"></i></span>
-        <div class="task-meta" data-f="taskmeta"></div>
+      <div class="tabs" role="tablist" aria-label="Details">
+        ${TABS.map(([k, label]) => `<button role="tab" id="tab-${k}" data-act="tab" data-tab="${k}" aria-controls="pane-${k}" aria-selected="${k === this.tab}">${label}</button>`).join('')}
       </div>
 
-      <h3>Today's schedule</h3>
-      <div class="sched" data-slot="sched"></div>
+      <section class="pane" role="tabpanel" id="pane-needs" aria-labelledby="tab-needs" data-pane="needs">
+        <div class="meter mood" data-m="mood"><span class="lbl">Mood</span><span class="bar" style="--c:var(--n-mood)"><i></i><b></b></span><span class="val num">0</span></div>
+        <p class="moodword" data-f="moodword"></p>
+        <div class="meters">
+          ${NEED_KEYS.map((k) => `<div class="meter" data-m="${k}"><span class="lbl">${NEED_LABEL[k]}</span><span class="bar" style="--c:${NEED_COLOR[k]}"><i></i></span><span class="val num">0</span></div>`).join('')}
+        </div>
+        <h3>What's moving their mood</h3>
+        <ul class="list" data-slot="mood"></ul>
+      </section>
 
-      <h3>Needs</h3>
-      <div class="meters">
-        ${NEED_KEYS.map((k) => `<div class="meter" data-m="${k}"><span class="lbl">${NEED_LABEL[k]}</span><span class="bar" style="--c:${NEED_COLOR[k]}"><i></i></span><span class="val num">0</span></div>`).join('')}
-      </div>
+      <section class="pane" role="tabpanel" id="pane-day" aria-labelledby="tab-day" data-pane="day">
+        <h3>Today's schedule</h3>
+        <div class="sched" data-slot="sched"></div>
+        <h3>Skills</h3>
+        <div class="skills">${SKILL_KEYS.map((k) => `<div class="skill" data-s="${k}"><span class="nm">${k === 'craft' ? role.craft : SKILL_LABEL[k]}</span><span class="lv num">0</span><span class="bar thin"><i></i></span></div>`).join('')}</div>
+      </section>
 
-      <h3>Mood <small data-f="moodword"></small></h3>
-      <div class="meter mood" data-m="mood"><span class="lbl">Mood</span><span class="bar" style="--c:var(--n-mood)"><i></i><b></b></span><span class="val num">0</span></div>
-      <ul class="list" data-slot="mood"></ul>
+      <section class="pane" role="tabpanel" id="pane-people" aria-labelledby="tab-people" data-pane="people">
+        <div data-slot="graph"></div>
+        <ul class="list" data-slot="rels"></ul>
+      </section>
 
-      <h3>Skills</h3>
-      <div class="skills">${SKILL_KEYS.map((k) => `<div class="skill" data-s="${k}"><span class="nm">${k === 'craft' ? role.craft : SKILL_LABEL[k]}</span><span class="lv num">0</span><span class="bar thin"><i></i></span></div>`).join('')}</div>
-
-      <h3>Relationships</h3>
-      <div data-slot="graph"></div>
-      <ul class="list" data-slot="rels"></ul>
-
-      <h3>Thoughts</h3>
-      <ol class="thoughts" data-slot="thoughts"></ol>
-
-      <h3>Memories</h3>
-      <ul class="list" data-slot="memories"></ul>`;
+      <section class="pane" role="tabpanel" id="pane-mind" aria-labelledby="tab-mind" data-pane="mind">
+        <h3>Thoughts</h3>
+        <ol class="thoughts" data-slot="thoughts"></ol>
+        <h3>Memories</h3>
+        <ul class="list" data-slot="memories"></ul>
+      </section>`;
+    this.setTab(this.tab);
     this.root.querySelector('[data-slot="graph"]')!.appendChild(this.graph.canvas);
     this.root.scrollTop = 0;
   }
@@ -112,11 +128,11 @@ export class Inspector {
     const fb = r.querySelector('[data-f="follow"]') as HTMLElement;
     fb.setAttribute('aria-pressed', String(following));
     fb.textContent = following ? 'Following' : 'Follow';
-    set('money', `$${Math.round(a.money)} · ${a.tasksDone} tasks done · worked ${duration(a.workedToday)} today`);
+    set('money', `$${Math.round(a.money)} · ${a.tasksDone} tasks done · ${duration(a.workedToday)} worked today`);
     set('doing', a.action.stage === 'travel' && a.action.kind !== 'wander' && a.action.kind !== 'stroll' ? `On the way: ${a.action.label}` : a.action.label);
     set('why', a.action.reason || 'Just going with the flow');
     const th = a.thoughts[a.thoughts.length - 1];
-    set('thought', th ? `“${th.text}”` : '');
+    set('thought', th ? th.text : '');
 
     const t = a.task;
     set('task', t?.title ?? 'Nothing assigned');
@@ -149,7 +165,7 @@ export class Inspector {
       (el.querySelector('i') as HTMLElement).style.width = `${s.level >= 10 ? 100 : (s.xp / xpToNext(s.level)) * 100}%`;
     }
 
-    this.graph.draw(this.sim, a);
+    if (this.tab === 'people') this.graph.draw(this.sim, a);
     const rels = [...a.relations.entries()]
       .map(([id, rel]) => ({ o: this.sim.agent(id)!, rel }))
       .filter((x) => x.o)
@@ -164,6 +180,16 @@ export class Inspector {
     this.slot('memories', JSON.stringify(mem.map((m) => [m.label, m.created])), mem
       .map((m) => `<li><span class="${m.major ? 'major' : ''}">${esc(m.label)} <span class="meta">${duration(m.expires - this.sim.time)} left</span></span><span class="${m.mood >= 0 ? 'pos' : 'neg'} num">${m.mood > 0 ? '+' : ''}${m.mood}</span></li>`)
       .join('') || '<li class="meta">Nothing memorable yet.</li>');
+  }
+
+  private setTab(tab: Tab): void {
+    this.tab = tab;
+    for (const b of this.root.querySelectorAll<HTMLElement>('[data-act="tab"]')) b.setAttribute('aria-selected', String(b.dataset.tab === tab));
+    for (const p of this.root.querySelectorAll<HTMLElement>('[data-pane]')) p.hidden = p.dataset.pane !== tab;
+    if (tab === 'people' && this.agentId !== null) {
+      const a = this.sim.agent(this.agentId);
+      if (a) this.graph.draw(this.sim, a);
+    }
   }
 
   private slot(name: string, sig: string, html: string): void {

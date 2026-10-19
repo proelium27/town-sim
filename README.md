@@ -25,6 +25,8 @@ npm run build      # typecheck + production bundle
 | Space | Pause / resume |
 | 1 2 3 | Speed (1× is one game minute per real second) |
 | / | Search the people list |
+| P | Collapse / expand the people list |
+| L | Expand / shrink the activity log |
 | Esc | Close the inspector |
 
 ## What's simulated
@@ -44,9 +46,11 @@ public/assets/kenney/   Kenney CC0 sheets (city, urban, indoors) with their lice
 src/assets/             manifest.ts: every frame by sheet+cell; loader.ts: textures, outfit recolouring, avatars
 src/world/              map.ts: tile grid, rooms, props + use spots; town.ts: the hand-laid town
 src/sim/                sim.ts (clock, step), ai.ts, agents.ts, social.ts, events.ts, traffic.ts, nav.ts, defs.ts
-src/render/             worldView.ts (baked ground/walls, y-sorted props), agentsView.ts (people, cars, badges, weather)
+src/render/             worldView.ts (baked ground/walls, y-sorted props), agentsView.ts (people, cars, badges, rain),
+                        shading.ts (lawn detail, cast shadows, ambient occlusion), lighting.ts (time-of-day grade, night lights)
 src/engine/camera.ts    smoothed camera with viewport-aware clamping
-src/ui/                 tracker (left), activity (bottom), inspector (right), relationship graph
+src/ui/                 hud (top), tracker (left), activity (bottom), inspector (right, tabbed), relationship graph
+PRODUCT.md, DESIGN.md    design context: who it's for, tokens, layout and rendering rules for new UI
 tests/                  nav + town connectivity, daily routine and event tests
 ```
 
