@@ -7,7 +7,7 @@ import { CARRY, laborPlan } from './labor';
 import { buildCap, completeProject, shortOf, supplied } from './planner';
 import { clamp } from './rng';
 import {
-  addMemory, bondNearby, converse, expireMemories, first, kinship, moodTarget, rel, RIVAL, say, shiftOpinion, socialGain, think,
+  addMemory, bondNearby, converse, expireMemories, first, FRIEND, kinship, moodTarget, rel, RIVAL, say, shiftOpinion, socialGain, think,
 } from './social';
 import type { Action, ActionKind, Agent } from './types';
 import type { Sim } from './sim';
@@ -241,7 +241,7 @@ function where_(sim: Sim, p: Prop): string {
 }
 
 /** Walk somewhere in an area and hang out there. */
-function areaOption(sim: Sim, a: Agent, kind: ActionKind, score: number, reason: string, label: string, area: { x: number; y: number; w: number; h: number }, timer: number): Option {
+function areaOption(sim: Sim, a: Agent, kind: ActionKind, score: number, reason: string, label: string, area: { x: number; y: number; w: number; h: number }, timer: number, extra: Partial<Action> = {}): Option {
   return {
     kind, score, reason,
     begin: () => {
@@ -249,7 +249,7 @@ function areaOption(sim: Sim, a: Agent, kind: ActionKind, score: number, reason:
       if (cell < 0) return false;
       const path = cell === a.at ? [] : sim.nav.findPath(a.at, cell, 40000);
       if (!path) return false;
-      return start(sim, a, kind, label, reason, { cell, path, cost: path.length }, timer, score);
+      return start(sim, a, kind, label, reason, { cell, path, cost: path.length }, timer, score, extra);
     },
   };
 }
@@ -309,7 +309,8 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
     const reason = lunchy ? 'Lunchtime' : breakfast ? 'Breakfast' : dinner ? 'Dinnertime' : `Hungry (${Math.round(n.hunger)})`;
     const atHomeTime = loc === 'home' || (!workTime && !schoolTime && (evening || dinner || breakfast));
     if (homed && atHomeTime && pantry > 0 && stage !== 'toddler') {
-      o.push(spotOption(sim, a, 'cook', s, reason, ['cook'], () => (stage === 'child' ? 'Making a sandwich' : 'Cooking at home'), stage === 'child' ? 8 : 18, homeOnly));
+      const famHome = dinner && sim.agents.some((x) => x.id !== a.id && x.household === a.household && sim.roomOf(x)?.id === sim.town.households[a.household].room);
+      o.push(spotOption(sim, a, 'cook', s + (famHome ? 0.2 : 0), reason, ['cook'], () => (stage === 'child' ? 'Making a sandwich' : 'Cooking at home'), stage === 'child' ? 8 : 18, homeOnly));
     }
     if (little && homed && pantry > 0) {
       o.push(spotOption(sim, a, 'eat', s * 0.9, reason, ['eat'], () => 'Having a snack at home', 15, homeOnly, () => {
@@ -357,6 +358,51 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   }
   if (sim.events.festival && !sleepTime && stage !== 'toddler') {
     o.push(areaOption(sim, a, 'party', 1.15 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.25 : 0), 'Town festival', 'At the town festival', PARK, 9999));
+  }
+  for (const b of sim.events.birthdays) {
+    const host = sim.agent(b.host);
+    if (!host) continue;
+    const isHost = host.id === a.id;
+    const kin = !isHost && !!kinship(sim, a, host);
+    const friend = !isHost && b.milestone && (a.relations.get(host.id)?.opinion ?? 0) >= FRIEND;
+    if (!isHost && !kin && !friend) continue;
+    if (sleepTime && a.household !== b.household) continue;
+    const room = sim.map.rooms[sim.town.households[b.household].room];
+    o.push(areaOption(sim, a, 'party', isHost ? 1.4 : kin ? 1.2 : 0.95, `Birthday: ${first(host)}`, isHost ? 'Celebrating my birthday' : `At ${first(host)}'s birthday`, room, 9999, { partnerId: host.id }));
+  }
+  // Join whoever in the family is already sitting down to dinner at home.
+  if (homed && loc === 'home' && inWindow(h, 17.5, 20.5) && n.hunger < 92 && stage !== 'toddler' && !a.mealReady && pantry >= 0.5 && a.action.kind !== 'eat') {
+    const homeRoom = sim.town.households[a.household].room;
+    const eating = sim.agents.some((x) => x.id !== a.id && x.household === a.household && x.action.kind === 'eat' && x.action.stage === 'perform' && sim.roomOf(x)?.id === homeRoom);
+    if (eating) {
+      o.push(spotOption(sim, a, 'eat', 1.05, 'Family dinner', ['eat'], () => 'Family dinner', 20, homeOnly, () => {
+        if (sim.pantry[a.household] < 0.5) return false;
+        sim.pantry[a.household] -= 0.5;
+      }));
+    }
+  }
+  // Family visit their graves now and then; fresh grief makes it urgent, and a visit eases it.
+  if (!sleepTime && !workTime && !schoolTime && !evening && stage !== 'toddler') {
+    for (const grave of sim.map.props) {
+      if (grave.key !== 'grave' || grave.about === undefined) continue;
+      if (a.memories.some((x) => x.kind === 'paidRespects' && x.about === grave.about)) continue;
+      const dead = sim.person(grave.about);
+      const grief = a.memories.find((m) => m.kind === 'grief' && m.about === grave.about);
+      if (!dead || (!grief && !kinship(sim, a, dead))) continue;
+      if (!sim.map.walkable(grave.x, grave.y + 1)) continue;
+      const name = first(dead);
+      const score = grief ? 0.45 - grief.mood / 50 : 0.38;
+      o.push({
+        kind: 'mourn', score, reason: `Misses ${name}`,
+        begin: () => {
+          const cell = sim.map.idx(grave.x, grave.y + 1);
+          const path = cell === a.at ? [] : sim.nav.findPath(a.at, cell, 40000);
+          if (!path) return false;
+          return start(sim, a, 'mourn', `Visiting ${name}'s grave`, `Misses ${name}`, { cell, path, cost: path.length, facing: 'up' }, 25, score, { partnerId: dead.id });
+        },
+      });
+      break;
+    }
   }
   if (sim.events.coffeeBroken && office && workTime && (a.role === 'engineer' || a.role === 'receptionist')) {
     const coffee = sim.map.props.find((p) => p.use === 'coffee' && roomKind(sim, p) === 'kitchen');
@@ -537,7 +583,11 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
     case 'stroll': return 'A walk in the park sounds nice.';
     case 'shop': return 'We are out of food at home. Grocery run.';
     case 'meet': return 'Standup time.';
-    case 'party': return o.reason === 'Town festival' ? 'The whole town is out for the festival!' : 'Party in the lounge!';
+    case 'party':
+      if (o.reason === `Birthday: ${first(a)}`) return "My birthday party! I wonder who'll come.";
+      if (o.reason.startsWith('Birthday: ')) return `Off to ${o.reason.slice(10)}'s birthday.`;
+      return o.reason === 'Town festival' ? 'The whole town is out for the festival!' : 'Party in the lounge!';
+    case 'mourn': return `I'll go and sit with ${o.reason.slice(7)} for a while.`;
     case 'repair': return 'I will take a look at that coffee machine.';
     case 'snack': return 'Just a quick snack.';
     case 'chop': return a.action.projectId !== undefined ? 'Clearing trees for the new build.' : 'The town needs timber. Off to the woods.';
@@ -598,7 +648,8 @@ function arrive(sim: Sim, a: Agent): void {
       break;
     }
     case 'party':
-      (sim.events.party ?? sim.events.festival)?.attendees.add(a.id);
+      if (a.action.partnerId !== undefined) sim.events.birthdays.find((b) => b.host === a.action.partnerId)?.guests.add(a.id);
+      else (sim.events.party ?? sim.events.festival)?.attendees.add(a.id);
       break;
     case 'meet':
       sim.events.standup?.attendees.add(a.id);
@@ -716,7 +767,8 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       if (company.length) n.social = Math.min(100, n.social + socialGain(a, 0.3) * dt);
       if (tick()) {
         a.mealReady = false;
-        addMemory(sim, a, company.length ? 'sharedMeal' : 'ateAlone');
+        const family = where(sim, a) === 'home' && company.some((x) => x.household === a.household);
+        addMemory(sim, a, family ? 'familyDinner' : company.length ? 'sharedMeal' : 'ateAlone');
         if (sim.events.pizza && sim.roomOf(a)?.kind === 'kitchen') addMemory(sim, a, 'pizza');
         if (sim.roomOf(a)?.kind === 'cafe' && a.traits.includes('foodie')) say(sim, a, 'mmm', 'good');
         finish(sim, a);
@@ -827,7 +879,24 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       n.hunger = Math.min(100, n.hunger + 0.6 * dt);
       for (const o of sim.agents) if (o.id !== a.id && o.action.kind === 'party' && Math.abs(o.x - a.x) < 6 && Math.abs(o.y - a.y) < 6) bondNearby(sim, a, o, dt * 2);
       if (sim.rng.chance(0.02 * dt)) say(sim, a, sim.rng.pick(['woo!', '♪', 'ha!', 'cheers']), 'good', 3);
-      if (!sim.events.party && !festival) finish(sim, a);
+      const bday = act.partnerId !== undefined ? sim.events.birthdays.find((b) => b.host === act.partnerId) : undefined;
+      if (act.partnerId !== undefined ? !bday : !sim.events.party && !festival) finish(sim, a);
+      else if (bday && sim.rng.chance(0.015 * dt)) say(sim, a, a.id === bday.host ? 'thank you!' : sim.rng.pick(['happy birthday!', '♪', 'cake!']), 'good', 3);
+      return;
+    }
+    case 'mourn': {
+      a.facing = 'up';
+      if (sim.rng.chance(0.01 * dt)) say(sim, a, '…', 'neutral', 3);
+      if (tick()) {
+        const dead = sim.person(act.partnerId);
+        const grief = a.memories.find((m) => m.kind === 'grief' && m.about === act.partnerId);
+        if (grief) grief.mood = Math.round(grief.mood * 0.6);
+        if (dead) {
+          addMemory(sim, a, 'paidRespects', dead);
+          think(sim, a, `I miss you, ${first(dead)}.`, 'neutral');
+        }
+        finish(sim, a);
+      }
       return;
     }
     case 'repair':

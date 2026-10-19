@@ -30,7 +30,7 @@ export interface Thought {
 export type ActionKind =
   | 'idle' | 'wander' | 'stroll' | 'work' | 'meet' | 'eat' | 'snack' | 'coffee' | 'cook'
   | 'sleep' | 'toilet' | 'shower' | 'socialize' | 'play' | 'music' | 'read' | 'relax' | 'shop' | 'party' | 'repair'
-  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach';
+  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach' | 'mourn';
 
 export interface Action {
   kind: ActionKind;
@@ -131,6 +131,10 @@ export interface Agent {
   carry: { kind: Good; amount: number } | null;
   /** Building they work at, for teacher/cook roles. */
   workBuilding: number | null;
+  /** Calendar year of their last birthday party. */
+  lastBirthday: number;
+  /** The late grandparent they were named after. */
+  namedAfter?: number;
 }
 
 export interface Project {

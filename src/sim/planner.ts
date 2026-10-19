@@ -4,6 +4,7 @@ import type { Household } from '../world/town';
 import { ageOf, makeSchedule, newTask } from './agents';
 import { ADULT_AGE, billGoods, type Good, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
 import { foodBalance } from './economy';
+import { bury } from './life';
 import { addMemory, first, think } from './social';
 import type { Agent, Project } from './types';
 import type { Sim } from './sim';
@@ -187,6 +188,16 @@ function proposals(sim: Sim): Proposal[] {
   }
   if (sim.agents.length >= 24 && count('diner') < Math.floor(sim.agents.length / 24)) {
     out.push({ bp: 'diner', score: 0.6 * cw, reason: 'the café is packed every lunchtime', forAgents: [], proposer: sim.agents.find((a) => a.traits.includes('foodie')) ?? charismatic(), name: `${['Corner', 'Hilltop', 'Lakeside'][count('diner') % 3]} Diner` });
+  }
+  if (sim.unburied.length && !sim.projects.some((p) => p.blueprint === 'cemetery')) {
+    const dead = sim.person(sim.unburied[0])!;
+    const mourner = sim.agents.filter((a) => a.id === dead.partner || dead.children.includes(a.id) || dead.parents.includes(a.id)).find((a) => ageOf(sim, a) >= ADULT_AGE);
+    const full = count('cemetery') > 0;
+    out.push({
+      bp: 'cemetery', score: 1.3 * cw,
+      reason: full ? 'the cemetery is full' : `we have nowhere to lay ${first(dead)} to rest`,
+      forAgents: [], proposer: mourner ?? charismatic(), name: full ? 'Hill Cemetery' : 'Northwind Cemetery',
+    });
   }
   const avgFun = sim.agents.reduce((s, a) => s + a.needs.fun, 0) / Math.max(1, sim.agents.length);
   if (sim.agents.length >= 20 && count('park') < Math.floor(sim.agents.length / 20)) {
@@ -381,6 +392,11 @@ export function completeProject(sim: Sim, pr: Project): void {
   const names = residents.map(first);
   sim.log(`${pr.name} is finished${names.length ? `. ${names.join(', ')} moved in` : ''}`, 'build', 'good', residents[0]);
   sim.milestone(`Built ${pr.name}`);
+  if (pr.blueprint === 'cemetery') {
+    const laid = sim.unburied.filter((id) => bury(sim, id));
+    sim.unburied = sim.unburied.filter((id) => !laid.includes(id));
+    if (laid.length) sim.log(`${laid.map((id) => sim.person(id)!.name).join(', ')} ${laid.length > 1 ? 'were' : 'was'} laid to rest at ${pr.name}`, 'family', 'neutral');
+  }
   if (pr.blueprint !== 'house') allocateRoles(sim);
 }
 

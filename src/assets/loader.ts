@@ -182,6 +182,30 @@ export class Art {
         r(5, 11, 3, 2, '#6f6962');
         r(3, 14, 10, 1, 'rgba(0,0,0,0.25)');
         break;
+      case 'cake':
+        // A little layer cake sitting on the tabletop, candles lit.
+        r(5, 2, 7, 5, '#f6efe0');
+        r(5, 4, 7, 1, '#ea80a6');
+        r(5, 6, 7, 1, '#d9c6a8');
+        r(6, 0, 1, 2, '#f2c14e');
+        r(8, 0, 1, 2, '#f2c14e');
+        r(10, 0, 1, 2, '#f2c14e');
+        r(4, 7, 9, 1, '#c9bfae');
+        break;
+      case 'grave':
+        // Rounded headstone on a low grassy mound.
+        r(3, 12, 10, 3, '#4f7d3a');
+        r(4, 11, 8, 1, '#5f9a3c');
+        r(5, 4, 6, 8, '#8d877f');
+        r(6, 3, 4, 1, '#8d877f');
+        r(6, 4, 4, 2, '#b3ada4');
+        r(6, 7, 4, 1, '#6f6962');
+        r(6, 9, 3, 1, '#6f6962');
+        r(10, 5, 1, 7, '#6f6962');
+        r(4, 4, 1, 8, '#4f4a45');
+        r(11, 4, 1, 8, '#4f4a45');
+        r(5, 2, 6, 1, '#4f4a45');
+        break;
       case 'stump':
         r(5, 9, 6, 5, '#5e3d24');
         r(5, 8, 6, 2, '#b98a55');

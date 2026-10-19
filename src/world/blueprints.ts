@@ -147,7 +147,26 @@ function stampPark(m: TownMap, x: number, y: number, doorTop: boolean, name: str
   return b;
 }
 
-export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park', Blueprint> = {
+function stampCemetery(m: TownMap, x: number, y: number, doorTop: boolean, name: string, time = 0): Building {
+  const [s, b] = begin(m, 'cemetery', name, x, y, 9, 7, 4, doorTop, time);
+  s.fill(0, 0, 9, 7, 'grass');
+  s.fill(4, 0, 1, 7, 'dirt');
+  s.prop('treeTall', 0, 0, 1, 1);
+  s.prop('treeTall', 8, 0, 1, 1);
+  s.prop('bushGreen', 0, 6, 1, 1);
+  s.prop('bushGreen', 8, 6, 1, 1);
+  s.prop('bench', 5, 6, 2, 1, { use: 'sit', spot: [5, 6, 'up'], blocks: false, cost: 2 });
+  return b;
+}
+
+/** Headstone tiles in a cemetery, in burial order: three rows either side of the center path. */
+export function graveSlots(b: Building): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = [];
+  for (const dy of [1, 3, 5]) for (const dx of [3, 5, 2, 6, 1, 7]) out.push({ x: b.x + dx, y: b.y + dy });
+  return out;
+}
+
+export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park' | 'cemetery', Blueprint> = {
   house: {
     kind: 'house', noun: 'a new home', w: 11, h: 8, cost: { wood: 40, stone: 20 }, work: 360, doorX: 4, outdoor: false,
     stamp: (m, x, y, top, name, hh) => stampHouse(m, x, y, top, name, hh ?? 0, true),
@@ -157,6 +176,7 @@ export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'di
   school: { kind: 'school', noun: 'a schoolhouse', w: 11, h: 8, cost: { wood: 40, stone: 30 }, work: 420, doorX: 1, outdoor: false, stamp: (m, x, y, top, name) => stampSchool(m, x, y, top, name) },
   diner: { kind: 'cafe', noun: 'a diner', w: 11, h: 8, cost: { wood: 35, stone: 25 }, work: 380, doorX: 9, outdoor: false, stamp: (m, x, y, top, name) => stampDiner(m, x, y, top, name) },
   park: { kind: 'park', noun: 'a little park', w: 8, h: 8, cost: { wood: 6, stone: 8 }, work: 100, doorX: 3, outdoor: true, stamp: (m, x, y, top, name) => stampPark(m, x, y, top, name) },
+  cemetery: { kind: 'cemetery', noun: 'a cemetery', w: 9, h: 7, cost: { wood: 4, stone: 10 }, work: 100, doorX: 4, outdoor: true, stamp: (m, x, y, top, name) => stampCemetery(m, x, y, top, name) },
 };
 
 export type BlueprintKey = keyof typeof BLUEPRINTS;

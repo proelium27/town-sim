@@ -1,4 +1,6 @@
-import { ROLES } from './defs';
+import { ageOf } from './agents';
+import { MIN_PER_DAY, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
+import { kinship } from './social';
 import { newcomers } from './life';
 import { addMemory, first, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
@@ -11,13 +13,34 @@ export interface EventState {
   coffeeBroken: boolean;
   drought: { until: number } | null;
   festival: { until: number; attendees: Set<number> } | null;
+  /** Birthday parties happening right now, one per host. */
+  birthdays: Birthday[];
   /** Day the schedule below was planned for. */
   plannedDay: number;
-  plan: { at: number; kind: 'standup' | 'pizza' | 'party' | 'coffee' | 'rain'; length: number }[];
+  plan: { at: number; kind: 'standup' | 'pizza' | 'party' | 'coffee' | 'rain' | 'birthday'; length: number; host?: number }[];
+}
+
+export interface Birthday {
+  host: number;
+  household: number;
+  age: number;
+  /** A round-number birthday: friends come too, not just family. */
+  milestone: boolean;
+  until: number;
+  guests: Set<number>;
+  cake?: number;
+}
+
+const MILESTONES = [18, 30, 50, 65, 80, 90, 100];
+
+/** Day of the calendar year (0..7) someone was born on. */
+export function birthdayOf(birth: number): number {
+  const year = YEAR_DAYS * MIN_PER_DAY;
+  return Math.floor((((birth % year) + year) % year) / MIN_PER_DAY);
 }
 
 export function initialEvents(): EventState {
-  return { standup: null, pizza: null, party: null, rain: null, coffeeBroken: false, drought: null, festival: null, plannedDay: -1, plan: [] };
+  return { standup: null, pizza: null, party: null, rain: null, coffeeBroken: false, drought: null, festival: null, birthdays: [], plannedDay: -1, plan: [] };
 }
 
 /** Lays out the day's happenings at midnight (or on the first tick). */
@@ -34,6 +57,13 @@ function planDay(sim: Sim): void {
     if (r.chance(0.25)) ev.plan.push({ at: base + r.range(9, 15) * 60, kind: 'coffee', length: 0 });
   }
   if (r.chance(0.35)) ev.plan.push({ at: base + r.range(7, 19) * 60, kind: 'rain', length: r.range(60, 220) });
+  // Birthdays follow the calendar: once a year, on the day of the year someone was born.
+  const today = sim.day % YEAR_DAYS;
+  for (const a of sim.agents) {
+    if (birthdayOf(a.birth) !== today || a.lastBirthday >= sim.year || sim.time - a.birth < YEAR_DAYS * MIN_PER_DAY * 0.75) continue;
+    ev.plan.push({ at: base + 18 * 60, kind: 'birthday', length: 150, host: a.id });
+  }
+  ev.plan.sort((x, y) => x.at - y.at);
   ev.plan.sort((a, b) => a.at - b.at);
 }
 
@@ -62,6 +92,9 @@ export function tickEvents(sim: Sim, _dt: number): void {
           ev.coffeeBroken = true;
           sim.log('The office coffee machine broke down', 'event', 'bad');
         }
+        break;
+      case 'birthday':
+        startBirthday(sim, e.host!, e.length);
         break;
       case 'rain':
         if (!ev.rain) {
@@ -92,6 +125,60 @@ export function tickEvents(sim: Sim, _dt: number): void {
     ev.rain = null;
     sim.log('The rain cleared up', 'event', 'neutral');
   }
+  for (const b of ev.birthdays) if (sim.time >= b.until) endBirthday(sim, b);
+}
+
+function startBirthday(sim: Sim, hostId: number, length: number): void {
+  const a = sim.agent(hostId);
+  if (!a || a.lastBirthday >= sim.year) return;
+  a.lastBirthday = sim.year;
+  const age = Math.floor(ageOf(sim, a));
+  const before = age - YEAR_DAYS * YEARS_PER_DAY;
+  const milestone = MILESTONES.some((m) => m > before && m <= age);
+  const hh = sim.town.households[a.household];
+  if (hh.building < 0) {
+    addMemory(sim, a, 'birthday');
+    sim.log(`${first(a)} turned ${age} with nowhere to throw a party`, 'family', 'neutral', a);
+    return;
+  }
+  // Cake on the home's table, if it has one.
+  const m = sim.map;
+  const table = m.props.find((p) => p.room === hh.room && /^table/.test(p.key));
+  const cake = table ? m.addProp({ key: 'cake', drawn: true, x: table.x, y: table.y, w: 1, h: 1, blocks: true }) : undefined;
+  sim.events.birthdays.push({ host: a.id, household: a.household, age, milestone, until: sim.time + length, guests: new Set([a.id]), cake: cake?.id });
+  think(sim, a, milestone ? `${age}! That's a big one.` : `Another year older. ${age} today.`, 'good');
+  sim.log(`It's ${first(a)}'s birthday: ${age} today${milestone ? '. A big one, so friends are invited too' : ''}`, 'family', 'good', a);
+}
+
+function endBirthday(sim: Sim, b: Birthday): void {
+  sim.events.birthdays = sim.events.birthdays.filter((x) => x !== b);
+  const host = sim.agent(b.host);
+  if (b.cake !== undefined) {
+    const p = sim.map.prop(b.cake);
+    if (p) sim.map.removeProp(p);
+  }
+  if (!host) return;
+  const guests = [...b.guests].filter((id) => id !== b.host).map((id) => sim.agent(id)).filter((x): x is NonNullable<typeof x> => !!x);
+  addMemory(sim, host, 'myBirthday', undefined, guests.length ? 1 + Math.min(1, guests.length / 6) : 0.4);
+  for (const g of guests) {
+    addMemory(sim, g, 'birthday', host);
+    shiftOpinion(sim, g, host, sim.rng.range(1, 4));
+    shiftOpinion(sim, host, g, sim.rng.range(2, 5));
+  }
+  const family = guests.filter((g) => kinship(sim, host, g)).length;
+  sim.log(
+    guests.length
+      ? `${first(host)}'s birthday wound down: ${family} family${guests.length > family ? ` and ${guests.length - family} friends` : ''} came to celebrate`
+      : `Nobody came to ${first(host)}'s birthday`,
+    'family',
+    guests.length ? 'good' : 'bad',
+    host,
+  );
+}
+
+/** The birthday party this person is hosting or invited to right now, if any. */
+export function birthdayFor(sim: Sim, a: { id: number }): Birthday | undefined {
+  return sim.events.birthdays.find((b) => b.host === a.id || b.guests.has(a.id));
 }
 
 function endStandup(sim: Sim): void {

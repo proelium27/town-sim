@@ -99,9 +99,18 @@ export function createAgent(sim: Sim, o: NewAgentOpts): Agent {
     hairLight: o.age >= RETIRE_AGE ? 1.6 : look ? look.hairLight : rng.pick([0.55, 0.8, 1, 1.25]),
   };
   const surname = o.surname ?? (parents[0] ? parents[0].name.split(' ').slice(1).join(' ') : rng.pick(LAST));
+  // Sometimes a baby carries on the name of a grandparent who has passed away.
+  const living = new Set(sim.agents.map((x) => x.name.split(' ')[0]));
+  const late = parents
+    .flatMap((p) => p.parents)
+    .map((id) => sim.deceased.find((d) => d.id === id))
+    .filter((d): d is Agent => !!d && !living.has(d.name.split(' ')[0]));
+  const namesake = o.age < 1 && late.length && rng.chance(0.5) ? rng.pick(late) : undefined;
+  let name = namesake ? `${namesake.name.split(' ')[0]} ${surname}` : `${uniqueFirst(sim)} ${surname}`;
+  if (namesake && sim.deceased.some((d) => d.name === name)) name += ' II';
   const a: Agent = {
     id: sim.nextAgentId++,
-    name: `${uniqueFirst(sim)} ${surname}`,
+    name,
     age: Math.floor(o.age),
     role: o.role,
     household: o.household,
@@ -142,7 +151,9 @@ export function createAgent(sim: Sim, o: NewAgentOpts): Agent {
     children: [],
     carry: null,
     workBuilding: null,
+    lastBirthday: 0,
   };
+  if (namesake) a.namedAfter = namesake.id;
   a.needs.energy = rng.range(70, 95);
   for (const p of parents) {
     p.children.push(a.id);
@@ -238,4 +249,9 @@ export function createAgents(sim: Sim): void {
     const fam = a.household === b.household ? 40 : ROLES[a.role].workplace === ROLES[b.role].workplace && ROLES[a.role].workplace !== 'none' ? 15 : 0;
     if (fam) a.relations.set(b.id, { opinion: a.household === b.household ? sim.rng.range(10, 30) : sim.rng.range(-5, 15), familiarity: fam, lastTalk: -Infinity });
   }
+}
+
+/** Fills fields added since an older save was made. */
+export function backfillAgent(a: Agent): void {
+  a.lastBirthday ??= 0;
 }

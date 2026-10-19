@@ -1,5 +1,6 @@
 import { ageOf, createAgent, newTask, stationFor } from './agents';
 import { ADULT_AGE, RETIRE_AGE, ROLES, type RoleKey } from './defs';
+import { graveSlots } from '../world/blueprints';
 import { allocateRoles, capacity, familyOf, members, moveTo, newHousehold, setRole } from './planner';
 import { addMemory, first, rel, say, think } from './social';
 import type { Agent } from './types';
@@ -139,6 +140,22 @@ export function die(sim: Sim, a: Agent, cause: string): void {
   }
   sim.log(`${a.name} passed away (${cause})`, 'family', 'bad', a);
   sim.milestone(`${a.name} passed away`);
+  if (!bury(sim, a.id)) sim.unburied.push(a.id);
+}
+
+/** Lays someone to rest in the first free plot. False if there's no cemetery with room. */
+export function bury(sim: Sim, id: number): boolean {
+  const a = sim.person(id);
+  if (!a) return true;
+  const m = sim.map;
+  for (const b of m.buildings) {
+    if (b.kind !== 'cemetery') continue;
+    const slot = graveSlots(b).find((s) => !m.propsOn(s.x, s.y).length);
+    if (!slot) continue;
+    m.addProp({ key: 'grave', drawn: true, x: slot.x, y: slot.y, w: 1, h: 1, building: b.id, about: a.id, label: a.name });
+    return true;
+  }
+  return false;
 }
 
 /** Newcomers walk in from the east road. With force, they come even if there's nowhere to live. */

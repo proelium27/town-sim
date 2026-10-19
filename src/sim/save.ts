@@ -1,4 +1,5 @@
 import { emptyStock, NEED_KEYS } from './defs';
+import { backfillAgent } from './agents';
 import { Nav } from './nav';
 import { Sim } from './sim';
 
@@ -68,6 +69,10 @@ export function loadSim(text: string): Sim {
   sim.nav = new Nav(sim.town.map);
   // Anything added since the save was made starts from a sensible default.
   sim.stock = { ...emptyStock(), ...sim.stock };
-  for (const a of [...sim.agents, ...sim.deceased]) for (const k of NEED_KEYS) a.needs[k] ??= 80;
+  for (const a of [...sim.agents, ...sim.deceased]) {
+    for (const k of NEED_KEYS) a.needs[k] ??= 80;
+    backfillAgent(a);
+  }
+  sim.events.birthdays ??= [];
   return sim;
 }

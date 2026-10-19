@@ -195,7 +195,8 @@ export type MemoryKind =
   | 'soaked' | 'sleptWell' | 'badNight' | 'stinky' | 'starving' | 'longDay' | 'newFriend' | 'newRival'
   | 'meeting' | 'skillUp' | 'playedMusic' | 'goodRead' | 'commuteScare'
   | 'newPartner' | 'newBaby' | 'grief' | 'movedIn' | 'builtSomething' | 'townGrowing' | 'sleptRough' | 'proposed'
-  | 'grewUp' | 'harvest' | 'school' | 'festival' | 'drought' | 'storm';
+  | 'grewUp' | 'harvest' | 'school' | 'festival' | 'drought' | 'storm'
+  | 'birthday' | 'myBirthday' | 'familyDinner' | 'paidRespects';
 
 export interface MemoryDef {
   label: string;
@@ -250,4 +251,8 @@ export const MEMORIES: Record<MemoryKind, MemoryDef> = {
   festival: { label: 'Danced at the town festival', mood: 12, duration: 2 * D, major: true, maxStack: 1 },
   drought: { label: 'Worried about the drought', mood: -6, duration: D, major: true, maxStack: 1 },
   storm: { label: 'Rode out a storm', mood: -4, duration: D, major: true, maxStack: 1 },
+  birthday: { label: 'Celebrated a birthday', mood: 6, duration: 12 * H, major: false, maxStack: 2 },
+  myBirthday: { label: 'My birthday party', mood: 12, duration: 1.5 * D, major: true, maxStack: 1 },
+  familyDinner: { label: 'Dinner with the family', mood: 6, duration: 10 * H, major: false, maxStack: 1 },
+  paidRespects: { label: 'Visited a grave', mood: 3, duration: 2 * D, major: false, maxStack: 2 },
 };

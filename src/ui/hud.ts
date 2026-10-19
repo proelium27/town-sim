@@ -60,7 +60,8 @@ export class Hud {
       ['mood', mood],
     ];
     const building = sim.projects.length ? `Building ${sim.projects.length === 1 ? sim.projects[0].name : `${sim.projects.length} things`}` : '';
-    const happening = [ev.festival && 'Festival in the park', ev.drought && 'Drought', building, ev.standup && 'Standup', ev.pizza && 'Pizza in the kitchen', ev.party && 'Party in the lounge', ev.coffeeBroken && 'Coffee machine broken'].filter(Boolean).slice(0, 2) as string[];
+    const bday = ev.birthdays[0] && sim.agent(ev.birthdays[0].host);
+    const happening = [ev.festival && 'Festival in the park', ev.drought && 'Drought', bday && `${bday.name.split(' ')[0]}'s birthday`, building, ev.standup && 'Standup', ev.pizza && 'Pizza in the kitchen', ev.party && 'Party in the lounge', ev.coffeeBroken && 'Coffee machine broken'].filter(Boolean).slice(0, 2) as string[];
     this.put(
       this.statsEl,
       'stats',
