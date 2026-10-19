@@ -100,6 +100,8 @@ describe('homes that grow', () => {
   it('builders step out of the walls when a wing is finished', () => {
     const { sim, hh, b } = freshHouse();
     crowd(sim, hh.id);
+    // Leave food out of it: a new farm would otherwise win the meeting.
+    sim.priorities.food = 0;
     plan(sim);
     const pr = sim.projects.find((p) => p.extends?.building === b.id)!;
     expect(pr).toBeDefined();
@@ -151,6 +153,8 @@ describe('homes that grow', () => {
     expect(members(sim, hh.id).length).toBeGreaterThan(capacity(sim, hh.id));
     sim.projects = [];
     sim.treasury = 500;
+    // Leave food out of it: a new farm would otherwise win the meeting.
+    sim.priorities.food = 0;
     sim.timers.plan = 0;
     tickPlanner(sim, 0.05);
     const pr = sim.projects.find((p) => p.forAgents.includes(kid.id))!;
