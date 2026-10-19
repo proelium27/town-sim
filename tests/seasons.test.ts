@@ -61,11 +61,13 @@ describe('seasons', () => {
   it('a blizzard sends people indoors', () => {
     const sim = winterTown();
     at(sim, 6, 11);
+    const there = [...sim.agents];
     triggerWorldEvent(sim, 'snowstorm');
     sim.run(90);
     const outside = sim.agents.filter((a) => !sim.roomOf(a) && !a.moving).length;
     expect(outside).toBeLessThanOrEqual(Math.ceil(sim.agents.length * 0.25));
-    expect(sim.agents.every((a) => a.memories.some((m) => m.kind === 'blizzard'))).toBe(true);
+    // Anyone arriving mid-storm missed the start of it.
+    expect(there.every((a) => a.memories.some((m) => m.kind === 'blizzard'))).toBe(true);
   }, 120_000);
 
   it('an empty hearth in winter makes for a cold, unhappy home', () => {

@@ -319,9 +319,11 @@ export function findSite(sim: Sim, key: BlueprintKey): Site | null {
 
 function startProject(sim: Sim, p: Proposal): Project | null {
   const bp = BLUEPRINTS[p.bp];
-  // The treasury has to be able to pay for it and still meet payroll; a home for the homeless gets built on credit.
+  // The treasury has to be able to pay for it and still meet payroll; a home for the homeless gets built on credit,
+  // and a cemetery for the unburied only has to be affordable.
   const urgent = p.bp === 'house' && p.forAgents.some((a) => sim.town.households[a.household].building < 0);
-  if (sim.treasury - bp.coins < projectCushion(sim) && !urgent) return null;
+  const cushion = p.bp === 'cemetery' && sim.unburied.length ? 0 : projectCushion(sim);
+  if (sim.treasury - bp.coins < cushion && !urgent) return null;
   const site = findSite(sim, p.bp);
   if (!site) return null;
   sim.treasury -= bp.coins;
