@@ -2,6 +2,7 @@ import { type Good, GOOD_KEYS, GOODS, MIN_PER_DAY, ROLES, SEASON_DAYS } from './
 import { addMemory, first, kinship, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
 import type { Agent } from './types';
+import type { Household } from '../world/town';
 import { targetOf } from './workshop';
 
 /** What a unit of each good is worth when the town has just the right amount. */
@@ -139,16 +140,73 @@ export function trade(sim: Sim): string {
   return parts.length ? parts.join(', ') : 'nothing changed hands';
 }
 
+export type Ledger = { sales: number; taxes: number; wages: number; trade: number; projects: number; pensions: number; bonuses: number };
+export const emptyLedger = (): Ledger => ({ sales: 0, taxes: 0, wages: 0, trade: 0, projects: 0, pensions: 0, bonuses: 0 });
+
+/** Days in a row a household has to be broke and miserable before it gives up and leaves. */
+export const HARD_DAYS = 3;
+/** What the town pays a retiree a day, so the old folks aren't broke by definition. Savers above the cap go without. */
+export const PENSION = 12;
+export const PENSION_CAP = 60;
 /**
- * Midnight bookkeeping: yesterday's ledger, and households in hard times. A household stuck
- * miserable and broke for a couple of days packs up and leaves town.
+ * The treasury keeps this many days of payroll before it shares the rest, and never less than
+ * RESERVE_MIN (winter payrolls are small, but spring brings the trader and a busy building season).
+ */
+export const RESERVE_DAYS = 3;
+export const RESERVE_MIN = 900;
+/** A new building has to leave a day's payroll in the treasury, and at least this much (spring payrolls run high). */
+export const PROJECT_CUSHION = 250;
+export const projectCushion = (sim: Sim): number => Math.max(PROJECT_CUSHION, sim.lastLedger.wages);
+/** Share of the money above the reserve paid out each midnight as bonuses to town workers. */
+export const BONUS_SHARE = 0.5;
+/** Town workers below this are topped up to it at midnight, as long as the treasury keeps HARDSHIP_KEEP. */
+export const HARDSHIP_FLOOR = 12;
+export const HARDSHIP_KEEP = 100;
+
+/** Town jobs: everyone working who isn't paid by the office's outside clients. */
+export const townPaid = (a: Agent): boolean => a.role !== 'child' && a.role !== 'retired' && ROLES[a.role].workplace !== 'office';
+
+/** Pensions for retirees, a top-up for town workers who are nearly broke, then part of any surplus back to them, poorest first. */
+function payOut(sim: Sim): void {
+  for (const a of sim.agents) {
+    if (a.role !== 'retired' || a.money >= PENSION_CAP || sim.treasury < PENSION) continue;
+    sim.treasury -= PENSION;
+    a.money += PENSION;
+    sim.ledger.pensions += PENSION;
+  }
+  const workers = sim.agents.filter(townPaid);
+  // Anyone down to their last few dollars (a farmer through the winter, say) is topped up while the town can spare it.
+  for (const a of workers) {
+    const need = Math.ceil(HARDSHIP_FLOOR - a.money);
+    if (need <= 0 || sim.treasury - need < HARDSHIP_KEEP) continue;
+    a.money += need;
+    sim.treasury -= need;
+    sim.ledger.bonuses += need;
+    think(sim, a, 'The town helped me out while money is tight.', 'good');
+  }
+  const reserve = Math.max(RESERVE_MIN, RESERVE_DAYS * sim.lastLedger.wages);
+  const pot = Math.floor((sim.treasury - reserve) * BONUS_SHARE);
+  if (pot < 20 || !workers.length) return;
+  // Weighted to those with the least: someone down to their last dollar gets several times a saver's share.
+  const weight = (a: Agent) => 1 / (Math.max(0, a.money) + 25);
+  const total = workers.reduce((s, a) => s + weight(a), 0);
+  for (const a of workers) a.money += (pot * weight(a)) / total;
+  sim.treasury -= pot;
+  sim.ledger.bonuses += pot;
+  sim.log(`The town paid out $${pot} in bonuses`, 'event', 'good');
+}
+
+/**
+ * Midnight bookkeeping: yesterday's ledger, pensions and bonuses, and households in hard times.
+ * A household stuck miserable and broke for several days in a row packs up and leaves town.
  */
 export function tickMarket(sim: Sim): void {
   const day = Math.floor(sim.time / MIN_PER_DAY);
   if (sim.ledgerDay === day) return;
   sim.ledgerDay = day;
   sim.lastLedger = { ...sim.ledger };
-  sim.ledger = { sales: 0, taxes: 0, wages: 0, trade: 0, projects: 0 };
+  sim.ledger = emptyLedger();
+  payOut(sim);
   for (const h of sim.town.households) {
     const fam = sim.agents.filter((a) => a.household === h.id);
     if (!fam.length) continue;
@@ -156,11 +214,13 @@ export function tickMarket(sim: Sim): void {
     const broke = grown.length > 0 && grown.every((a) => a.money < 10 || a.memories.some((m) => m.kind === 'broke'));
     const mood = fam.reduce((s, a) => s + a.mood, 0) / fam.length;
     sim.hardDays[h.id] = broke && mood < 35 ? (sim.hardDays[h.id] ?? 0) + 1 : 0;
-    if (sim.hardDays[h.id] >= 2) leaveTown(sim, fam, h.name);
+    if (sim.hardDays[h.id] >= HARD_DAYS) leaveTown(sim, fam, h);
   }
 }
 
-function leaveTown(sim: Sim, fam: Agent[], home: string): void {
+function leaveTown(sim: Sim, fam: Agent[], h: Household): void {
+  sim.hardDays[h.id] = 0;
+  const home = h.name;
   for (const a of fam) {
     if (a.action.propId !== undefined && sim.reserved.get(a.action.propId) === a.id) sim.reserved.delete(a.action.propId);
     for (const o of sim.agents) if (o.partner === a.id && !fam.includes(o)) o.partner = null;

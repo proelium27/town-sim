@@ -5,6 +5,7 @@ import { ageOf, makeSchedule, newTask } from './agents';
 import { ADULT_AGE, billGoods, type Good, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
 import { foodBalance } from './economy';
 import { bury } from './life';
+import { projectCushion } from './market';
 import { CRAFT_ROLES, hasWorkshop, RECIPES, shortfall } from './workshop';
 import { addMemory, first, think } from './social';
 import type { Agent, Project } from './types';
@@ -318,9 +319,9 @@ export function findSite(sim: Sim, key: BlueprintKey): Site | null {
 
 function startProject(sim: Sim, p: Proposal): Project | null {
   const bp = BLUEPRINTS[p.bp];
-  // The treasury has to be able to pay for it; a home for the homeless gets built on credit.
+  // The treasury has to be able to pay for it and still meet payroll; a home for the homeless gets built on credit.
   const urgent = p.bp === 'house' && p.forAgents.some((a) => sim.town.households[a.household].building < 0);
-  if (sim.treasury < bp.coins && !urgent) return null;
+  if (sim.treasury - bp.coins < projectCushion(sim) && !urgent) return null;
   const site = findSite(sim, p.bp);
   if (!site) return null;
   sim.treasury -= bp.coins;

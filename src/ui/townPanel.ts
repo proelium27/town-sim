@@ -85,7 +85,7 @@ export class TownPanel {
     const sim = this.sim;
     const L = sim.lastLedger;
     const income = L.sales + L.taxes + Math.max(0, L.trade);
-    const spent = L.wages + L.projects + Math.max(0, -L.trade);
+    const spent = L.wages + L.pensions + L.bonuses + L.projects + Math.max(0, -L.trade);
     // Traders come on day 1, 4, 7... at 10:00.
     let d = (1 - (sim.day % TRADER_EVERY) + TRADER_EVERY) % TRADER_EVERY;
     if (d === 0 && sim.hour >= 10) d = TRADER_EVERY;

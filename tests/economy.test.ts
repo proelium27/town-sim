@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SEASON_DAYS } from '../src/sim/defs';
-import { BASE_PRICE, BROKE_RETRY, canAffordGroceries, price, tickMarket, trade } from '../src/sim/market';
+import { BASE_PRICE, BROKE_RETRY, canAffordGroceries, HARD_DAYS, HARDSHIP_FLOOR, HARDSHIP_KEEP, price, RESERVE_MIN, tickMarket, townPaid, trade } from '../src/sim/market';
 import { Sim } from '../src/sim/sim';
 import { addMemory, kinship } from '../src/sim/social';
 import type { Agent } from '../src/sim/types';
@@ -76,25 +76,128 @@ describe('the treasury', () => {
   }, 60_000);
 });
 
+/** Jumps to just after the next midnight and runs the day's bookkeeping. */
+function midnight(sim: Sim): void {
+  sim.time = Math.ceil((sim.time + 1) / 1440) * 1440 + 1;
+  tickMarket(sim);
+}
+
+describe('bonuses', () => {
+  it('share a surplus above a few days of payroll with town workers, the poorest getting most', () => {
+    const sim = new Sim(7);
+    sim.run(60);
+    const workers = sim.agents.filter(townPaid);
+    const office = sim.agents.find((a) => a.role === 'engineer')!;
+    const [poor, rich] = workers;
+    poor.money = 1;
+    rich.money = 300;
+    const officeBefore = office.money;
+    sim.ledger.wages = 300;
+    sim.treasury = 3000;
+    midnight(sim);
+    expect(sim.treasury).toBeLessThan(2500);
+    expect(sim.treasury).toBeGreaterThan(Math.max(RESERVE_MIN, 3 * 300));
+    expect(poor.money - 1).toBeGreaterThan(3 * (rich.money - 300));
+    expect(rich.money).toBeGreaterThan(300);
+    expect(office.money).toBe(officeBefore);
+    expect(sim.lastLedger.bonuses + sim.ledger.bonuses).toBeGreaterThan(0);
+    expect(sim.activity.filter((e) => e.text.startsWith('The town paid out $')).length).toBe(1);
+  });
+
+  it('are not paid while the treasury is only holding its reserve', () => {
+    const sim = new Sim(7);
+    sim.run(60);
+    for (const a of sim.agents.filter(townPaid)) a.money = 50;
+    sim.ledger.wages = 300;
+    sim.treasury = 800;
+    midnight(sim);
+    expect(sim.ledger.bonuses).toBe(0);
+    expect(sim.activity.some((e) => e.text.startsWith('The town paid out'))).toBe(false);
+  });
+
+  it('top up a town worker down to their last dollars, but not out of the last of the treasury', () => {
+    const sim = new Sim(7);
+    sim.run(60);
+    for (const a of sim.agents) a.money = 100;
+    const workers = sim.agents.filter(townPaid);
+    const [farmer] = workers;
+    farmer.money = 2;
+    sim.treasury = 300;
+    midnight(sim);
+    expect(farmer.money).toBe(HARDSHIP_FLOOR);
+    expect(workers[1].money).toBe(100);
+    expect(sim.treasury).toBe(300 - (HARDSHIP_FLOOR - 2));
+    farmer.money = 2;
+    sim.treasury = HARDSHIP_KEEP;
+    midnight(sim);
+    expect(farmer.money).toBe(2);
+    expect(sim.treasury).toBe(HARDSHIP_KEEP);
+  });
+});
+
+describe('the town economy over a few weeks', () => {
+  // Long runs are slow, so this covers a couple of game years (14 days) rather than a month.
+  for (const seed of [7, 11]) {
+    it(`seed ${seed}: the treasury stays solvent, shares its surplus, and no town worker stays broke`, () => {
+      const sim = new Sim(seed);
+      let low = Infinity;
+      let bonuses = 0;
+      const broke = new Map<number, number>();
+      let longest = 0;
+      for (let d = 0; d < 14; d++) {
+        for (let h = 0; h < 24; h++) {
+          sim.run(60);
+          low = Math.min(low, sim.treasury);
+          if (Math.floor(sim.hour) === 0) bonuses += sim.ledger.bonuses;
+        }
+        for (const a of sim.agents.filter(townPaid)) {
+          const days = a.money < 5 ? (broke.get(a.id) ?? 0) + 1 : 0;
+          broke.set(a.id, days);
+          longest = Math.max(longest, days);
+        }
+      }
+      expect(low).toBeGreaterThan(50);
+      expect(bonuses).toBeGreaterThan(50);
+      expect(longest).toBeLessThan(2);
+    }, 600_000);
+  }
+});
+
 describe('hard times', () => {
-  it('a household broke and miserable for two days packs up and leaves town', () => {
+  it('a household broke and miserable for several days in a row packs up and leaves town', () => {
     const sim = new Sim(7);
     sim.run(60);
     const hh = sim.town.households.find((h) => h.building >= 0 && sim.agents.filter((a) => a.household === h.id).length >= 2)!;
     const fam = sim.agents.filter((a) => a.household === hh.id);
     const pop = sim.agents.length;
-    for (let d = 0; d < 2; d++) {
+    expect(HARD_DAYS).toBeGreaterThanOrEqual(3);
+    for (let d = 0; d < HARD_DAYS; d++) {
+      expect(sim.agents.length).toBe(pop);
       for (const a of fam) {
         a.money = 0;
         a.mood = 10;
         addMemory(sim, a, 'broke');
       }
-      sim.time = Math.ceil((sim.time + 1) / 1440) * 1440 + 1;
-      tickMarket(sim);
+      midnight(sim);
     }
     expect(sim.agents.length).toBe(pop - fam.length);
     expect(sim.departed).toEqual(expect.arrayContaining(fam));
     expect(sim.activity.some((e) => e.text.startsWith('Hard times:'))).toBe(true);
+    // Whoever moves into that home later starts with a clean slate.
+    expect(sim.hardDays[hh.id]).toBe(0);
+  });
+
+  it('retirees draw a pension, so a grieving pensioner is not broke by definition', () => {
+    const sim = new Sim(7);
+    sim.run(60);
+    const old = sim.agents.find((a) => a.role === 'retired')!;
+    for (let d = 0; d < HARD_DAYS + 1; d++) {
+      old.money = 0;
+      old.mood = 10;
+      midnight(sim);
+      expect(old.money).toBeGreaterThanOrEqual(10);
+    }
+    expect(sim.hardDays[old.household]).toBe(0);
   });
 });
 
