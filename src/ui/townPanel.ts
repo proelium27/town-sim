@@ -19,6 +19,8 @@ const dateOf = (t: number) => {
 /** Left-sidebar Town tab: stores, the player's priorities and world events, live projects, history. */
 export class TownPanel {
   private sig = '';
+  /** New town takes two clicks: the first arms it for a few seconds. */
+  private resetArmed = false;
 
   constructor(
     private root: HTMLElement,
@@ -34,7 +36,6 @@ export class TownPanel {
       if (f) this.saves.importFile(f).catch(() => {});
     });
     root.after(picker);
-    let confirmReset = false;
     root.addEventListener('click', (e) => {
       const el = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
       if (!el) return;
@@ -54,23 +55,24 @@ export class TownPanel {
         this.saves.save();
       } else if (act === 'export') {
         this.saves.exportFile();
+      } else if (act === 'export-backup') {
+        this.saves.exportBackup();
       } else if (act === 'import') {
         picker.click();
         return;
       } else if (act === 'reset') {
         // Two clicks: the first arms it, so a stray click can't wipe a town.
-        if (!confirmReset) {
-          confirmReset = true;
-          el.textContent = 'Click again to start over';
-          el.classList.add('armed');
+        // The armed look is rendered from this field, so a re-render can't show an armed button as safe.
+        if (!this.resetArmed) {
+          this.resetArmed = true;
           setTimeout(() => {
-            confirmReset = false;
-            this.sig = '';
+            this.resetArmed = false;
+            this.update();
           }, 4000);
+        } else {
+          this.saves.reset();
           return;
         }
-        this.saves.reset();
-        return;
       }
       this.sig = '';
       this.update();
@@ -91,7 +93,7 @@ export class TownPanel {
     const sig = JSON.stringify([
       pop.length, kids, elders, beds, homeless, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
       sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
-      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(),
+      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), this.resetArmed,
     ]);
     if (sig === this.sig) return;
     this.sig = sig;
@@ -146,11 +148,13 @@ export class TownPanel {
       <section class="tp-sec">
         <h3>Saving <small>${esc(this.saves.status())}</small></h3>
         <div class="save-row">
-          <button class="btn" data-act="save" ${this.saves.enabled ? '' : 'disabled'}>Save now</button>
+          <button class="btn" data-act="save" ${this.saves.canSave ? '' : 'disabled'}>Save now</button>
           <button class="btn" data-act="export">Export</button>
-          <button class="btn" data-act="import">Import</button>
-          <button class="btn danger" data-act="reset">New town</button>
+          ${this.saves.hasBackup ? `<button class="btn" data-act="export-backup" title="Download the saved town that couldn't be read">Export backup</button>` : ''}
+          <button class="btn" data-act="import" ${this.saves.enabled ? '' : 'disabled title="Scratch towns from a ?seed= link never touch your saved town. Open the game without ?seed= to import."'}>Import</button>
+          <button class="btn danger${this.resetArmed ? ' armed' : ''}" data-act="reset" ${this.saves.enabled ? '' : 'title="Starts this scratch town over. Your saved town is untouched."'}>${this.resetArmed ? 'Click again to start over' : 'New town'}</button>
         </div>
+        ${this.saves.notice() ? `<p class="warn-line">${esc(this.saves.notice())}</p>` : ''}
       </section>
       <section class="tp-sec">
         <h3>History</h3>

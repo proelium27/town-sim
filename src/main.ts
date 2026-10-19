@@ -36,8 +36,9 @@ async function boot(): Promise<void> {
   // A ?seed= link is a scratch town: it never touches the saved one.
   const params = new URLSearchParams(location.search);
   const scratch = params.has('seed');
-  const sim = (!scratch && readSave()) || new Sim(Number(params.get('seed') ?? 7));
-  const saves = new Saves(sim, !scratch);
+  const saved = scratch ? null : readSave();
+  const sim = saved?.sim ?? new Sim(Number(params.get('seed') ?? 7));
+  const saves = new Saves(sim, !scratch, saved?.unreadable);
   const world = new WorldView(art, sim);
   const people = new AgentsView(art, sim, world);
   app.stage.addChild(world.root, people.sky, people.rain, people.overlay);

@@ -14,6 +14,8 @@ export interface NeedDef {
   low: string;
   /** Mood points lost per point below 30. */
   weight: number;
+  /** Starting value for people in saves made before this need existed (default 80). */
+  backfill?: number;
 }
 
 /** Every need, in display order. UI and mood read from here, so adding a need is one entry. */
