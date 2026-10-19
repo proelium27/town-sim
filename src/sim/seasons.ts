@@ -24,6 +24,11 @@ export function chill(sim: Sim): number {
   return 0;
 }
 
+/** Whether what's falling is snow: any winter rain, and every blizzard (whatever the season). */
+export function snowing(sim: Sim): boolean {
+  return !!sim.events.snowstorm || (!!sim.events.rain && sim.season === 3);
+}
+
 /** Crop growth multiplier for the season: nothing grows in winter. */
 export function cropSeason(sim: Sim): number {
   return [1, 1.2, 0.8, 0][sim.season];

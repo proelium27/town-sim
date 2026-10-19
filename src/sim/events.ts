@@ -1,6 +1,6 @@
 import { ageOf } from './agents';
 import { MIN_PER_DAY, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
-import { FESTIVALS } from './seasons';
+import { FESTIVALS, snowing } from './seasons';
 import { kinship } from './social';
 import { newcomers } from './life';
 import { addMemory, first, shiftOpinion, think } from './social';
@@ -81,7 +81,8 @@ const officeStaff = (sim: Sim) => sim.agents.filter((a) => ROLES[a.role].workpla
 
 export function tickEvents(sim: Sim, dt: number): void {
   const ev = sim.events;
-  ev.wet = Math.max(0, Math.min(1, ev.wet + (ev.rain ? dt / 45 : -dt / 240)));
+  // Rain wets the ground; snow doesn't.
+  ev.wet = Math.max(0, Math.min(1, ev.wet + (ev.rain && !snowing(sim) ? dt / 45 : -dt / 240)));
   if (ev.plannedDay !== sim.day) planDay(sim);
   while (ev.plan.length && ev.plan[0].at <= sim.time) {
     const e = ev.plan.shift()!;
@@ -114,7 +115,7 @@ export function tickEvents(sim: Sim, dt: number): void {
       case 'rain':
         if (!ev.rain) {
           ev.rain = { until: sim.time + e.length };
-          sim.log('It started raining', 'event', 'neutral');
+          sim.log(snowing(sim) ? 'It started snowing' : 'It started raining', 'event', 'neutral');
         }
         break;
     }
@@ -137,7 +138,9 @@ export function tickEvents(sim: Sim, dt: number): void {
     }
     ev.seasonal = null;
   }
-  if (ev.snowstorm && sim.time >= ev.snowstorm.until) {
+  const snow = snowing(sim);
+  const blizzardOver = !!ev.snowstorm && sim.time >= ev.snowstorm.until;
+  if (blizzardOver) {
     ev.snowstorm = null;
     sim.log('The blizzard blew itself out', 'event', 'neutral');
   }
@@ -150,7 +153,7 @@ export function tickEvents(sim: Sim, dt: number): void {
   }
   if (ev.rain && sim.time >= ev.rain.until) {
     ev.rain = null;
-    sim.log('The rain cleared up', 'event', 'neutral');
+    if (!blizzardOver) sim.log(snow ? 'It stopped snowing' : 'The rain cleared up', 'event', 'neutral');
   }
   for (const b of ev.birthdays) if (sim.time >= b.until) endBirthday(sim, b);
 }

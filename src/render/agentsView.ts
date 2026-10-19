@@ -9,6 +9,7 @@ import type { VehicleLight } from './lighting';
 import type { WorldView } from './worldView';
 import { ageOf, hasUmbrella } from '../sim/agents';
 import { ADULT_AGE } from '../sim/defs';
+import { snowing } from '../sim/seasons';
 
 /** Badge shown over an agent's head when a need is low. */
 export interface Badge {
@@ -220,7 +221,7 @@ export class AgentsView {
       s.carry.visible = !!a.carry;
       s.carry.position.set(Math.round(x), Math.round(y - 17 * scale));
       s.carry.zIndex = s.body.zIndex + 0.1;
-      const brolly = !!sim.events.rain && !lying && sim.map.room[a.at] < 0 && hasUmbrella(a);
+      const brolly = !!sim.events.rain && !snowing(sim) && !lying && sim.map.room[a.at] < 0 && hasUmbrella(a);
       s.umbrella.visible = brolly;
       if (brolly) {
         s.umbrella.position.set(Math.round(x + (a.facing === 'left' ? -1 : 1)), Math.round(y - 19 * scale));

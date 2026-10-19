@@ -5,7 +5,7 @@ import { ADULT_AGE, type Good, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_
 import { FOOD_PER_CROP } from './economy';
 import { CARRY, laborPlan } from './labor';
 import { buildCap, completeProject, shortOf, supplied } from './planner';
-import { chill, HEARTH_FULL } from './seasons';
+import { chill, HEARTH_FULL, snowing } from './seasons';
 import { clamp } from './rng';
 import {
   addMemory, bondNearby, converse, expireMemories, first, FRIEND, kinship, moodTarget, rel, RIVAL, say, shiftOpinion, socialGain, think,
@@ -813,7 +813,7 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
     case 'stroll':
       n.fun = Math.min(100, n.fun + 0.5 * dt);
       for (const o of sim.agents) if (o.id === a.partner && o.action.kind === 'stroll' && Math.hypot(o.x - a.x, o.y - a.y) < 4) bondNearby(sim, a, o, dt);
-      if (sim.events.rain && !hasUmbrella(a)) {
+      if (sim.events.rain && !snowing(sim) && !hasUmbrella(a)) {
         addMemory(sim, a, 'soaked');
         think(sim, a, 'And now it is raining. Great.', 'bad');
         return finish(sim, a);
@@ -1279,8 +1279,8 @@ function move(sim: Sim, a: Agent, dt: number, stage: Stage): void {
     const gap = Math.hypot(mate.x - a.x, mate.y - a.y);
     if (ahead && gap > 1.2) budget *= gap > 3 ? 0.1 : 0.5;
   } else if (a.walkWith !== undefined && (!mate || mate.walkWith !== a.id)) a.walkWith = undefined;
-  // Out in the rain without an umbrella: hurry, and get soaked anyway.
-  if (sim.events.rain && m.room[a.at] < 0 && !hasUmbrella(a)) {
+  // Out in the rain without an umbrella: hurry, and get soaked anyway. (Snow doesn't soak.)
+  if (sim.events.rain && !snowing(sim) && m.room[a.at] < 0 && !hasUmbrella(a)) {
     budget *= 1.3;
     if (!a.memories.some((x) => x.kind === 'soaked')) {
       addMemory(sim, a, 'soaked');

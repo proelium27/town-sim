@@ -1,4 +1,5 @@
 import { DAY_NAMES, GOOD_KEYS, GOODS } from '../sim/defs';
+import { snowing } from '../sim/seasons';
 import type { Sim } from '../sim/sim';
 import { statusOf } from './tracker';
 import { esc } from './util';
@@ -47,8 +48,7 @@ export class Hud {
     const night = h < 5.5 || h >= 20.5;
     this.put(this.phaseEl, 'phase', night ? MOON : h < 8 ? DAWN : h >= 17.5 ? DUSK : SUN);
     const ev = sim.events;
-    const snowing = ev.rain && sim.season === 3;
-    this.put(this.weatherEl, 'weather', ev.snowstorm ? `${SNOW}<span>Blizzard</span>` : snowing ? `${SNOW}<span>Snow</span>` : ev.rain ? `${RAIN}<span>Rain</span>` : night ? `${NIGHT}<span>Clear night</span>` : `${CLEAR}<span>${sim.season === 3 ? 'Cold' : 'Clear'}</span>`);
+    this.put(this.weatherEl, 'weather', ev.snowstorm ? `${SNOW}<span>Blizzard</span>` : snowing(sim) ? `${SNOW}<span>Snow</span>` : ev.rain ? `${RAIN}<span>Rain</span>` : night ? `${NIGHT}<span>Clear night</span>` : `${CLEAR}<span>${sim.season === 3 ? 'Cold' : 'Clear'}</span>`);
 
     const working = sim.agents.filter((a) => statusOf(a) === 'working').length;
     const asleep = sim.agents.filter((a) => statusOf(a) === 'asleep').length;

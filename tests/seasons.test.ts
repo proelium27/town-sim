@@ -98,6 +98,22 @@ describe('seasons', () => {
     expect(dropped).toBe(0);
   }, 120_000);
 
+  it('winter snow is not rain: nobody gets soaked and the ground stays dry', () => {
+    const sim = winterTown();
+    at(sim, 6, 10);
+    const wet = sim.events.wet;
+    const from = sim.time;
+    sim.events.plan.push({ at: sim.time + 1, kind: 'rain', length: 150 });
+    sim.events.plan.sort((x, y) => x.at - y.at);
+    sim.run(180);
+    const feed = sim.activity.filter((e) => e.t >= from).map((e) => e.text);
+    expect(feed).toContain('It started snowing');
+    expect(feed).toContain('It stopped snowing');
+    expect(feed).not.toContain('It started raining');
+    expect(sim.events.wet).toBeLessThanOrEqual(wet);
+    expect(sim.agents.some((a) => a.memories.some((m) => m.kind === 'soaked'))).toBe(false);
+  }, 120_000);
+
   it('a blizzard sends people indoors', () => {
     const sim = winterTown();
     at(sim, 6, 11);
