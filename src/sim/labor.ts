@@ -97,6 +97,16 @@ export function firewoodShort(sim: Sim): number {
   return Math.max(0, want - have);
 }
 
+/**
+ * When wood and stone are both short, gatherers split up in proportion to how short each is
+ * (as a share of its target), so a desperate need for wood isn't diluted by stone being one short.
+ * Each worker's share is fixed by id, so the same people keep the same job from hour to hour.
+ */
+export function gatherKind(a: Agent, woodShort: number, stoneShort: number): 'wood' | 'stone' {
+  const toStone = stoneShort / (woodShort + stoneShort);
+  return ((a.id * 0.618034) % 1) < toStone ? 'stone' : 'wood';
+}
+
 /** Best outdoor job for this worker right now, or null if there's nothing useful to do. */
 export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
   const role = a.role;
@@ -109,9 +119,10 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
   let dep: ReturnType<typeof depositSpot> | undefined;
   const storehouse = () => (dep === undefined ? (dep = depositSpot(sim, a)) : dep);
 
-  // Anything in hand goes where it belongs first (unless it's already on its way somewhere).
+  // Anything in hand goes where it belongs first. A load already on its way somewhere isn't swapped for another job.
   const delivering = a.action.leg === 'deliver' && (a.action.kind === 'haul' || a.action.kind === 'stoke');
-  if (a.carry && !delivering) {
+  if (a.carry) {
+    if (delivering) return null;
     return (() => {
       const d = storehouse();
       if (!d) return null;
@@ -179,11 +190,12 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
 
   // Gathering for the stockpile, plus the logs still to be split for winter.
   const mw = PRIORITY_WEIGHT[sim.priorities.materials];
-  const woodWant = 90 * mw - sim.stock.wood + firewoodShort(sim) * 0.7;
-  const stoneWant = 60 * mw - sim.stock.stone;
+  const woodTarget = 90 * mw + firewoodShort(sim) * 0.7;
+  const stoneTarget = 60 * mw;
+  const woodWant = woodTarget - sim.stock.wood;
+  const stoneWant = stoneTarget - sim.stock.stone;
   if ((role === 'woodcutter' || builderish) && (woodWant > 0 || stoneWant > 0)) {
-    // When both are short, gatherers split up: half chop, half quarry.
-    const kind = woodWant > 0 && stoneWant > 0 ? (a.id % 2 ? 'stone' : 'wood') : woodWant > 0 ? 'wood' : 'stone';
+    const kind = woodWant > 0 && stoneWant > 0 ? gatherKind(a, woodWant / woodTarget, stoneWant / stoneTarget) : woodWant > 0 ? 'wood' : 'stone';
     const base = role === 'woodcutter' ? 0.9 : role === 'laborer' ? 0.6 : 0.4;
     add(base, () => {
       const busy = new Set(sim.reserved.keys());
@@ -245,7 +257,7 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
 
   // Farming (nothing grows in winter; only ripe crops are worth a trip).
   const farmers = sim.agents.filter((o) => o.role === 'farmer').length;
-  if (role === 'farmer' || (role === 'laborer' && farmers < 2)) {
+  if (role === 'farmer' || (role === 'laborer' && farmers < 2 && sim.priorities.food > 0)) {
     const base = role === 'farmer' ? 1 : 0.55;
     add(base * 1.1, () => {
       const crops = m.props.filter((p) => p.use === 'farm' && free(sim, a, p) && (sim.season !== 3 || (p.growth ?? 0) >= 1));

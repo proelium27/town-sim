@@ -9,6 +9,7 @@ import type { VehicleLight } from './lighting';
 import type { WorldView } from './worldView';
 import { ageOf, hasUmbrella } from '../sim/agents';
 import { ADULT_AGE } from '../sim/defs';
+import { snowing } from '../sim/seasons';
 
 /** Badge shown over an agent's head when a need is low. */
 export interface Badge {
@@ -221,7 +222,7 @@ export class AgentsView {
       s.carry.visible = !!a.carry;
       s.carry.position.set(Math.round(x), Math.round(y - 17 * scale));
       s.carry.zIndex = s.body.zIndex + 0.1;
-      const brolly = !!sim.events.rain && !lying && sim.map.room[a.at] < 0 && hasUmbrella(a);
+      const brolly = !!sim.events.rain && !snowing(sim) && !lying && sim.map.room[a.at] < 0 && hasUmbrella(a);
       s.umbrella.visible = brolly;
       if (brolly) {
         s.umbrella.position.set(Math.round(x + (a.facing === 'left' ? -1 : 1)), Math.round(y - 19 * scale));
@@ -399,8 +400,8 @@ export class AgentsView {
     this.rain.clear();
     if (!raining) return;
     const t = realMs / 1000;
-    if (season === 3) {
-      // Snow: soft flakes drifting down and sideways; a blizzard is thicker and faster.
+    if (season === 3 || blizzard) {
+      // Snow: soft flakes drifting down and sideways; a blizzard (in any season) is thicker and faster.
       const n = blizzard ? 320 : 150;
       const fall = blizzard ? 160 : 60;
       for (let i = 0; i < n; i++) {

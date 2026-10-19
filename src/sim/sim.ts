@@ -8,7 +8,7 @@ import { tickEvents, type EventState, initialEvents } from './events';
 import { tickLife } from './life';
 import { Nav } from './nav';
 import { tickPlanner } from './planner';
-import { tickMarket } from './market';
+import { emptyLedger, tickMarket } from './market';
 import { tickPolitics } from './politics';
 import { tickSeasons } from './seasons';
 import { Rng } from './rng';
@@ -44,8 +44,8 @@ export class Sim {
   /** The town's purse: shop takings, taxes and trade in; town wages and building costs out. */
   treasury = 400;
   /** Today's money in and out, and yesterday's for the Town view. */
-  ledger = { sales: 0, taxes: 0, wages: 0, trade: 0, projects: 0 };
-  lastLedger = { sales: 0, taxes: 0, wages: 0, trade: 0, projects: 0 };
+  ledger = emptyLedger();
+  lastLedger = emptyLedger();
   ledgerDay = 0;
   /** 0 village, 1 town, 2 city. */
   tier = 0;

@@ -1,4 +1,6 @@
 import { DAY_NAMES, GOOD_KEYS, GOODS } from '../sim/defs';
+import { birthdayNames } from '../sim/events';
+import { snowing } from '../sim/seasons';
 import type { Sim } from '../sim/sim';
 import { statusOf } from './tracker';
 import { esc } from './util';
@@ -47,8 +49,7 @@ export class Hud {
     const night = h < 5.5 || h >= 20.5;
     this.put(this.phaseEl, 'phase', night ? MOON : h < 8 ? DAWN : h >= 17.5 ? DUSK : SUN);
     const ev = sim.events;
-    const snowing = ev.rain && sim.season === 3;
-    this.put(this.weatherEl, 'weather', ev.snowstorm ? `${SNOW}<span>Blizzard</span>` : snowing ? `${SNOW}<span>Snow</span>` : ev.rain ? `${RAIN}<span>Rain</span>` : night ? `${NIGHT}<span>Clear night</span>` : `${CLEAR}<span>${sim.season === 3 ? 'Cold' : 'Clear'}</span>`);
+    this.put(this.weatherEl, 'weather', ev.snowstorm ? `${SNOW}<span>Blizzard</span>` : snowing(sim) ? `${SNOW}<span>Snow</span>` : ev.rain ? `${RAIN}<span>Rain</span>` : night ? `${NIGHT}<span>Clear night</span>` : `${CLEAR}<span>${sim.season === 3 ? 'Cold' : 'Clear'}</span>`);
 
     const working = sim.agents.filter((a) => statusOf(a) === 'working').length;
     const asleep = sim.agents.filter((a) => statusOf(a) === 'asleep').length;
@@ -63,9 +64,9 @@ export class Hud {
       ['mood', mood],
     ];
     const building = sim.projects.length ? `Building ${sim.projects.length === 1 ? sim.projects[0].name : `${sim.projects.length} things`}` : '';
-    const bday = ev.birthdays[0] && sim.agent(ev.birthdays[0].host);
+    const bday = ev.birthdays[0] && birthdayNames(sim, ev.birthdays[0]);
     const race = sim.election && sim.election.year === sim.year && sim.election.stage !== 'done' ? sim.election : null;
-    const happening = [race && (race.stage === 'rally' ? 'Election rally' : 'Election day'), ev.festival && (ev.festival.name ?? 'Festival in the park'), ev.snowstorm && 'Blizzard', ev.drought && 'Drought', bday && `${bday.name.split(' ')[0]}'s birthday`, building, ev.standup && 'Standup', ev.pizza && 'Pizza in the kitchen', ev.party && 'Party in the lounge', ev.coffeeBroken && 'Coffee machine broken'].filter(Boolean).slice(0, 2) as string[];
+    const happening = [race && (race.stage === 'rally' ? 'Election rally' : 'Election day'), ev.festival && (ev.festival.name ?? 'Festival in the park'), ev.snowstorm && 'Blizzard', ev.drought && 'Drought', bday && `${bday}'s birthday`, building, ev.standup && 'Standup', ev.pizza && 'Pizza in the kitchen', ev.party && 'Party in the lounge', ev.coffeeBroken && 'Coffee machine broken'].filter(Boolean).slice(0, 2) as string[];
     this.put(
       this.statsEl,
       'stats',

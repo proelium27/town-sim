@@ -1,4 +1,5 @@
 import type { Outfit } from '../assets/loader';
+import type { Prop } from '../world/map';
 import {
   ADULT_AGE, MIN_PER_DAY, NEED_KEYS, RETIRE_AGE, ROLES, type RoleKey, SKILL_KEYS, type SkillKey, TRAITS, TRAIT_KEYS, type TraitKey, YEARS_PER_DAY,
 } from './defs';
@@ -19,6 +20,17 @@ const LAST = [
 ];
 
 export const ageOf = (sim: Sim, a: Agent): number => ((sim.time - a.birth) / MIN_PER_DAY) * YEARS_PER_DAY;
+
+const NUMERALS = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+const SUFFIX = / (I{2,3}|IV|VI{0,3}|IX|X)$/;
+
+/** "Okafor" from "Ada Okafor II": the family name, without the first name or a namesake's numeral. */
+export function surnameOf(name: string): string {
+  return name.replace(SUFFIX, '').split(' ').slice(1).join(' ');
+}
+
+/** 2 for "Ada Okafor II", 1 for "Ada Okafor". */
+const ordinalOf = (name: string): number => Math.max(1, NUMERALS.indexOf(SUFFIX.exec(name)?.[1] ?? ''));
 export const isChild = (sim: Sim, a: Agent): boolean => ageOf(sim, a) < ADULT_AGE;
 
 function pickTraits(sim: Sim, inherit: TraitKey[] = []): TraitKey[] {
@@ -99,7 +111,7 @@ export function createAgent(sim: Sim, o: NewAgentOpts): Agent {
     hairHue: look ? look.hairHue : rng.pick([0, 0, 20, 200, 300, 40]),
     hairLight: o.age >= RETIRE_AGE ? 1.6 : look ? look.hairLight : rng.pick([0.55, 0.8, 1, 1.25]),
   };
-  const surname = o.surname ?? (parents[0] ? parents[0].name.split(' ').slice(1).join(' ') : rng.pick(LAST));
+  const surname = o.surname ?? (parents[0] ? surnameOf(parents[0].name) : rng.pick(LAST));
   // Sometimes a baby carries on the name of a grandparent who has passed away.
   const living = new Set(sim.agents.map((x) => x.name.split(' ')[0]));
   const late = parents
@@ -108,7 +120,11 @@ export function createAgent(sim: Sim, o: NewAgentOpts): Agent {
     .filter((d): d is Agent => !!d && !living.has(d.name.split(' ')[0]));
   const namesake = o.age < 1 && late.length && rng.chance(0.5) ? rng.pick(late) : undefined;
   let name = namesake ? `${namesake.name.split(' ')[0]} ${surname}` : `${uniqueFirst(sim)} ${surname}`;
-  if (namesake && sim.deceased.some((d) => d.name === name)) name += ' II';
+  if (namesake) {
+    // Anyone who already carried this exact name pushes the numeral up: Ada Okafor, Ada Okafor II, Ada Okafor III.
+    const prior = [...sim.agents, ...sim.deceased].filter((d) => d.name.replace(SUFFIX, '') === name).map((d) => ordinalOf(d.name));
+    if (prior.length) name += ` ${NUMERALS[Math.min(NUMERALS.length - 1, Math.max(...prior) + 1)]}`;
+  }
   const a: Agent = {
     id: sim.nextAgentId++,
     name,
@@ -177,18 +193,23 @@ export function createAgent(sim: Sim, o: NewAgentOpts): Agent {
   return a;
 }
 
-/** Fixed desks and counters for the hand-built workplaces. */
-export function stationFor(sim: Sim, role: RoleKey, taken: Set<number>): number | null {
+/** Free desks and counters that suit a role, skipping `taken` (which is left untouched). */
+export function freeStations(sim: Sim, role: RoleKey, taken: Set<number>): Prop[] {
   const m = sim.map;
   const def = ROLES[role];
   const kindOf = (p: { room: number }) => (p.room >= 0 ? m.rooms[p.room].kind : undefined);
-  const spots = m.props.filter((p) => p.use === 'work' && !taken.has(p.id) && (
+  return m.props.filter((p) => p.use === 'work' && !taken.has(p.id) && (
     def.station === 'desk' ? kindOf(p) === 'office'
     : def.station === 'reception' ? kindOf(p) === 'lobby'
     : def.workplace === 'cafe' ? kindOf(p) === 'cafe' && p.building === undefined
     : def.workplace === 'market' ? kindOf(p) === 'shop'
     : def.workplace === 'library' ? kindOf(p) === 'library'
     : false));
+}
+
+/** Fixed desks and counters for the hand-built workplaces: picks one and marks it taken. */
+export function stationFor(sim: Sim, role: RoleKey, taken: Set<number>): number | null {
+  const spots = freeStations(sim, role, taken);
   const pick = spots.length ? sim.rng.pick(spots) : undefined;
   if (pick) taken.add(pick.id);
   return pick?.id ?? null;
@@ -267,4 +288,6 @@ export function backfillAgent(a: Agent): void {
   a.aptitude ??= { hands: 20, numbers: 20, people: 20, outdoors: 20 };
   a.wear ??= 0;
   a.needs.health ??= 100;
+  // Saves from before winter: everyone starts warm.
+  a.needs.warmth ??= 100;
 }

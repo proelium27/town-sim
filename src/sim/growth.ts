@@ -1,6 +1,6 @@
 import type { GroundKey } from '../assets/manifest';
 import { type Building, Cell } from '../world/map';
-import { triggerWorldEvent } from './events';
+import { startFestival } from './events';
 import { addMemory } from './social';
 import type { Sim } from './sim';
 
@@ -69,7 +69,11 @@ export function stampExtension(sim: Sim, site: ExtensionSite, household: number)
     }
   }
   const oldWall = east ? b.x + b.w - 1 : b.x;
+  const inner = east ? oldWall - 1 : oldWall + 1;
   for (let y = y0 + 1; y < y0 + h - 1; y++) {
+    // The bathroom sits in an east corner: keep its walls (and any inside wall) standing.
+    const i = m.idx(inner, y);
+    if (m.cell[i] !== Cell.Open || m.ground[i] === 'floorTile') continue;
     m.setCell(oldWall, y, Cell.Open);
     m.setGround(oldWall, y, 'floorWood');
     m.room[m.idx(oldWall, y)] = home.id;
@@ -92,12 +96,15 @@ export function stampExtension(sim: Sim, site: ExtensionSite, household: number)
     m.addProp({ key: 'bedSingle', x: bx, y: by, w: 1, h: 2, blocks: false, cost: 6, household, building: b.id });
     m.addProp({ key: 'plant', x: 0, y: 0, w: 0, h: 0, use: 'sleep', spot: { x: bx, y: by, facing: 'down' }, blocks: false, household, building: b.id });
   }
+  m.addProp({ key: household % 2 ? 'rugGreen' : 'rugOrange', x: east ? x0 : x0 + 1, y: y0 + 3, w: 3, h: 1, blocks: false, flat: true, building: b.id });
   m.refreshAll();
 }
 
 export const TIERS = ['Village', 'Town', 'City'] as const;
 /** People and buildings needed for each tier. */
 export const TIER_AT: [number, number][] = [[0, 0], [30, 18], [50, 30]];
+
+const CHARTER_DAY = 'Charter day';
 
 /** Promote the settlement when it's grown enough, with a Charter Day in the park. */
 export function checkTier(sim: Sim): void {
@@ -106,14 +113,22 @@ export function checkTier(sim: Sim): void {
   const [pop, blds] = TIER_AT[next];
   if (sim.agents.length < pop || sim.map.buildings.length < blds) return;
   sim.tier = next;
-  sim.log(`Northwind is now a ${TIERS[next].toLowerCase()}! There's a charter day in the park`, 'event', 'good');
-  sim.milestone(`Northwind became a ${TIERS[next].toLowerCase()}`);
+  const tier = TIERS[next].toLowerCase();
+  sim.milestone(`Northwind became a ${tier}`);
   for (const a of sim.agents) addMemory(sim, a, 'proudTown');
-  if (!sim.events.festival) {
-    triggerWorldEvent(sim, 'festival');
-    sim.events.festival!.name = 'Charter day';
+  const fest = sim.events.festival;
+  if (!fest) {
+    startFestival(sim, CHARTER_DAY);
+    sim.log(`Northwind is now a ${tier}! There's a charter day in the park`, 'event', 'good');
+  } else if (fest.name === CHARTER_DAY) {
+    sim.log(`Northwind is now a ${tier}! The charter day in the park goes on`, 'event', 'good');
+  } else {
+    // Everyone's already out in the park: the festival becomes the charter day.
+    sim.log(`Northwind is now a ${tier}! The ${(fest.name ?? 'festival').toLowerCase()} in the park becomes a charter day`, 'event', 'good');
+    fest.name = CHARTER_DAY;
   }
 }
+
 
 const paveCache = new WeakMap<object, { version: number; cells: number[] }>();
 const STREETS = new Set<GroundKey>(['sidewalk', 'plaza', 'crossH', 'crossV', 'asphalt']);
@@ -124,8 +139,11 @@ export function paveFrontier(sim: Sim): number[] {
   let c = paveCache.get(m);
   if (!c || c.version !== m.groundVersion) {
     const cells: number[] = [];
+    // Farm plots, park walks and cemetery paths are part of their lots, not the street.
+    const lot = new Uint8Array(m.ground.length);
+    for (const b of m.buildings) for (let y = b.y; y < b.y + b.h; y++) for (let x = b.x; x < b.x + b.w; x++) if (m.inBounds(x, y)) lot[m.idx(x, y)] = 1;
     for (let i = 0; i < m.ground.length; i++) {
-      if ((m.ground[i] !== 'dirt' && m.ground[i] !== 'trail') || m.room[i] >= 0 || m.cell[i] !== Cell.Open) continue;
+      if ((m.ground[i] !== 'dirt' && m.ground[i] !== 'trail') || m.room[i] >= 0 || m.cell[i] !== Cell.Open || lot[i]) continue;
       const x = m.cx(i);
       const y = m.cy(i);
       if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => m.inBounds(x + dx, y + dy) && STREETS.has(m.ground[m.idx(x + dx, y + dy)]))) cells.push(i);

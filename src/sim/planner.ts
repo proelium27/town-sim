@@ -1,13 +1,14 @@
 import type { GroundKey } from '../assets/manifest';
 import { BLUEPRINTS, type BlueprintKey } from '../world/blueprints';
 import type { Household } from '../world/town';
-import { ageOf, makeSchedule, newTask } from './agents';
-import { ADULT_AGE, billGoods, type Good, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
+import { ageOf, makeSchedule, newTask, surnameOf } from './agents';
+import { ADULT_AGE, type Bill, billGoods, type Good, GOODS, MIN_PER_DAY, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
 import { foodBalance } from './economy';
 import { checkTier, EXTENSION_W, extensionSite, type ExtensionSite, stampExtension } from './growth';
 import { bury } from './life';
+import { projectCushion } from './market';
 import { agendaWeight } from './politics';
-import { CRAFT_ROLES, hasWorkshop, RECIPES, shortfall } from './workshop';
+import { canSupply, CRAFT_ROLES, hasWorkshop, rawOf, RECIPES, shortfall } from './workshop';
 import { addMemory, first, think } from './social';
 import type { Agent, Project } from './types';
 import type { Sim } from './sim';
@@ -124,13 +125,16 @@ interface Proposal {
   extends?: ExtensionSite;
 }
 
-/** The door of a home someone's family lives in, to settle near. */
+/**
+ * The door of the parents' home, to settle near. That's often the very home the mover is
+ * leaving (a grown kid moving out), which is exactly where they want to stay close to.
+ */
 function familyHome(sim: Sim, people: Agent[]): { x: number; y: number } | undefined {
   for (const a of people) {
     for (const id of a.parents) {
       const p = sim.agent(id);
       const h = p && sim.town.households[p.household];
-      if (h && h.building >= 0 && h.id !== a.household) return h.door;
+      if (h && h.building >= 0) return h.door;
     }
   }
   return undefined;
@@ -140,7 +144,7 @@ const HOME_SUFFIX = ['home', 'house', 'cottage', 'place', 'lodge'];
 
 /** "Reyes home", or "Reyes cottage" if that name is taken. */
 function homeName(sim: Sim, a: Agent | undefined): string {
-  const surname = a ? a.name.split(' ').slice(1).join(' ') : 'Hillside';
+  const surname = a ? surnameOf(a.name) : 'Hillside';
   const taken = new Set([...sim.town.households.map((h) => h.name), ...sim.projects.map((p) => p.name), ...sim.map.buildings.map((b) => b.name)]);
   for (const s of HOME_SUFFIX) if (!taken.has(`${surname} ${s}`)) return `${surname} ${s}`;
   return `${a ? first(a) : 'New'}'s place ${sim.nextProjectId}`;
@@ -179,7 +183,9 @@ function proposals(sim: Sim): Proposal[] {
     if (mem.length > cap) {
       // A family with young ones builds on a wing; grown-up kids move out (to somewhere nearby).
       const b = sim.building(h.building);
-      const wing = b && !sim.projects.some((p) => p.extends?.building === b.id) ? extensionSite(sim, b) : null;
+      // A wing already going up is the answer for now; don't also send someone off to build.
+      if (b && sim.projects.some((p) => p.extends?.building === b.id)) continue;
+      const wing = b ? extensionSite(sim, b) : null;
       const young = mem.some((a) => ageOf(sim, a) < ADULT_AGE);
       if (wing && young) {
         out.push({ bp: 'extension', score: 1.3 * hw, reason: `the ${h.name} is bursting at the seams`, forAgents: [], proposer: mem.find((a) => ageOf(sim, a) >= ADULT_AGE) ?? mem[0], name: `${h.name} extension`, extends: wing });
@@ -199,7 +205,8 @@ function proposals(sim: Sim): Proposal[] {
   const fb = foodBalance(sim, true);
   const plannedFarms = sim.projects.filter((p) => p.blueprint === 'farm').length;
   const deficit = fb.eat - fb.produce - plannedFarms * 50;
-  if (deficit > 0 || sim.stock.food < sim.agents.length * 2) {
+  // Nobody breaks new fields in winter; nothing would grow before spring.
+  if (sim.season !== 3 && (deficit > 0 || sim.stock.food < sim.agents.length * 2)) {
     const farmer = sim.agents.find((a) => a.role === 'farmer');
     out.push({ bp: 'farm', score: (0.8 + Math.min(1, deficit / 40) + (sim.stock.food < sim.agents.length * 3 ? 0.6 : 0)) * fw, reason: sim.stock.food < sim.agents.length * 3 ? 'food stores are running low' : 'we will need more food as we grow', forAgents: [], proposer: farmer ?? charismatic(), name: `${['Sunny', 'River', 'Oak', 'Clover', 'Barley', 'Willow'][count('farm') % 6]} Farm` });
   }
@@ -323,7 +330,7 @@ export function findSite(sim: Sim, key: BlueprintKey, near?: { x: number; y: num
         }
       }
       if (!ok) continue;
-      // Farms like open land a bit out of town; everything else hugs the center.
+      // Farms like open land a bit out of town; everything else stays close to the center (or the family).
       const score = (bp.kind === 'farm' ? Math.abs(d - 30) : d) + clear * 3;
       cands.push({ x, y, score });
     }
@@ -349,11 +356,46 @@ export function findSite(sim: Sim, key: BlueprintKey, near?: { x: number; y: num
 
 // ------------------------------------------------------------------ project lifecycle
 
+/** What a new project will take: the refined bill if the workshop can keep it supplied, else plain wood and stone. */
+export function billFor(sim: Sim, key: BlueprintKey): Bill {
+  const bp = BLUEPRINTS[key];
+  return { ...(bp.refined && canSupply(sim, bp.refined) ? bp.refined : bp.cost) };
+}
+
+const RAW: Good[] = ['wood', 'stone'];
+
+/**
+ * A build that has sat a whole day waiting on workshop goods nobody is making gives up on them:
+ * whatever is still owed is swapped for the wood and stone it would have been made from.
+ */
+export function unstick(sim: Sim): void {
+  for (const pr of sim.projects) {
+    const owed = billGoods(pr.need).filter((g) => !RAW.includes(g) && shortOf(pr, g) > 0);
+    const waiting = owed.some((g) => sim.stock[g] < 1) && pr.progress >= buildCap(pr) - 0.5 && stageOf(sim, pr) !== 'clearing';
+    if (!waiting) {
+      pr.stalled = undefined;
+      continue;
+    }
+    pr.stalled ??= sim.time;
+    if (sim.time - pr.stalled < MIN_PER_DAY) continue;
+    const raw: Bill = {};
+    for (const g of owed) {
+      rawOf(g, shortOf(pr, g), raw);
+      pr.need[g] = pr.delivered[g] ?? 0;
+    }
+    for (const g of billGoods(raw)) pr.need[g] = (pr.need[g] ?? 0) + Math.ceil(raw[g]!);
+    pr.stalled = undefined;
+    sim.log(`Tired of waiting on ${owed.map((g) => GOODS[g].label.toLowerCase()).join(' and ')}, the builders will finish ${pr.name} with plain wood and stone`, 'build', 'neutral');
+  }
+}
+
 function startProject(sim: Sim, p: Proposal): Project | null {
   const bp = BLUEPRINTS[p.bp];
-  // The treasury has to be able to pay for it; a home for the homeless gets built on credit.
+  // The treasury has to be able to pay for it and still meet payroll; a home for the homeless gets built on credit,
+  // and a cemetery for the unburied only has to be affordable.
   const urgent = p.bp === 'house' && p.forAgents.some((a) => sim.town.households[a.household].building < 0);
-  if (sim.treasury < bp.coins && !urgent) return null;
+  const cushion = p.bp === 'cemetery' && sim.unburied.length ? 0 : projectCushion(sim);
+  if (sim.treasury - bp.coins < cushion && !urgent) return null;
   const wing = p.extends;
   const site = wing ? { x: wing.x, y: wing.y, doorTop: true, path: [], cost: 0 } : findSite(sim, p.bp, p.near);
   if (!site) return null;
@@ -369,7 +411,7 @@ function startProject(sim: Sim, p: Proposal): Project | null {
     h: bp.h,
     doorTop: site.doorTop,
     path: site.path,
-    need: { ...(bp.refined && hasWorkshop(sim) ? bp.refined : bp.cost) },
+    need: billFor(sim, p.bp),
     delivered: {},
     work: bp.work,
     progress: 0,
@@ -405,17 +447,7 @@ export function completeProject(sim: Sim, pr: Project): void {
   const b = bp.stamp(m, pr.x, pr.y, pr.doorTop, pr.name, hhId);
   for (const i of pr.path) if (BUILDABLE.has(m.ground[i])) m.setGround(m.cx(i), m.cy(i), 'dirt');
   m.setGround(b.door.x, b.door.y, 'plaza');
-  // Anyone standing where a wall now is steps out the front door.
-  for (const a of sim.agents) {
-    if (!m.walkable(m.cx(a.at), m.cy(a.at))) {
-      a.at = m.idx(b.door.x, b.door.y);
-      a.x = a.px = b.door.x;
-      a.y = a.py = b.door.y;
-      a.path = [];
-      a.action.stage = 'perform';
-      a.thinkIn = 0;
-    }
-  }
+  stepOut(sim, b.door);
   sim.projects = sim.projects.filter((p) => p.id !== pr.id);
   if (hhId !== undefined) {
     const h = sim.town.households[hhId];
@@ -448,12 +480,28 @@ export function completeProject(sim: Sim, pr: Project): void {
   if (pr.blueprint !== 'house') allocateRoles(sim);
 }
 
+/** Anyone standing where a wall now is steps out the front door. */
+function stepOut(sim: Sim, door: { x: number; y: number }): void {
+  const m = sim.map;
+  for (const a of sim.agents) {
+    if (!m.walkable(m.cx(a.at), m.cy(a.at))) {
+      a.at = m.idx(door.x, door.y);
+      a.x = a.px = door.x;
+      a.y = a.py = door.y;
+      a.path = [];
+      a.action.stage = 'perform';
+      a.thinkIn = 0;
+    }
+  }
+}
+
 /** The wing is up: the family spreads out into it. */
 function finishExtension(sim: Sim, pr: Project, wing: ExtensionSite): void {
   const hh = sim.town.households.find((h) => h.building === wing.building);
   sim.projects = sim.projects.filter((p) => p.id !== pr.id);
   if (!hh) return;
   stampExtension(sim, wing, hh.id);
+  stepOut(sim, sim.building(wing.building)!.door);
   for (const id of pr.builders) {
     const a = sim.agent(id);
     if (a) addMemory(sim, a, 'builtSomething');
@@ -466,18 +514,17 @@ function finishExtension(sim: Sim, pr: Project, wing: ExtensionSite): void {
 
 // ------------------------------------------------------------------ jobs
 
+/** One line of what the town wants from its flexible workers: a role, how many, and where (null: anywhere). */
+export type RoleSlot = [role: RoleKey, n: number, building: number | null];
 
-/** Shifts people in flexible jobs toward what the town needs right now. */
-export function allocateRoles(sim: Sim): void {
+/** What the town needs of its flexible workers right now, in the order jobs are filled. A role can appear more than once. */
+export function roleDemand(sim: Sim): RoleSlot[] {
   const m = sim.map;
-  const adults = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE && a.role !== 'retired');
-  const pool = adults.filter((a) => ROLES[a.role].flexible);
-  if (!pool.length) return;
   const schools = m.buildings.filter((b) => b.kind === 'school');
   const diners = m.buildings.filter((b) => b.kind === 'cafe' && b.name.includes('Diner'));
   const farms = m.buildings.filter((b) => b.kind === 'farm').length;
   const kids = sim.agents.filter((a) => ageOf(sim, a) >= 5 && ageOf(sim, a) < ADULT_AGE).length;
-  const demand: [RoleKey, number, number | null][] = [];
+  const demand: RoleSlot[] = [];
   for (const s of schools) if (kids) demand.push(['teacher', 1, s.id]);
   for (const c of m.buildings.filter((b) => b.kind === 'clinic')) demand.push(['doctor', 1, c.id]);
   for (const d of diners) demand.push(['cook', 1, d.id]);
@@ -500,15 +547,34 @@ export function allocateRoles(sim: Sim): void {
   const cold = sim.season >= 2 ? 1 : 0;
   const shop = hasWorkshop(sim) ? 1 : 0;
   demand.push(['woodcutter', Math.max(1, Math.round((sim.stock.wood < 60 || sim.stock.stone < 40 ? 2 : 1) * mw) + cold + shop), null]);
+  return demand;
+}
+
+/** Unfilled places per demanded role: the total wanted less the adults already doing it (zero or below: full). */
+export function openSlots(sim: Sim, demand: RoleSlot[] = roleDemand(sim)): Map<RoleKey, number> {
+  const open = new Map<RoleKey, number>();
+  for (const [r, n] of demand) open.set(r, (open.get(r) ?? 0) + n);
+  for (const a of sim.agents) if (open.has(a.role) && ageOf(sim, a) >= ADULT_AGE) open.set(a.role, open.get(a.role)! - 1);
+  return open;
+}
+
+/** Shifts people in flexible jobs toward what the town needs right now. */
+export function allocateRoles(sim: Sim): void {
+  const adults = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE && a.role !== 'retired');
+  const pool = adults.filter((a) => ROLES[a.role].flexible);
+  if (!pool.length) return;
+  const demand = roleDemand(sim);
 
   const assigned = new Set<number>();
   const changes: string[] = [];
-  // Someone whose own trade is hiring isn't held in another job.
-  const hiring = new Set(demand.map(([r]) => r));
-  const calledAway = (a: Agent, role: RoleKey) => a.career !== undefined && a.career !== role && hiring.has(a.career);
+  // Someone whose own trade has an opening isn't held in another job.
+  const open = openSlots(sim, demand);
+  const calledAway = (a: Agent, role: RoleKey) => a.career !== undefined && a.career !== role && (open.get(a.career) ?? 0) > 0;
   for (const [role, n, building] of demand) {
-    // Keep people where they are when possible; then those who trained for it; then anyone.
-    const already = pool.filter((a) => !assigned.has(a.id) && a.role === role && (building === null || a.workBuilding === building) && !calledAway(a, role));
+    // Keep people where they are when possible (those trained for it first); then those who trained for it; then anyone.
+    const already = pool
+      .filter((a) => !assigned.has(a.id) && a.role === role && (building === null || a.workBuilding === building) && !calledAway(a, role))
+      .sort((x, y) => Number(y.career === role) - Number(x.career === role));
     const pick = [...already];
     for (const a of pool) if (pick.length < n && !assigned.has(a.id) && !pick.includes(a) && a.career === role) pick.push(a);
     for (const pass of [0, 1]) {
@@ -520,8 +586,9 @@ export function allocateRoles(sim: Sim): void {
     }
     for (const a of pick.slice(0, n)) {
       assigned.add(a.id);
-      if (a.role !== role || (building !== null && a.workBuilding !== building)) setRole(sim, a, role, building);
-      if (!already.includes(a)) changes.push(`${first(a)} is now a ${ROLES[role].title.toLowerCase()}`);
+      if (a.role === role && (building === null || a.workBuilding === building)) continue;
+      setRole(sim, a, role, building);
+      changes.push(`${first(a)} is now a ${ROLES[role].title.toLowerCase()}`);
     }
   }
   for (const a of pool) if (!assigned.has(a.id) && a.role !== 'laborer') {
@@ -554,6 +621,7 @@ export function tickPlanner(sim: Sim, dt: number): void {
   sim.timers.plan -= dt;
   if (sim.timers.plan > 0) return;
   sim.timers.plan = 120;
+  unstick(sim);
   const builders = sim.agents.filter((a) => a.role === 'builder' || a.role === 'laborer').length;
   checkTier(sim);
   // A bigger town can take on more at once.

@@ -46,7 +46,11 @@ export class WorldView {
   readonly smoke = new Smoke();
   /** Rain puddles on paths and pavement; faded in by how wet the ground is. */
   readonly puddles = new Graphics();
+  /** The lawnVersion and groundVersion the puddles were drawn for. */
   private puddleVersion = -1;
+  private puddleGround = -1;
+  /** Real seconds before wear alone (trails coming and going) may redraw the puddles again. */
+  private puddleWait = 0;
   /** Season the ground and trees were last painted for. */
   private season = -1;
   private sprites = new Map<number, Sprite>();
@@ -250,12 +254,17 @@ export class WorldView {
     const wet = sim.events.wet ?? 0;
     this.puddles.visible = wet > 0.02;
     this.puddles.alpha = Math.min(1, wet * 1.2);
-    if (this.puddles.visible && this.puddleVersion !== this.map.groundVersion) this.drawPuddles();
+    if (!this.puddles.visible) return;
+    const m = this.map;
+    this.puddleWait -= dt;
+    if (this.puddleVersion !== m.lawnVersion || (this.puddleGround !== m.groundVersion && this.puddleWait <= 0)) this.drawPuddles();
   }
 
   private drawPuddles(): void {
     const m = this.map;
-    this.puddleVersion = m.groundVersion;
+    this.puddleVersion = m.lawnVersion;
+    this.puddleGround = m.groundVersion;
+    this.puddleWait = 5;
     const g = this.puddles.clear();
     const WET = new Set(['dirt', 'trail', 'worn', 'sidewalk', 'plaza', 'asphalt']);
     for (let i = 0; i < m.ground.length; i++) {
@@ -279,6 +288,8 @@ export class WorldView {
       // A new season repaints the whole ground and recolors the trees.
       this.season = this.sim.season;
       for (let i = 0; i < m.w * m.h; i++) this.paintGround(i);
+      // Wear that was waiting to be painted still needs its lawn patch redrawn.
+      for (const i of m.groundDirty) this.shading.touch(i);
       m.groundDirty.length = 0;
       this.groundTex.source.update();
       this.shading.season = this.season;
@@ -286,7 +297,10 @@ export class WorldView {
       for (const [id, s] of this.sprites) this.tintFoliage(s, this.keys.get(id) ?? '');
     }
     if (m.groundDirty.length) {
-      for (const i of m.groundDirty) this.paintGround(i);
+      for (const i of m.groundDirty) {
+        this.paintGround(i);
+        this.shading.touch(i);
+      }
       m.groundDirty.length = 0;
       this.groundTex.source.update();
     }

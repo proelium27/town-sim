@@ -153,6 +153,8 @@ export interface Agent {
   immuneUntil?: number;
   /** What past illnesses have taken out of them, added to age-related frailty. */
   wear: number;
+  /** When the town heard they were growing frail. Old age only takes those the family saw coming. */
+  frailSince?: number;
 }
 
 export interface Project {
@@ -178,6 +180,8 @@ export interface Project {
   forAgents: number[];
   started: number;
   builders: Set<number>;
+  /** When the build began waiting on workshop goods that aren't coming (see unstick). */
+  stalled?: number;
 }
 
 export type ActivityKind = 'work' | 'social' | 'life' | 'event' | 'build' | 'family';
