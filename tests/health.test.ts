@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { idle } from '../src/sim/ai';
 import { triggerWorldEvent } from '../src/sim/events';
 import { fallIll, FRAIL_NOTICE, frailty, needsCare, tickTownHealth } from '../src/sim/health';
 import { kinship } from '../src/sim/social';
@@ -75,6 +76,32 @@ describe('off sick', () => {
   }, 120_000);
 });
 
+describe('care', () => {
+  it('only counts when the carer is actually with the patient', () => {
+    const sit = (near: boolean) => {
+      const sim = new Sim(7);
+      sim.run(1440 + 7 * 60 - sim.time);
+      const patient = sim.agents.find((a) => a.role !== 'child' && sim.agents.some((o) => o.id !== a.id && kinship(sim, o, a) && o.role !== 'child'))!;
+      const carer = sim.agents.find((o) => o.id !== patient.id && kinship(sim, o, patient) && o.role !== 'child')!;
+      fallIll(sim, patient, 'flu', '');
+      const m = sim.map;
+      const far = [...m.room.keys()].find((c) => m.room[c] < 0 && m.walkable(m.cx(c), m.cy(c)) && Math.hypot(m.cx(c) - patient.x, m.cy(c) - patient.y) > 15)!;
+      const cell = near ? patient.at : far;
+      Object.assign(carer, { at: cell, x: m.cx(cell), y: m.cy(cell), px: m.cx(cell), py: m.cy(cell), path: [], bladder: 100, thinkIn: 100 });
+      carer.needs.hunger = 100;
+      carer.action = { ...idle(sim, carer), kind: 'care', label: 'Looking after', stage: 'perform', timer: 1, partnerId: patient.id };
+      sim.run(2);
+      return {
+        cared: patient.memories.some((x) => x.kind === 'caredFor'),
+        lookedAfter: carer.memories.some((x) => x.kind === 'lookedAfter'),
+        boosted: (patient.illness?.caredUntil ?? 0) > sim.time,
+      };
+    };
+    expect(sit(true)).toEqual({ cared: true, lookedAfter: true, boosted: true });
+    expect(sit(false)).toEqual({ cared: false, lookedAfter: false, boosted: false });
+  }, 120_000);
+});
+
 describe('clinic', () => {
   it('a doctor at the clinic treats patients, who recover faster', () => {
     const run = (withClinic: boolean) => {
@@ -101,6 +128,29 @@ describe('clinic', () => {
     const clinic = run(true);
     expect(clinic.treated).toBe(true);
     expect(clinic.minutes).toBeLessThan(home.minutes);
+  }, 120_000);
+
+  it('a patient first seen while the clinic was out of medicine gets some once it is back in', () => {
+    const sim = new Sim(7);
+    sim.run(1440 + 7 * 60 - sim.time);
+    const site = findSite(sim, 'clinic')!;
+    const bp = BLUEPRINTS.clinic;
+    for (const p of sim.map.props.filter((p) => p.x >= site.x - 1 && p.x <= site.x + bp.w && p.y >= site.y - 1 && p.y <= site.y + bp.h)) sim.map.removeProp(p);
+    bp.stamp(sim.map, site.x, site.y, site.doorTop, 'Test Clinic');
+    sim.stock.medicine = 0;
+    sim.stock.herbs = 0;
+    allocateRoles(sim);
+    const patient = sim.agents.find((a) => a.role === 'engineer')!;
+    fallIll(sim, patient, 'flu', '');
+    patient.illness!.severity = 0.8;
+    patient.illness!.age = 0.25 * 1.1 * 1440;
+    for (let k = 0; k < 8 * 6 && !patient.illness?.treated; k++) sim.run(10);
+    expect(patient.illness?.treated).toBe(true);
+    expect(patient.illness!.medicine).toBe(false);
+    sim.stock.medicine = 3;
+    for (let k = 0; k < 8 * 6 && patient.illness && !patient.illness.medicine; k++) sim.run(10);
+    expect(patient.illness?.medicine).toBe(true);
+    expect(sim.activity.some((e) => e.text.includes(`gave ${patient.name.split(' ')[0]} medicine`))).toBe(true);
   }, 120_000);
 });
 

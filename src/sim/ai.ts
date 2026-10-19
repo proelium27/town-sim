@@ -1062,16 +1062,23 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       n.energy = Math.min(100, n.energy + 0.25 * dt);
       const ill = a.illness;
       if (ill && sim.roomOf(a)?.kind === 'clinic') {
-        // Seen by the doctor if they're in; medicine if the clinic has any.
+        // Seen by the doctor if they're in; medicine if the clinic has any, now or on a later visit.
         const doc = sim.agents.find((d) => d.role === 'doctor' && d.action.kind === 'work' && d.action.stage === 'perform' && sim.roomOf(d)?.kind === 'clinic');
-        if (doc && !ill.treated) {
+        const dose = !ill.medicine && sim.stock.medicine >= 1;
+        if (doc && (!ill.treated || dose)) {
+          const firstVisit = !ill.treated;
           ill.treated = true;
-          if (!ill.medicine && sim.stock.medicine >= 1) {
+          if (dose) {
             sim.stock.medicine -= 1;
             ill.medicine = true;
           }
-          think(sim, a, `${first(doc)} says I'll be fine${ill.medicine ? ' with this medicine' : ''}.`, 'good');
-          sim.log(`Dr. ${first(doc)} treated ${first(a)}${ill.medicine ? ' with medicine' : ''}`, 'life', 'good', doc, a);
+          if (firstVisit) {
+            think(sim, a, `${first(doc)} says I'll be fine${ill.medicine ? ' with this medicine' : ''}.`, 'good');
+            sim.log(`Dr. ${first(doc)} treated ${first(a)}${ill.medicine ? ' with medicine' : ''}`, 'life', 'good', doc, a);
+          } else {
+            think(sim, a, `${first(doc)} had some medicine for me this time.`, 'good');
+            sim.log(`Dr. ${first(doc)} gave ${first(a)} medicine`, 'life', 'good', doc, a);
+          }
         }
       }
       if (!ill || tick()) finish(sim, a);
@@ -1080,6 +1087,9 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
     case 'care': {
       const who = sim.agent(act.partnerId);
       if (!who) return finish(sim, a);
+      // Only sitting with them counts: if they've gone elsewhere, think again.
+      const room = sim.roomOf(a);
+      if (!(room ? room === sim.roomOf(who) : Math.hypot(who.x - a.x, who.y - a.y) <= 3)) return finish(sim, a);
       a.facing = faceToward(a, who);
       bondNearby(sim, a, who, dt);
       if (sim.rng.chance(0.01 * dt)) say(sim, a, who.illness ? 'get well soon' : 'how are you feeling?', 'good', 3);
