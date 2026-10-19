@@ -33,9 +33,9 @@ export function hasWorkshop(sim: Sim): boolean {
   return sim.map.buildings.some((b) => b.kind === 'workshop');
 }
 
-/** The town's own workers who use tools on the job. */
+/** The town's own workers who use tools on the job (farming goes no faster with them). */
 export function toolUsers(sim: Sim): number {
-  return sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE && ['builder', 'farmer', 'woodcutter', 'laborer', 'carpenter', 'mason', 'toolmaker'].includes(a.role)).length;
+  return sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE && ['builder', 'woodcutter', 'laborer', 'carpenter', 'mason', 'toolmaker'].includes(a.role)).length;
 }
 
 /** How much of a good the town wants on hand: a working buffer plus whatever builds still need. */

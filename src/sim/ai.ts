@@ -126,6 +126,9 @@ function randomCellIn(sim: Sim, x: number, y: number, w: number, h: number): num
 
 const roomKind = (sim: Sim, p: Prop) => (p.room >= 0 ? sim.map.rooms[p.room].kind : undefined);
 
+/** Jobs that go faster with tools (they run on laborRate), and so wear them down. */
+const TOOL_WORK: ActionKind[] = ['build', 'chop', 'mine', 'split', 'craft'];
+
 // ------------------------------------------------------------------ needs
 
 function updateNeeds(sim: Sim, a: Agent, dt: number, stage: Stage): void {
@@ -135,7 +138,7 @@ function updateNeeds(sim: Sim, a: Agent, dt: number, stage: Stage): void {
   const asleep = k === 'sleep' && performing;
   const working = (k === 'work' || k === 'build' || k === 'chop' || k === 'mine' || k === 'farm' || k === 'haul' || k === 'teach' || k === 'split' || k === 'stoke' || k === 'craft') && performing;
   // Tools wear out with use.
-  if (a.tool > 0 && performing && (k === 'build' || k === 'chop' || k === 'mine' || k === 'farm' || k === 'split' || k === 'craft')) {
+  if (a.tool > 0 && performing && TOOL_WORK.includes(k)) {
     a.tool -= 0.0012 * dt;
     if (a.tool <= 0) {
       a.tool = 0;
@@ -605,7 +608,7 @@ function workOptions(sim: Sim, a: Agent, o: Option[], workTime: boolean, h: numb
         if (prop && sim.reserved.has(prop.id) && sim.reserved.get(prop.id) !== a.id && plan.kind !== 'deposit') return false;
         const ok = start(sim, a, plan.kind, plan.label, plan.reason, target, plan.timer, s, { propId: plan.propId, projectId: plan.projectId, leg: plan.leg, material: plan.material, household: plan.household });
         // Pick up a fresh set of tools on the way out, if the workshop has made any.
-        if (ok && a.tool <= 0 && sim.stock.tools >= 1 && plan.kind !== 'deposit') {
+        if (ok && a.tool <= 0 && sim.stock.tools >= 1 && TOOL_WORK.includes(plan.kind)) {
           sim.stock.tools -= 1;
           a.tool = 1;
           think(sim, a, 'New tools. This will go quicker.', 'good');

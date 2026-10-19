@@ -53,4 +53,23 @@ describe('workshop', () => {
     expect(home.need.furniture).toBe(2);
     expect(home.need.planks).toBeGreaterThan(0);
   }, 120_000);
+
+  it('only jobs that go faster with tools pick them up or wear them down', () => {
+    const sim = new Sim(7);
+    sim.run(9 * 60);
+    sim.stock.tools = 30;
+    const farmers = sim.agents.filter((a) => a.role === 'farmer');
+    expect(farmers.length).toBeGreaterThanOrEqual(2);
+    for (const a of sim.agents) a.tool = 0;
+    farmers[0].tool = 0.5;
+    let farmed = false;
+    for (let k = 0; k < 18; k++) {
+      sim.run(10);
+      farmed ||= farmers.some((a) => a.action.kind === 'farm' && a.action.stage === 'perform');
+    }
+    expect(farmed).toBe(true);
+    // Farming is no quicker with tools: farmers neither take a set nor wear one out.
+    expect(farmers[0].tool).toBe(0.5);
+    expect(farmers.slice(1).every((a) => a.tool === 0)).toBe(true);
+  }, 120_000);
 });
