@@ -1,4 +1,4 @@
-import { emptyStock, NEED_KEYS } from './defs';
+import { emptyStock, NEED_KEYS, NEEDS } from './defs';
 import { backfillAgent } from './agents';
 import { Nav } from './nav';
 import { Sim } from './sim';
@@ -22,7 +22,9 @@ function replacer(this: unknown, key: string, v: unknown): unknown {
   return v;
 }
 
-function reviver(_key: string, v: unknown): unknown {
+function reviver(key: string, v: unknown): unknown {
+  // A hand-edited file could swap the Sim's prototype through Object.assign.
+  if (key === '__proto__' || key === 'constructor') return undefined;
   if (!v || typeof v !== 'object' || Array.isArray(v)) return v;
   const o = v as Record<string, unknown>;
   if ('$n' in o) return Number(o.$n);
@@ -54,8 +56,10 @@ const MIGRATIONS: ((s: Record<string, unknown>) => void)[] = [];
 /** Rebuilds a running town from saveSim's output. Throws on files it can't read. */
 export function loadSim(text: string): Sim {
   const file = JSON.parse(text, reviver) as SaveFile;
-  if (!file || typeof file.v !== 'number' || !file.sim) throw new Error('This is not a Townsfolk save file.');
-  if (file.v > SAVE_VERSION) throw new Error('This save was made by a newer version of Townsfolk.');
+  if (!file || typeof file !== 'object' || !Number.isInteger(file.v) || file.v < 1 || !file.sim || typeof file.sim !== 'object') {
+    throw new Error('This is not a Townsfolk save file.');
+  }
+  if (file.v > SAVE_VERSION) throw new Error(`This save was made by a newer version of Townsfolk (save version ${file.v}; this one reads up to ${SAVE_VERSION}).`);
   for (let v = file.v; v < SAVE_VERSION; v++) MIGRATIONS[v - 1](file.sim);
 
   const { town, rng, ...rest } = file.sim as { town: Record<string, unknown>; rng: { s: number } } & Record<string, unknown>;
@@ -70,14 +74,21 @@ export function loadSim(text: string): Sim {
   // Anything added since the save was made starts from a sensible default.
   sim.stock = { ...emptyStock(), ...sim.stock };
   for (const a of [...sim.agents, ...sim.deceased]) {
-    // Specific defaults first; any need still missing gets the generic one.
     backfillAgent(a);
-    for (const k of NEED_KEYS) a.needs[k] ??= 80;
+    // Per-person backfills that set a need go before this generic fallback, or it would fill the need first.
+    // Prefer NeedDef.backfill in defs.ts for a need's starting value.
+    for (const k of NEED_KEYS) a.needs[k] ??= NEEDS[k].backfill ?? 80;
   }
   sim.events.birthdays ??= [];
   sim.events.wet ??= 0;
   sim.events.seasonal ??= null;
   sim.events.snowstorm ??= null;
   if (sim.fuel.length < sim.town.households.length) sim.fuel = sim.town.households.map((_, i) => sim.fuel[i] ?? 8);
+  // Parties saved before joint birthdays had a single host.
+  for (const b of sim.events.birthdays as (typeof sim.events.birthdays[number] & { host?: number; age?: number })[]) {
+    if (!b.hosts) b.hosts = b.host !== undefined ? [b.host] : [];
+    delete b.host;
+    delete b.age;
+  }
   return sim;
 }
