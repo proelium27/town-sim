@@ -123,6 +123,7 @@ export class AgentsView {
     let best: Agent | null = null;
     let bd = Infinity;
     for (const a of this.sim.agents) {
+      if (this.covered(a) > 0.5) continue;
       const s = this.sprites.get(a.id)!;
       const [px, py] = cam.toScreen(s.body.x, s.body.y);
       const z = cam.zoom;
@@ -140,6 +141,11 @@ export class AgentsView {
   screenPos(id: number, cam: Camera): [number, number] | null {
     const s = this.sprites.get(id);
     return s ? cam.toScreen(s.body.x, s.body.y) : null;
+  }
+
+  /** How much a roof covers this person (0 = in plain view). */
+  private covered(a: Agent): number {
+    return this.world.exteriors.coverAt(Math.round(a.x), Math.round(a.y));
   }
 
   update(alpha: number, dtSec: number, speed: number, cam: Camera, viewW: number, viewH: number): void {
@@ -190,7 +196,8 @@ export class AgentsView {
 
       // Screen-space overlay
       const [sx, sy] = cam.toScreen(x, y);
-      const onScreen = sx > -60 && sy > -60 && sx < viewW + 60 && sy < viewH + 60;
+      // Indoors under a roof: nothing floats over the building except for the selected person.
+      const onScreen = sx > -60 && sy > -60 && sx < viewW + 60 && sy < viewH + 60 && (a.id === this.selected || this.covered(a) < 0.5);
       const z = cam.zoom;
       const sel = a.id === this.selected;
       const hov = a.id === this.hovered;
@@ -336,7 +343,8 @@ export class AgentsView {
       this.lastSync = realMs;
       this.world.shading.sync();
     }
-    this.world.lighting.update(hour, raining, this.occupiedRooms(), this.vehicleLights());
+    const ext = this.world.exteriors;
+    this.world.lighting.update(hour, raining, this.occupiedRooms(), this.vehicleLights(), ext.roofedRooms(), ext.litWindows());
     this.sky.clear();
     this.rain.clear();
     if (!raining) return;

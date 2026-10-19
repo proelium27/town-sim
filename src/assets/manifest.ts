@@ -119,6 +119,37 @@ export const PROPS = {
 
 export type PropKey = keyof typeof PROPS;
 
+// ------------------------------------------------------------------ building exteriors (3/4 view)
+
+/** Wall, window, door, awning and roof pieces for building exteriors, from the Modern City sheet. */
+export const EXTERIOR = {
+  wallBrick: c(2, 5),
+  wallStone: c(5, 5),
+  wallSand: c(9, 5),
+  wallGlass: c(14, 9),
+  wallGlass2: c(13, 9),
+  wallPlank: c(21, 14),
+  winWood: c(25, 15),
+  winWood4: c(26, 16),
+  winSteel: c(25, 18),
+  winSteel4: c(26, 19),
+  winArchTop: c(28, 18),
+  winArchBottom: c(28, 19),
+  doorBrown: c(20, 26),
+  doorGreen: c(23, 26),
+  doorOrange: c(26, 26),
+  doorGlassL: c(23, 23),
+  doorGlassR: c(24, 23),
+  awningGreen: c(25, 12),
+  awningOrange: c(29, 12),
+  roofFlat: c(13, 0),
+  roofFlat2: c(12, 1),
+  acUnit: c(27, 14),
+  vent: c(25, 14),
+  signCafe: cpx(565, 116, 21, 8),
+  signRetail: cpx(563, 131, 26, 9),
+} satisfies Record<string, FrameRef>;
+
 // ------------------------------------------------------------------ vehicles
 
 /** Side views are 36x24, top views 22x29. */

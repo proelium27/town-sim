@@ -81,6 +81,9 @@ async function boot(): Promise<void> {
   let lastSpeed = 1;
   let selected: number | null = null;
   let following = false;
+  /** Roofs: shown from afar and lifted up close; R forces them off. */
+  let roofsOff = false;
+  const ROOF_LIFT_ZOOM = 3;
   const select = (id: number | null, focus = false) => {
     selected = id;
     people.selected = id;
@@ -183,6 +186,7 @@ async function boot(): Promise<void> {
     else if (e.code === 'KeyF' && selected !== null) following = !following;
     else if (e.code === 'KeyP') tracker.toggle();
     else if (e.code === 'KeyT') tracker.setView(tracker.view === 'town' ? 'people' : 'town');
+    else if (e.code === 'KeyR') roofsOff = !roofsOff;
     else if (e.code === 'KeyL') activity.toggle();
     else if (e.key === '/') {
       e.preventDefault();
@@ -225,6 +229,11 @@ async function boot(): Promise<void> {
     }
     camera.update(dt);
     world.sync();
+    const open = new Set<number>();
+    const sel = selected !== null ? sim.agent(selected) : undefined;
+    const home = sel ? world.exteriors.buildingAt(Math.round(sel.x), Math.round(sel.y)) : undefined;
+    if (home) open.add(home.id);
+    world.exteriors.update(dt, open, roofsOff || camera.zoom >= ROOF_LIFT_ZOOM);
     world.root.scale.set(camera.zoom);
     world.root.position.set(Math.round(camera.cx - camera.x * camera.zoom), Math.round(camera.cy - camera.y * camera.zoom));
     const alpha = speed > 0 ? acc / STEP_MS : 1;
