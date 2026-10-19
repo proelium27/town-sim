@@ -42,6 +42,11 @@ export function frailty(sim: Sim, a: Agent): number {
   return Math.min(1, Math.max(0, (ageOf(sim, a) - 62) / 32) + a.wear);
 }
 
+/** Frail enough that the family is told and starts visiting. */
+export const FRAIL_WARN = 0.45;
+/** Old age gives the family at least this long to gather once they've been told. */
+export const FRAIL_NOTICE = 12 * 60;
+
 export function isIll(a: Agent): boolean {
   return !!a.illness;
 }
@@ -117,10 +122,14 @@ export function tickTownHealth(sim: Sim): void {
     }
     const f = frailty(sim, a);
     const sev = a.illness?.severity ?? 0;
-    const risk = f ** 3 * 0.06 + (sev > 0.6 ? f * sev * 0.08 : 0);
+    // Old age only comes once the family has had warning and time to gather; serious illness needn't wait.
+    const forewarned = a.frailSince !== undefined && sim.time - a.frailSince >= FRAIL_NOTICE;
+    const risk = (forewarned ? f ** 3 * 0.06 : 0) + (sev > 0.6 ? f * sev * 0.08 : 0);
     if (risk > 0 && sim.rng.chance(risk)) {
       die(sim, a, a.illness && sev > 0.4 ? `${ILLNESS[a.illness.kind].label.replace(/^(a|the) /, '')}, at ${Math.floor(ageOf(sim, a))}` : `old age at ${Math.floor(ageOf(sim, a))}`);
-    } else if (f > 0.75 && !a.memories.some((m) => m.kind === 'frail')) {
+    } else if (f > FRAIL_WARN && a.frailSince === undefined) {
+      // Told once; the 'frail' memory fades but they stay on the family's mind.
+      a.frailSince = sim.time;
       addMemory(sim, a, 'frail');
       think(sim, a, "I'm not as strong as I was.", 'neutral');
       sim.log(`${first(a)} is growing frail; the family is visiting more`, 'family', 'neutral', a);
@@ -131,7 +140,7 @@ export function tickTownHealth(sim: Sim): void {
 /** Who this person might go and look after: ill or frail family, most in need first. */
 export function needsCare(sim: Sim, a: Agent): Agent | undefined {
   return sim.agents
-    .filter((o) => o.id !== a.id && kinship(sim, a, o) && ((o.illness?.severity ?? 0) > 0.15 || frailty(sim, o) > 0.75))
+    .filter((o) => o.id !== a.id && kinship(sim, a, o) && ((o.illness?.severity ?? 0) > 0.15 || o.frailSince !== undefined))
     .filter((o) => !a.memories.some((m) => m.kind === 'lookedAfter' && m.about === o.id))
     .sort((x, y) => (y.illness?.severity ?? 0) + frailty(sim, y) - ((x.illness?.severity ?? 0) + frailty(sim, x)))[0];
 }

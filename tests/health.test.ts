@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { triggerWorldEvent } from '../src/sim/events';
-import { fallIll, frailty } from '../src/sim/health';
+import { fallIll, FRAIL_NOTICE, frailty, needsCare, tickTownHealth } from '../src/sim/health';
+import { kinship } from '../src/sim/social';
 import { findSite } from '../src/sim/planner';
 import { allocateRoles } from '../src/sim/planner';
 import { Sim } from '../src/sim/sim';
@@ -89,5 +90,33 @@ describe('frailty', () => {
     expect(old).toBeGreaterThan(0.6);
     a.wear = 0.1;
     expect(frailty(sim, a)).toBeCloseTo(Math.min(1, old + 0.1));
+  });
+
+  it('old age never comes without warning: the frail are announced once, and family visit first', () => {
+    const sim = new Sim(7);
+    // Everyone is 70, just short of frail; then the years roll on, two hours at a time.
+    for (const a of sim.agents) a.birth = sim.time - (70 / 2) * 1440;
+    const elder = sim.agents.find((a) => sim.agents.some((o) => o.id !== a.id && kinship(sim, o, a)))!;
+    const kin = sim.agents.find((o) => o.id !== elder.id && kinship(sim, o, elder))!;
+    let oldAge = 0;
+    for (let k = 0; k < 12 * 20 && sim.agents.length; k++) {
+      sim.time += 120;
+      const before = new Map(sim.agents.map((a) => [a.id, a.frailSince]));
+      tickTownHealth(sim);
+      if (elder.frailSince !== undefined && sim.agents.includes(kin) && sim.agents.includes(elder)) expect(needsCare(sim, kin)).toBeDefined();
+      for (const [id, since] of before) {
+        if (sim.agents.some((a) => a.id === id)) continue;
+        const dead = sim.person(id)!;
+        if (!sim.activity.some((e) => e.text === `${dead.name} passed away (old age at ${Math.floor((sim.time - dead.birth) / 720)})`)) continue;
+        oldAge++;
+        expect(since).toBeDefined();
+        expect(sim.time - since!).toBeGreaterThanOrEqual(FRAIL_NOTICE);
+      }
+    }
+    expect(oldAge).toBeGreaterThan(5);
+    // Announced once each, however long they lived.
+    for (const a of [...sim.agents, ...sim.deceased]) {
+      expect(sim.activity.filter((e) => e.text.startsWith(`${a.name.split(' ')[0]} is growing frail`) && e.agentId === a.id).length).toBeLessThanOrEqual(1);
+    }
   });
 });

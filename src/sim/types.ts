@@ -153,6 +153,8 @@ export interface Agent {
   immuneUntil?: number;
   /** What past illnesses have taken out of them, added to age-related frailty. */
   wear: number;
+  /** When the town heard they were growing frail. Old age only takes those the family saw coming. */
+  frailSince?: number;
 }
 
 export interface Project {
