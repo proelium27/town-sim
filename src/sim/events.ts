@@ -24,14 +24,21 @@ export interface Birthday {
   host: number;
   household: number;
   age: number;
-  /** A round-number birthday: friends come too, not just family. */
+  /** The host passed a milestone age (50, 80, 100) since their last party: friends come too, not just family. */
   milestone: boolean;
   until: number;
   guests: Set<number>;
   cake?: number;
 }
 
-const MILESTONES = [18, 30, 50, 65, 80, 90, 100];
+/** Not 18: growing up already marks it, and with parties 16 years of age apart nearly every first adult party would pass it. */
+const MILESTONES = [50, 80, 100];
+
+/** The milestone age passed since last year's party, if any. Parties are a calendar year apart, which is many years of age. */
+export function milestoneFor(age: number): number | undefined {
+  const before = age - YEAR_DAYS * YEARS_PER_DAY;
+  return MILESTONES.find((m) => m > before && m <= age);
+}
 
 /** Day of the calendar year (0..7) someone was born on. */
 export function birthdayOf(birth: number): number {
@@ -133,8 +140,8 @@ function startBirthday(sim: Sim, hostId: number, length: number): void {
   if (!a || a.lastBirthday >= sim.year) return;
   a.lastBirthday = sim.year;
   const age = Math.floor(ageOf(sim, a));
-  const before = age - YEAR_DAYS * YEARS_PER_DAY;
-  const milestone = MILESTONES.some((m) => m > before && m <= age);
+  const mark = milestoneFor(age);
+  const milestone = mark !== undefined;
   const hh = sim.town.households[a.household];
   if (hh.building < 0) {
     addMemory(sim, a, 'birthday');
@@ -146,8 +153,9 @@ function startBirthday(sim: Sim, hostId: number, length: number): void {
   const table = m.props.find((p) => p.room === hh.room && /^table/.test(p.key));
   const cake = table ? m.addProp({ key: 'cake', drawn: true, x: table.x, y: table.y, w: 1, h: 1, blocks: true }) : undefined;
   sim.events.birthdays.push({ host: a.id, household: a.household, age, milestone, until: sim.time + length, guests: new Set([a.id]), cake: cake?.id });
-  think(sim, a, milestone ? `${age}! That's a big one.` : `Another year older. ${age} today.`, 'good');
-  sim.log(`It's ${first(a)}'s birthday: ${age} today${milestone ? '. A big one, so friends are invited too' : ''}`, 'family', 'good', a);
+  think(sim, a, mark === age ? `${age}! That's a big one.` : mark ? `${age} today. My first party since turning ${mark}.` : `Another year older. ${age} today.`, 'good');
+  const since = mark && mark !== age ? `, the first party since turning ${mark}` : '';
+  sim.log(`It's ${first(a)}'s birthday: ${age} today${since}${milestone ? ', so friends are invited too' : ''}`, 'family', 'good', a);
 }
 
 function endBirthday(sim: Sim, b: Birthday): void {

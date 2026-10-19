@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createAgent } from '../src/sim/agents';
-import { birthdayOf } from '../src/sim/events';
+import { birthdayOf, milestoneFor } from '../src/sim/events';
 import { die } from '../src/sim/life';
 import { Sim } from '../src/sim/sim';
 import { kinship } from '../src/sim/social';
@@ -24,6 +24,36 @@ describe('birthdays', () => {
     // Not again until next year.
     at(sim, day + 1, 21);
     expect(sim.activity.filter((e) => e.text.startsWith(`It's ${host.name.split(' ')[0]}'s birthday`)).length).toBe(1);
+  }, 60_000);
+});
+
+describe('milestone birthdays', () => {
+  it('only passing 50, 80 or 100 since the last party is a big one', () => {
+    expect(milestoneFor(32)).toBeUndefined();
+    expect(milestoneFor(48)).toBeUndefined();
+    expect(milestoneFor(64)).toBe(50);
+    expect(milestoneFor(66)).toBeUndefined();
+    expect(milestoneFor(80)).toBe(80);
+    expect(milestoneFor(95)).toBe(80);
+    expect(milestoneFor(97)).toBeUndefined();
+  });
+
+  it("a 32-year-old's party is family only; one since turning 50 invites friends", () => {
+    const sim = new Sim(7);
+    const homed = sim.agents.filter((a) => sim.town.households[a.household].building >= 0);
+    const young = homed[0];
+    const old = homed.find((a) => a.household !== young.household)!;
+    // Both born on day 1 of the calendar at noon, so the party at 18:00 finds them 32.5 and 64.5.
+    young.birth = 1440 + 720 - 2 * 8 * 1440;
+    old.birth = 1440 + 720 - 4 * 8 * 1440;
+    for (const a of sim.agents) if (a !== young && a !== old) a.lastBirthday = 1;
+    at(sim, 1, 18.2);
+    const party = (id: number) => sim.events.birthdays.find((b) => b.host === id)!;
+    expect(party(young.id).milestone).toBe(false);
+    expect(party(old.id).milestone).toBe(true);
+    const said = (a: typeof young) => sim.activity.find((e) => e.text.startsWith(`It's ${a.name.split(' ')[0]}'s birthday`))!.text;
+    expect(said(young)).toBe(`It's ${young.name.split(' ')[0]}'s birthday: 32 today`);
+    expect(said(old)).toBe(`It's ${old.name.split(' ')[0]}'s birthday: 64 today, the first party since turning 50, so friends are invited too`);
   }, 60_000);
 });
 
