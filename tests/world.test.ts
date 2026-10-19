@@ -116,6 +116,25 @@ describe('walking together', () => {
     expect(b.walkWith).toBe(a.id);
   }, 60_000);
 
+  it('on school mornings, a grown-up walks a young kid to school before work', () => {
+    // An untouched town: nobody is placed by hand.
+    const sim = new Sim(7);
+    const was = new Map<number, string>();
+    const runs: string[] = [];
+    for (let k = 0; k < 10 * 288; k++) {
+      sim.run(5);
+      for (const a of sim.agents) {
+        if (a.action.kind === 'escort' && was.get(a.id) !== 'escort') {
+          const kid = sim.agent(a.action.partnerId)!;
+          expect(kid.action.kind).toBe('learn');
+          runs.push(`day ${sim.day} ${a.action.label}`);
+        }
+        was.set(a.id, a.action.kind);
+      }
+    }
+    expect(runs.length).toBeGreaterThanOrEqual(2);
+  }, 600_000);
+
   it('a grown-up at home walks a young kid to school', () => {
     const sim = new Sim(7);
     for (let d = 0; d < 8 && !sim.map.buildings.some((b) => b.kind === 'school'); d++) sim.run(720);
