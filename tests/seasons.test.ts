@@ -107,6 +107,9 @@ describe('seasons', () => {
 
   it('firewood carried to a hearth gets there', () => {
     const sim = winterTown();
+    // With the workshop drawing on the wood, this town reaches winter with an empty woodpile;
+    // stock one so there are deliveries to watch.
+    sim.stock.firewood = Math.max(sim.stock.firewood, 40);
     at(sim, 6, 6);
     // Watch everyone walking firewood to a home: when that errand ends, the load must be by the hearth.
     const out = new Map<number, { action: object; hh: number; fuel: number }>();
