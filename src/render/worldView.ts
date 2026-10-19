@@ -5,6 +5,7 @@ import { buildCap, stageOf } from '../sim/planner';
 import type { Sim } from '../sim/sim';
 import type { DrawnKey, Prop, TownMap } from '../world/map';
 import { Cell } from '../world/map';
+import { Exteriors, wallTone } from './exteriors';
 import { Lighting } from './lighting';
 import { Shading } from './shading';
 
@@ -37,6 +38,8 @@ export class WorldView {
   readonly shading: Shading;
   /** Time-of-day grade and night lights (above entities). */
   readonly lighting: Lighting;
+  /** Roofs and front walls, y-sorted with people; fade to show the rooms inside. */
+  readonly exteriors: Exteriors;
   private sprites = new Map<number, Sprite>();
   private keys = new Map<number, string>();
   private propVersion = -1;
@@ -59,6 +62,7 @@ export class WorldView {
     this.lighting = new Lighting(m);
     this.root.addChild(new Sprite(this.groundTex), this.shading.layer, this.walls, this.flat, this.sites, this.entities, this.lighting.layer, this.overlay);
     this.parkCars();
+    this.exteriors = new Exteriors(art, m, this.entities);
     this.sync();
   }
 
@@ -82,6 +86,13 @@ export class WorldView {
     const m = this.map;
     const g = this.walls.clear();
     const wall = (x: number, y: number) => m.isWall(x, y);
+    // Each building's walls take the color of its exterior material, so it's the same house inside and out.
+    const tone = new Map<number, [number, number]>();
+    for (const b of m.buildings) {
+      const t = wallTone(b);
+      if (!t) continue;
+      for (let yy = b.y; yy < b.y + b.h; yy++) for (let xx = b.x; xx < b.x + b.w; xx++) tone.set(m.idx(xx, yy), t);
+    }
     for (let y = 0; y < m.h; y++) {
       for (let x = 0; x < m.w; x++) {
         const i = m.idx(x, y);
@@ -100,10 +111,11 @@ export class WorldView {
         if (m.cell[i] !== Cell.Wall) continue;
         const face = !wall(x, y + 1) && m.inBounds(x, y + 1);
         const topH = face ? TILE - 6 : TILE;
-        g.rect(X, Y, TILE, topH).fill(WALL_TOP);
-        if (!wall(x, y - 1)) g.rect(X, Y, TILE, 2).fill(WALL_TOP_HI);
+        const [top, front] = tone.get(i) ?? [WALL_TOP, WALL_FACE];
+        g.rect(X, Y, TILE, topH).fill(top);
+        if (!wall(x, y - 1)) g.rect(X, Y, TILE, 2).fill(tone.has(i) ? top : WALL_TOP_HI);
         if (face) {
-          g.rect(X, Y + topH, TILE, 6).fill(WALL_FACE);
+          g.rect(X, Y + topH, TILE, 6).fill(front);
           g.rect(X, Y + TILE - 1, TILE, 1).fill(WALL_FACE_LO);
         }
         if (!wall(x - 1, y)) g.rect(X, Y, 1, TILE).fill(WALL_EDGE);
@@ -172,6 +184,7 @@ export class WorldView {
         if (s) s.texture = this.propTexture(p);
       }
     }
+    this.exteriors.sync();
     this.drawSites();
   }
 

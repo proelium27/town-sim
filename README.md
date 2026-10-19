@@ -20,7 +20,7 @@ npm run build      # typecheck + production bundle
 | Input | Action |
 | --- | --- |
 | Drag, WASD, arrows | Pan |
-| Scroll / pinch | Zoom (pixel-perfect, 1.5× to 6×) |
+| Scroll / pinch | Zoom (0.5× to 6×) |
 | Click a person | Open their inspector |
 | Tab / Shift+Tab | Cycle through people |
 | F | Follow the selected person |
@@ -28,6 +28,7 @@ npm run build      # typecheck + production bundle
 | 1 2 3 | Speed (1× is one game minute per real second) |
 | / | Search the people list |
 | T | Switch the left panel between People and Town |
+| R | Lift every roof to see inside (they also lift when you zoom in or select someone indoors) |
 | P | Collapse / expand the left panel |
 | L | Expand / shrink the activity log |
 | Esc | Close the inspector |

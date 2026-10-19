@@ -96,7 +96,14 @@ export class Lighting {
   /**
    * @param occupied rooms with someone awake inside, so homes light up when people are home.
    */
-  update(hour: number, raining: boolean, occupied: Set<number>, vehicles: VehicleLight[]): void {
+  update(
+    hour: number,
+    raining: boolean,
+    occupied: Set<number>,
+    vehicles: VehicleLight[],
+    roofed: Set<number> = new Set(),
+    windows: { x: number; y: number; w: number; h: number; rooms: number[] }[] = [],
+  ): void {
     const m = this.map;
     let c = gradeAt(((hour % 24) + 24) % 24);
     if (raining) c = [c[0] * RAIN[0], c[1] * RAIN[1], c[2] * RAIN[2]];
@@ -113,10 +120,10 @@ export class Lighting {
       const hours = PUBLIC[r.kind];
       return occupied.has(r.id) || (hours !== undefined && hour >= hours[0] && hour < hours[1]);
     });
-    const sig = `${lit.map((r) => r.id).join(',')}:${m.propVersion}:${m.wallVersion}`;
+    const sig = `${lit.map((r) => r.id).join(',')}:${m.propVersion}:${m.wallVersion}:${[...roofed].join(',')}`;
     if (sig !== this.sig) {
       this.sig = sig;
-      this.buildStatics(new Set(lit.map((r) => r.id)));
+      this.buildStatics(new Set(lit.map((r) => r.id)), roofed, windows);
     }
     this.placeHeadlights(vehicles);
   }
@@ -133,13 +140,19 @@ export class Lighting {
     return s;
   }
 
-  private buildStatics(lit: Set<number>): void {
+  private buildStatics(lit: Set<number>, roofed: Set<number>, windows: { x: number; y: number; w: number; h: number; rooms: number[] }[]): void {
     for (const ch of this.statics.removeChildren()) ch.destroy();
     const m = this.map;
     const warm = new Graphics();
     for (const r of m.rooms) {
-      if (!lit.has(r.id)) continue;
+      if (!lit.has(r.id) || roofed.has(r.id)) continue;
       warm.rect(r.x * TILE, r.y * TILE, r.w * TILE, r.h * TILE).fill({ color: WARM, alpha: 0.34 });
+    }
+    // Under a roof, the light shows only through the front windows.
+    for (const w of windows) {
+      if (!w.rooms.some((id) => lit.has(id))) continue;
+      warm.rect(w.x, w.y, w.w, w.h).fill({ color: WARM, alpha: 0.85 });
+      this.pool(this.statics, w.x + w.w / 2, w.y + w.h + 6, Math.max(10, w.w * 0.8), 7, WARM, 0.35);
     }
     this.statics.addChild(warm);
     // Light spilling out of the doors of lit rooms.
