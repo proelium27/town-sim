@@ -9,7 +9,7 @@ import { esc } from './util';
 
 type Filter = 'all' | 'working' | 'break' | 'attention';
 
-const WORKING = new Set(['work', 'meet', 'teach', 'build', 'chop', 'mine', 'haul', 'farm', 'deposit', 'split', 'stoke']);
+const WORKING = new Set(['work', 'meet', 'teach', 'build', 'chop', 'mine', 'haul', 'farm', 'deposit', 'split', 'stoke', 'craft']);
 
 export function statusOf(a: Agent): Exclude<Filter, 'all' | 'attention'> | 'asleep' {
   if (a.action.kind === 'sleep' && a.action.stage === 'perform') return 'asleep';

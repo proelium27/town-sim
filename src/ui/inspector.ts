@@ -162,7 +162,8 @@ export class Inspector {
     const fb = r.querySelector('[data-f="follow"]') as HTMLElement;
     fb.setAttribute('aria-pressed', String(following));
     fb.textContent = following ? 'Following' : 'Follow';
-    set('money', a.role === 'child' ? `${duration(a.workedToday)} of chores today` : `$${Math.round(a.money)} · ${a.tasksDone} tasks done · ${duration(a.workedToday)} worked today`);
+    const tools = role.station === 'labor' ? (a.tool > 0 ? ` · tools ${Math.round(a.tool * 100)}%` : ' · no tools') : '';
+    set('money', a.role === 'child' ? `${duration(a.workedToday)} of chores today` : `$${Math.round(a.money)} · ${a.tasksDone} tasks done · ${duration(a.workedToday)} worked today${tools}`);
     set('doing', a.action.stage === 'travel' && a.action.kind !== 'wander' && a.action.kind !== 'stroll' ? `→ ${a.action.label}` : a.action.label);
     set('why', a.action.reason || 'Just going with the flow');
     const th = a.thoughts[a.thoughts.length - 1];

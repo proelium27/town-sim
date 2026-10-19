@@ -30,7 +30,7 @@ export interface Thought {
 export type ActionKind =
   | 'idle' | 'wander' | 'stroll' | 'work' | 'meet' | 'eat' | 'snack' | 'coffee' | 'cook'
   | 'sleep' | 'toilet' | 'shower' | 'socialize' | 'play' | 'music' | 'read' | 'relax' | 'shop' | 'party' | 'repair'
-  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach' | 'mourn' | 'escort' | 'split' | 'stoke';
+  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach' | 'mourn' | 'escort' | 'split' | 'stoke' | 'craft';
 
 export interface Action {
   kind: ActionKind;
@@ -139,6 +139,8 @@ export interface Agent {
   namedAfter?: number;
   /** Someone they're walking alongside (a partner on a stroll, a parent on the school run). */
   walkWith?: number;
+  /** Wear left on their tools, 0..1; working with tools is faster. */
+  tool: number;
 }
 
 export interface Project {

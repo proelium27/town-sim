@@ -152,6 +152,7 @@ export function createAgent(sim: Sim, o: NewAgentOpts): Agent {
     carry: null,
     workBuilding: null,
     lastBirthday: 0,
+    tool: 0,
   };
   if (namesake) a.namedAfter = namesake.id;
   a.needs.energy = rng.range(70, 95);
@@ -258,4 +259,5 @@ export const hasUmbrella = (a: Agent): boolean => ((a.id * 2654435761) >>> 0) % 
 /** Fills fields added since an older save was made. */
 export function backfillAgent(a: Agent): void {
   a.lastBirthday ??= 0;
+  a.tool ??= 0;
 }

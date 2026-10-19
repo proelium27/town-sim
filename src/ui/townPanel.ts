@@ -2,6 +2,7 @@ import { ageOf } from '../sim/agents';
 import { ADULT_AGE, billText, MIN_PER_DAY, SEASON_DAYS, SEASONS, YEAR_DAYS, GOOD_KEYS, GOODS, PRIORITY_KEYS, PRIORITY_LABEL, type PriorityKey } from '../sim/defs';
 import { foodBalance } from '../sim/economy';
 import { chill, winterReadiness } from '../sim/seasons';
+import { chains, hasWorkshop } from '../sim/workshop';
 import { WORLD_EVENTS, type WorldEventKey, triggerWorldEvent } from '../sim/events';
 import { allocateRoles, buildCap, capacity, stageOf } from '../sim/planner';
 import { first } from '../sim/social';
@@ -78,11 +79,28 @@ export class TownPanel {
     });
   }
 
+  /** Production chains: what the workshop makes, how stocked each is, and what's holding it up. */
+  private workshopSection(): string {
+    const sim = this.sim;
+    const shop = hasWorkshop(sim);
+    if (!shop && !sim.projects.some((p) => p.blueprint === 'workshop')) return '';
+    const label = (g: string) => GOODS[g as keyof typeof GOODS].label.toLowerCase();
+    return `<section class="tp-sec">
+        <h3>Workshop <small>${shop ? 'what the trades are making' : 'being built'}</small></h3>
+        <ul class="chains">${chains(sim).map((c) => {
+          const from = Object.keys(c.recipe.inputs).map(label).join(' + ');
+          const state = c.stuck ? `<span class="why neg">Stuck: ${esc(c.stuck)}</span>` : `<span class="why">${c.have >= c.target ? 'stocked' : 'in production'}</span>`;
+          return `<li class="${c.stuck ? 'stuck' : ''}"><span class="lbl">${from} → <b>${label(c.recipe.good)}</b></span><span class="num">${c.have}/${c.target}</span>${state}</li>`;
+        }).join('')}</ul>
+      </section>`;
+  }
+
   /** Autumn and winter: how long the stores would last, and which hearths are cold. */
   private winterLine(): string {
     const sim = this.sim;
     if (sim.season < 2 && chill(sim) === 0) return '';
     const r = winterReadiness(sim);
+    if (sim.season < 2) return `<p class="winter-line">Still chilly at night: <b class="${r.firewood >= 1 ? 'pos' : 'neg'}">${r.firewood.toFixed(1)} days of firewood</b> left.</p>`;
     const left = sim.season === 2 ? 2 + (1 - sim.seasonProgress) * 2 : sim.season === 3 ? (1 - sim.seasonProgress) * 2 : 0;
     const cold = sim.town.households.filter((h) => h.building >= 0 && sim.fuel[h.id] < 1).length;
     const ok = (d: number) => (d >= left ? 'pos' : 'neg');
@@ -103,7 +121,7 @@ export class TownPanel {
     const sig = JSON.stringify([
       pop.length, kids, elders, beds, homeless, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
       sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
-      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
+      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), chains(sim).map((c) => [c.have, c.target, c.stuck]), sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
     ]);
     if (sig === this.sig) return;
     this.sig = sig;
@@ -120,7 +138,7 @@ export class TownPanel {
       <section class="tp-sec">
         <h3>Stores</h3>
         <div class="stores">
-          ${GOOD_KEYS.map((g) => {
+          ${GOOD_KEYS.filter((g) => GOODS[g].hud || sim.stock[g] > 0).map((g) => {
             const rate = g === 'food' ? `<span class="rate num ${net >= 0 ? 'pos' : 'neg'}">${net >= 0 ? '+' : ''}${Math.round(net)}/day</span>` : '<span class="rate"></span>';
             return `<div class="store"><span class="lbl">${GOODS[g].label}</span>${bar(sim.stock[g], GOODS[g].cap, GOODS[g].color)}<span class="num">${Math.round(sim.stock[g])}</span>${rate}</div>`;
           }).join('')}
@@ -128,6 +146,7 @@ export class TownPanel {
         ${ev.drought ? '<p class="warn-line">Drought: nothing is growing.</p>' : ''}
         ${this.winterLine()}
       </section>
+      ${this.workshopSection()}
       <section class="tp-sec">
         <h3>Priorities <small>what the town meetings lean toward</small></h3>
         <div class="prios">

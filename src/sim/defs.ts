@@ -41,7 +41,7 @@ export const YEAR_DAYS = SEASON_DAYS * SEASONS.length;
 
 // ------------------------------------------------------------------ goods
 
-export type Good = 'food' | 'wood' | 'stone' | 'firewood';
+export type Good = 'food' | 'wood' | 'stone' | 'firewood' | 'planks' | 'bricks' | 'furniture' | 'tools';
 
 export interface GoodDef {
   label: string;
@@ -59,6 +59,10 @@ export const GOODS: Record<Good, GoodDef> = {
   wood: { label: 'Wood', color: 'oklch(0.55 0.09 60)', cap: 200, hud: true },
   stone: { label: 'Stone', color: 'oklch(0.6 0.01 80)', cap: 200, hud: true },
   firewood: { label: 'Firewood', color: 'oklch(0.66 0.13 45)', cap: 150, hud: true },
+  planks: { label: 'Planks', color: 'oklch(0.74 0.1 70)', cap: 80, hud: false },
+  bricks: { label: 'Bricks', color: 'oklch(0.6 0.13 35)', cap: 60, hud: false },
+  furniture: { label: 'Furniture', color: 'oklch(0.62 0.09 55)', cap: 10, hud: false },
+  tools: { label: 'Tools', color: 'oklch(0.7 0.03 240)', cap: 20, hud: false },
 };
 export const GOOD_KEYS = Object.keys(GOODS) as Good[];
 export type Stock = Record<Good, number>;
@@ -86,7 +90,8 @@ export const SKILL_LABEL: Record<SkillKey, string> = {
 
 export type RoleKey =
   | 'engineer' | 'designer' | 'writer' | 'manager' | 'receptionist' | 'barista' | 'shopkeeper' | 'librarian'
-  | 'builder' | 'farmer' | 'woodcutter' | 'laborer' | 'teacher' | 'cook' | 'child' | 'retired';
+  | 'builder' | 'farmer' | 'woodcutter' | 'laborer' | 'teacher' | 'cook' | 'child' | 'retired'
+  | 'carpenter' | 'mason' | 'toolmaker';
 
 export interface RoleDef {
   key: RoleKey;
@@ -139,6 +144,9 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   farmer: { key: 'farmer', title: 'Farmer', craft: 'Farming', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
   woodcutter: { key: 'woodcutter', title: 'Woodcutter', craft: 'Forestry', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
   laborer: { key: 'laborer', title: 'Laborer', craft: 'Labor', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
+  carpenter: { key: 'carpenter', title: 'Carpenter', craft: 'Carpentry', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
+  mason: { key: 'mason', title: 'Mason', craft: 'Masonry', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
+  toolmaker: { key: 'toolmaker', title: 'Toolmaker', craft: 'Toolmaking', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
   teacher: { key: 'teacher', title: 'Teacher', craft: 'Teaching', workplace: 'building', station: 'counter', tasks: ['Morning lessons', 'Grade homework', 'Reading circle', 'Science hour'], flexible: true },
   cook: { key: 'cook', title: 'Diner Cook', craft: 'Cooking', workplace: 'building', station: 'counter', tasks: ['Breakfast service', 'Lunch rush', 'Prep the soup', 'Dinner service'], flexible: true },
   child: { key: 'child', title: 'Child', craft: 'Learning', workplace: 'none', station: 'none', tasks: [] },
@@ -201,7 +209,7 @@ export type MemoryKind =
   | 'newPartner' | 'newBaby' | 'grief' | 'movedIn' | 'builtSomething' | 'townGrowing' | 'sleptRough' | 'proposed'
   | 'grewUp' | 'harvest' | 'school' | 'festival' | 'drought' | 'storm'
   | 'birthday' | 'myBirthday' | 'familyDinner' | 'paidRespects' | 'eveningWalk'
-  | 'snowDay' | 'cozyFire' | 'coldHome' | 'blizzard';
+  | 'snowDay' | 'cozyFire' | 'coldHome' | 'blizzard' | 'madeSomething' | 'toolBroke';
 
 export interface MemoryDef {
   label: string;
@@ -265,4 +273,6 @@ export const MEMORIES: Record<MemoryKind, MemoryDef> = {
   cozyFire: { label: 'Warm by the fire', mood: 4, duration: 8 * H, major: false, maxStack: 1 },
   coldHome: { label: 'No firewood at home', mood: -8, duration: 8 * H, major: true, maxStack: 1 },
   blizzard: { label: 'Snowed in by a blizzard', mood: -3, duration: D, major: true, maxStack: 1 },
+  madeSomething: { label: 'Made something good', mood: 4, duration: 8 * H, major: false, maxStack: 1 },
+  toolBroke: { label: 'My tools broke', mood: -2, duration: 4 * H, major: false, maxStack: 1 },
 };

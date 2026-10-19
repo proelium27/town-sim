@@ -3,7 +3,7 @@ import type { Facing, GroundKey, PropKey } from '../assets/manifest';
 export type DrawnKey =
   | 'monitor' | 'toilet' | 'basin' | 'whiteboard' | 'coffee' | 'shower' | 'net'
   | 'rock' | 'stump' | 'crop0' | 'crop1' | 'crop2' | 'crop3' | 'crate' | 'logs' | 'stones' | 'chalkboard' | 'deskKid'
-  | 'cake' | 'grave' | 'bonfire';
+  | 'cake' | 'grave' | 'bonfire' | 'sawbench' | 'kiln' | 'workbench';
 
 export type RoomKind =
   | 'office' | 'meeting' | 'kitchen' | 'lounge' | 'lobby' | 'restroom'
@@ -23,7 +23,7 @@ export interface Room {
 /** What an agent can do at a prop. */
 export type UseKind =
   | 'work' | 'meet' | 'eat' | 'coffee' | 'cook' | 'sleep' | 'toilet' | 'shower'
-  | 'sit' | 'play' | 'music' | 'read' | 'shop' | 'snack' | 'farm' | 'learn' | 'teach' | 'deposit';
+  | 'sit' | 'play' | 'music' | 'read' | 'shop' | 'snack' | 'farm' | 'learn' | 'teach' | 'deposit' | 'craft';
 
 export type ResourceKind = 'wood' | 'stone';
 

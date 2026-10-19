@@ -5,6 +5,7 @@ import { ageOf, makeSchedule, newTask } from './agents';
 import { ADULT_AGE, billGoods, type Good, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
 import { foodBalance } from './economy';
 import { bury } from './life';
+import { CRAFT_ROLES, hasWorkshop, RECIPES, shortfall } from './workshop';
 import { addMemory, first, think } from './social';
 import type { Agent, Project } from './types';
 import type { Sim } from './sim';
@@ -190,6 +191,10 @@ function proposals(sim: Sim): Proposal[] {
   if (sim.agents.length >= 24 && count('diner') < Math.floor(sim.agents.length / 24)) {
     out.push({ bp: 'diner', score: 0.6 * cw, reason: 'the café is packed every lunchtime', forAgents: [], proposer: sim.agents.find((a) => a.traits.includes('foodie')) ?? charismatic(), name: `${['Corner', 'Hilltop', 'Lakeside'][count('diner') % 3]} Diner` });
   }
+  // A workshop once the town is big enough to keep one busy and has the timber to spare.
+  if (sim.agents.length >= 22 && count('workshop') === 0 && sim.stock.wood >= 40) {
+    out.push({ bp: 'workshop', score: 0.6 * mw, reason: 'we could make our own planks, bricks and furniture', forAgents: [], proposer: sim.agents.find((a) => a.role === 'builder') ?? charismatic(), name: 'Northwind Workshop' });
+  }
   if (sim.unburied.length && !sim.projects.some((p) => p.blueprint === 'cemetery')) {
     const dead = sim.person(sim.unburied[0])!;
     const mourner = sim.agents.filter((a) => a.id === dead.partner || dead.children.includes(a.id) || dead.parents.includes(a.id)).find((a) => ageOf(sim, a) >= ADULT_AGE);
@@ -325,7 +330,7 @@ function startProject(sim: Sim, p: Proposal): Project | null {
     h: bp.h,
     doorTop: site.doorTop,
     path: site.path,
-    need: { ...bp.cost },
+    need: { ...(bp.refined && hasWorkshop(sim) ? bp.refined : bp.cost) },
     delivered: {},
     work: bp.work,
     progress: 0,
@@ -421,10 +426,21 @@ export function allocateRoles(sim: Sim): void {
   const mw = PRIORITY_WEIGHT[sim.priorities.materials];
   const fw = PRIORITY_WEIGHT[sim.priorities.food];
   demand.push(['farmer', Math.max(1, Math.round(farms * 1.5 * fw)), null]);
+  if (hasWorkshop(sim)) demand.push(['carpenter', 1, null]);
   demand.push(['builder', Math.max(1, Math.round((1 + sim.projects.length * 0.8) * hw)), null]);
+  // Once there's a workshop, the trades it needs (one carpenter is staffed even before builders, above).
+  if (hasWorkshop(sim)) {
+    for (const role of CRAFT_ROLES) {
+      const batches = RECIPES.filter((r) => r.role === role).reduce((s, r) => s + shortfall(sim, r) / r.out, 0);
+      if (role === 'carpenter') {
+        if (batches > 6) demand.push(['carpenter', 1, null]);
+      } else if (batches > 0) demand.push([role, 1, null]);
+    }
+  }
   // Autumn and winter need firewood split and carried to every hearth.
   const cold = sim.season >= 2 ? 1 : 0;
-  demand.push(['woodcutter', Math.max(1, Math.round((sim.stock.wood < 60 || sim.stock.stone < 40 ? 2 : 1) * mw) + cold), null]);
+  const shop = hasWorkshop(sim) ? 1 : 0;
+  demand.push(['woodcutter', Math.max(1, Math.round((sim.stock.wood < 60 || sim.stock.stone < 40 ? 2 : 1) * mw) + cold + shop), null]);
 
   const assigned = new Set<number>();
   const changes: string[] = [];
