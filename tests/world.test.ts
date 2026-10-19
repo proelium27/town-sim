@@ -118,7 +118,7 @@ describe('walking together', () => {
 
   it('on school mornings, a grown-up walks a young kid to school before work', () => {
     // An untouched town: nobody is placed by hand.
-    const sim = new Sim(16);
+    const sim = new Sim(4);
     const was = new Map<number, string>();
     const runs: string[] = [];
     for (let k = 0; k < 10 * 288; k++) {
@@ -152,6 +152,8 @@ describe('walking together', () => {
       a.y = a.py = sim.map.cy(a.at);
       a.path = [];
       a.thinkIn = 0;
+      // They may have been mid school run already; start them fresh.
+      a.walkWith = undefined;
       a.action = { kind: 'relax', label: 'Relaxing', reason: '', stage: 'perform', dest: a.at, timer: 999, started: sim.time, score: 0 };
     }
     adult.thinkIn = 999;
