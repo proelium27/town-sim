@@ -97,7 +97,8 @@ export function chooseCareer(sim: Sim, a: Agent): CareerPick {
       score += 10;
       reasons.push(`looks up to ${first(idol)}`);
     }
-    if (def.flexible && workers(role) === 0 && role !== 'teacher' && role !== 'cook') {
+    // Building-bound jobs are filled by allocateRoles anyway, so they don't need recruits.
+    if (def.flexible && workers(role) === 0 && role !== 'teacher' && role !== 'cook' && role !== 'doctor') {
       score += 8;
       reasons.push('the town has nobody doing it');
     }

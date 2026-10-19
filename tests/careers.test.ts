@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { laborRate } from '../src/sim/ai';
-import { APTITUDES, learnBoost } from '../src/sim/careers';
-import { allocateRoles, setRole } from '../src/sim/planner';
+import { APTITUDES, chooseCareer, learnBoost } from '../src/sim/careers';
+import { allocateRoles, findSite, setRole } from '../src/sim/planner';
+import { BLUEPRINTS } from '../src/world/blueprints';
 import { Sim } from '../src/sim/sim';
 
 describe('school', () => {
@@ -61,6 +62,19 @@ describe('careers', () => {
     a.tool = 1;
     expect(master).toBeGreaterThan(novice * 1.4);
     expect(laborRate(a)).toBeCloseTo(master * 1.25);
+  });
+
+  it("an empty clinic doesn't recruit doctors at coming of age (allocateRoles staffs it, as with teachers and cooks)", () => {
+    const sim = new Sim(7);
+    const site = findSite(sim, 'clinic')!;
+    BLUEPRINTS.clinic.stamp(sim.map, site.x, site.y, site.doorTop, 'Test Clinic');
+    expect(sim.agents.some((a) => a.role === 'doctor')).toBe(false);
+    for (const kid of sim.agents.filter((a) => a.role === 'child')) {
+      // Equal people and numbers: no trade beats another on aptitude alone.
+      kid.aptitude = { hands: 0, numbers: 50, people: 50, outdoors: 0 };
+      const pick = chooseCareer(sim, kid);
+      expect(pick.why).not.toContain('nobody doing it');
+    }
   });
 
   it('jobs go to people who trained for them', () => {
