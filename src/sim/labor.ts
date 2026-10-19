@@ -101,9 +101,10 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
   const plans: (() => LaborPlan | null)[] = [];
   const m = sim.map;
 
-  // Anything in hand goes where it belongs first (unless it's already on its way somewhere).
+  // Anything in hand goes where it belongs first. A load already on its way somewhere isn't swapped for another job.
   const delivering = a.action.leg === 'deliver' && (a.action.kind === 'haul' || a.action.kind === 'stoke');
-  if (a.carry && !delivering) {
+  if (a.carry) {
+    if (delivering) return null;
     return (() => {
       const d = depositSpot(sim, a);
       if (!d) return null;

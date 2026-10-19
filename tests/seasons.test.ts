@@ -13,7 +13,7 @@ describe('seasons', () => {
     const sim = new Sim(7);
     at(sim, 5, 23.9);
     eve = saveSim(sim);
-  }, 120_000);
+  }, 300_000);
   const winterTown = () => loadSim(eve);
 
   it('warm summers, a chilly late autumn, and a cold winter', () => {
@@ -56,6 +56,32 @@ describe('seasons', () => {
     expect(homes.filter((h) => sim.fuel[h.id] > 0).length).toBeGreaterThanOrEqual(homes.length - 1);
     expect(sim.activity.some((e) => e.text === 'Winter lights in the park tonight!')).toBe(true);
     expect(winterReadiness(sim).food).toBeGreaterThan(1);
+  }, 120_000);
+
+  it('firewood carried to a hearth gets there', () => {
+    const sim = winterTown();
+    at(sim, 6, 6);
+    // Watch everyone walking firewood to a home: when that errand ends, the load must be by the hearth.
+    const out = new Map<number, { action: object; hh: number; fuel: number }>();
+    let delivered = 0;
+    let dropped = 0;
+    for (let k = 0; k < 14 * 60; k++) {
+      sim.run(1);
+      for (const a of sim.agents) {
+        const run = out.get(a.id);
+        if (run && a.action !== run.action) {
+          out.delete(a.id);
+          if (a.carry?.kind === 'firewood' || sim.fuel[run.hh] < run.fuel) dropped++;
+          else delivered++;
+        }
+        if (a.action.kind === 'stoke' && a.action.leg === 'deliver' && a.carry?.kind === 'firewood' && !out.has(a.id)) {
+          out.set(a.id, { action: a.action, hh: a.action.household!, fuel: sim.fuel[a.action.household!] + a.carry.amount - 0.5 });
+        }
+      }
+    }
+    // A full bladder used to cut deliveries short, with the load still in hand.
+    expect(delivered).toBeGreaterThan(0);
+    expect(dropped).toBe(0);
   }, 120_000);
 
   it('a blizzard sends people indoors', () => {

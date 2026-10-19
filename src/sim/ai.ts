@@ -1,7 +1,7 @@
 import type { Facing } from '../assets/manifest';
 import type { Prop, UseKind } from '../world/map';
 import { ageOf, hasUmbrella, newTask } from './agents';
-import { ADULT_AGE, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
+import { ADULT_AGE, type Good, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
 import { FOOD_PER_CROP } from './economy';
 import { CARRY, laborPlan } from './labor';
 import { buildCap, completeProject, shortOf, supplied } from './planner';
@@ -629,7 +629,7 @@ function decide(sim: Sim, a: Agent, stage: Stage): void {
     currentScore = (same ? same.score : cur.score * 0.8) + INERTIA;
     // Don't abandon things halfway through for marginal gains.
     if (cur.stage === 'perform' && ['sleep', 'eat', 'shower', 'toilet', 'socialize', 'cook', 'meet', 'play', 'repair', 'party', 'chop', 'mine', 'farm', 'learn'].includes(cur.kind)) currentScore += 0.6;
-    if (cur.kind === 'haul' || cur.kind === 'deposit') currentScore += 1;
+    if (cur.kind === 'haul' || cur.kind === 'deposit' || cur.kind === 'stoke') currentScore += 1;
   }
   for (const opt of opts) {
     if (opt.score <= currentScore) return;
@@ -682,7 +682,8 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
 /** Needs urgent enough to interrupt anything except sleep. */
 function urgent(sim: Sim, a: Agent): boolean {
   const k = a.action.kind;
-  if (k === 'haul' && a.action.leg === 'deliver') return false;
+  // A load already on its way to a build site or a hearth gets there first.
+  if ((k === 'haul' || k === 'stoke') && a.action.leg === 'deliver') return false;
   if (a.bladder < 12 && k !== 'toilet') return true;
   if (a.needs.hunger < 10 && k !== 'eat' && k !== 'cook' && k !== 'snack' && k !== 'sleep') return true;
   if (sim.events.standup && isOffice(a) && isWorkTime(sim, a) && k !== 'meet' && k !== 'toilet') return true;
@@ -1064,6 +1065,13 @@ function arriveStoke(sim: Sim, a: Agent): void {
   finish(sim, a);
 }
 
+/** Adds goods to what's in hand. A load of something else is never dropped: it goes to the store. Returns the new load. */
+function pickUp(sim: Sim, a: Agent, kind: Good, amount: number): number {
+  if (a.carry && a.carry.kind !== kind) sim.stock[a.carry.kind] += a.carry.amount;
+  a.carry = { kind, amount: (a.carry?.kind === kind ? a.carry.amount : 0) + amount };
+  return a.carry.amount;
+}
+
 function laborRate(a: Agent): number {
   return (0.55 + a.skills.craft.level * 0.07) * (a.needs.energy < 20 ? 0.6 : 1) * (a.traits.includes('workaholic') ? 1.15 : a.traits.includes('slacker') ? 0.8 : 1);
 }
@@ -1090,7 +1098,7 @@ function performGather(sim: Sim, a: Agent, dt: number, tick: () => boolean): voi
     pr.delivered[kind] = (pr.delivered[kind] ?? 0) + use;
     amount -= use;
   }
-  if (amount > 0) a.carry = { kind, amount: (a.carry?.kind === kind ? a.carry.amount : 0) + amount };
+  if (amount > 0) pickUp(sim, a, kind, amount);
   finish(sim, a);
 }
 
@@ -1131,8 +1139,7 @@ function performFarm(sim: Sim, a: Agent, dt: number, tick: () => boolean): void 
   if (!tick()) return;
   if ((p.growth ?? 0) >= 1) {
     p.growth = 0;
-    const amount = (a.carry?.kind === 'food' ? a.carry.amount : 0) + FOOD_PER_CROP * (1 + a.skills.craft.level * 0.04);
-    a.carry = { kind: 'food', amount };
+    const amount = pickUp(sim, a, 'food', FOOD_PER_CROP * (1 + a.skills.craft.level * 0.04));
     if (amount >= 8) addMemory(sim, a, 'harvest');
   } else {
     p.growth = Math.min(1, (p.growth ?? 0) + 0.06 + a.skills.craft.level * 0.006);
