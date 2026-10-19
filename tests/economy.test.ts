@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SEASON_DAYS } from '../src/sim/defs';
-import { BASE_PRICE, BROKE_RETRY, canAffordGroceries, HARD_DAYS, HARDSHIP_FLOOR, HARDSHIP_KEEP, price, RESERVE_MIN, tickMarket, townPaid, trade } from '../src/sim/market';
+import { BASE_PRICE, BROKE_RETRY, canAffordGroceries, HARD_DAYS, HARDSHIP_FLOOR, HARDSHIP_KEEP, price, projectCushion, RESERVE_MIN, tickMarket, townPaid, trade } from '../src/sim/market';
 import { Sim } from '../src/sim/sim';
 import { addMemory, kinship } from '../src/sim/social';
 import type { Agent } from '../src/sim/types';
@@ -47,6 +47,21 @@ describe('the trader', () => {
     expect(sim.stock.stone).toBeLessThan(500);
     expect(sim.stock.firewood).toBeGreaterThan(0);
     expect(sim.treasury).not.toBe(before);
+  });
+
+  it("doesn't spend the day's payroll on its wares", () => {
+    const sim = new Sim(7);
+    sim.stock.firewood = 0;
+    sim.stock.tools = 0;
+    sim.time = 6 * 1440 + 12 * 60;
+    sim.lastLedger.wages = 320;
+    sim.treasury = 370;
+    expect(trade(sim)).toMatch(/bought \d+ firewood/);
+    expect(sim.treasury).toBeGreaterThanOrEqual(projectCushion(sim));
+    expect(sim.treasury).toBeLessThan(370);
+    sim.treasury = 200;
+    expect(trade(sim)).toBe('nothing changed hands');
+    expect(sim.treasury).toBe(200);
   });
 
   it('turns up by road every few days and trades at the market', () => {

@@ -117,7 +117,10 @@ function tradeList(sim: Sim): { sell: [Good, number, number][]; buy: [Good, numb
   return { sell, buy };
 }
 
-/** The trader buys the town's surplus and sells what it's short of, as far as the treasury allows. */
+/**
+ * The trader buys the town's surplus and sells what it's short of, as far as the treasury allows.
+ * Like a new building, the shopping has to leave a day's payroll behind.
+ */
 export function trade(sim: Sim): string {
   const { sell, buy } = tradeList(sim);
   const parts: string[] = [];
@@ -129,8 +132,9 @@ export function trade(sim: Sim): string {
   }
   sim.treasury += earned;
   sim.ledger.trade += earned;
+  const keep = projectCushion(sim);
   for (const [g, n, p] of buy) {
-    const afford = Math.min(n, Math.floor(sim.treasury / p));
+    const afford = Math.min(n, Math.floor((sim.treasury - keep) / p));
     if (afford <= 0) continue;
     sim.stock[g] += afford;
     sim.treasury -= afford * p;
