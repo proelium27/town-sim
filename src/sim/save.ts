@@ -70,8 +70,9 @@ export function loadSim(text: string): Sim {
   // Anything added since the save was made starts from a sensible default.
   sim.stock = { ...emptyStock(), ...sim.stock };
   for (const a of [...sim.agents, ...sim.deceased]) {
-    for (const k of NEED_KEYS) a.needs[k] ??= 80;
+    // Specific backfills (health starts full) before the generic fallback for any other new need.
     backfillAgent(a);
+    for (const k of NEED_KEYS) a.needs[k] ??= 80;
   }
   sim.events.birthdays ??= [];
   sim.events.wet ??= 0;

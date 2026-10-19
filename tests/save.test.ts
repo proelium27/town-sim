@@ -27,6 +27,13 @@ describe('saving and loading', () => {
     expect(b.map.propsOn(b.map.props[0].x, b.map.props[0].y)).toContain(b.map.props[0]);
   });
 
+  it('people in a save from before health load in full health', () => {
+    const file = JSON.parse(saveSim(new Sim(3)));
+    for (const a of file.sim.agents) delete a.needs.health;
+    const b = loadSim(JSON.stringify(file));
+    expect(b.agents.every((a) => a.needs.health === 100)).toBe(true);
+  });
+
   it('rejects files that are not saves', () => {
     expect(() => loadSim('{"hello":1}')).toThrow(/not a Townsfolk save/);
   });
