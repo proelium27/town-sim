@@ -4,7 +4,7 @@ import type { Sim } from '../sim/sim';
 import { esc, hhmm } from './util';
 
 type Filter = 'all' | ActivityKind;
-const KIND_LABEL: Record<ActivityKind, string> = { work: 'Work', social: 'Social', life: 'Life', event: 'Town' };
+const KIND_LABEL: Record<ActivityKind, string> = { work: 'Work', social: 'Social', life: 'Life', event: 'Town', build: 'Build', family: 'Family' };
 
 /** Bottom feed: a live stream of what everyone is doing, filterable, with clickable names. */
 export class ActivityLog {

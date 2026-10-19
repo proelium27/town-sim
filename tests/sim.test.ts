@@ -55,7 +55,8 @@ describe('daily routines', () => {
     expect(sim.agents.some((a) => a.skills.craft.level > 6 || a.skills.athletics.xp > 0)).toBe(true);
     const scares = sim.activity.filter((e) => e.text.includes('nearly got hit')).length;
     expect(scares).toBeLessThan(6);
-    for (const a of sim.agents) {
+    // Newborns and fresh arrivals haven't had much time to think yet.
+    for (const a of sim.agents.filter((x) => sim.time - Math.max(x.birth, 0) > 2 * 1440 && !sim.activity.some((e) => e.agentId === x.id && e.text.includes('arrived') && sim.time - e.t < 2 * 1440))) {
       expect(a.thoughts.length, a.name).toBeGreaterThan(5);
       expect(a.mood, a.name).toBeGreaterThan(20);
     }

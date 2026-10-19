@@ -29,17 +29,22 @@ export const SKILL_LABEL: Record<SkillKey, string> = {
 
 // ------------------------------------------------------------------ roles
 
-export type RoleKey = 'engineer' | 'designer' | 'writer' | 'manager' | 'receptionist' | 'barista' | 'shopkeeper' | 'librarian';
+export type RoleKey =
+  | 'engineer' | 'designer' | 'writer' | 'manager' | 'receptionist' | 'barista' | 'shopkeeper' | 'librarian'
+  | 'builder' | 'farmer' | 'woodcutter' | 'laborer' | 'teacher' | 'cook' | 'child' | 'retired';
 
 export interface RoleDef {
   key: RoleKey;
   title: string;
   /** What "Craft" means for this role, shown in the inspector. */
   craft: string;
-  workplace: 'office' | 'cafe' | 'market' | 'library';
-  /** Use spots this role works at: desks for office staff, counters for service staff. */
-  station: 'desk' | 'reception' | 'counter';
+  /** Fixed workplaces are hand-built; 'building' roles work wherever their assigned building is. */
+  workplace: 'office' | 'cafe' | 'market' | 'library' | 'building' | 'outdoors' | 'none';
+  /** desk/reception/counter: a seat with task progress; labor: outdoor work picked by labor.ts. */
+  station: 'desk' | 'reception' | 'counter' | 'labor' | 'none';
   tasks: string[];
+  /** Roles the town can reassign people between as its needs change. */
+  flexible?: boolean;
 }
 
 export const ROLES: Record<RoleKey, RoleDef> = {
@@ -75,7 +80,33 @@ export const ROLES: Record<RoleKey, RoleDef> = {
     key: 'librarian', title: 'Librarian', craft: 'Cataloguing', workplace: 'library', station: 'counter',
     tasks: ['Shelve returns', 'Catalogue donations', 'Run story hour', 'Repair old books'],
   },
+  builder: { key: 'builder', title: 'Builder', craft: 'Building', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
+  farmer: { key: 'farmer', title: 'Farmer', craft: 'Farming', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
+  woodcutter: { key: 'woodcutter', title: 'Woodcutter', craft: 'Forestry', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
+  laborer: { key: 'laborer', title: 'Laborer', craft: 'Labor', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
+  teacher: { key: 'teacher', title: 'Teacher', craft: 'Teaching', workplace: 'building', station: 'counter', tasks: ['Morning lessons', 'Grade homework', 'Reading circle', 'Science hour'], flexible: true },
+  cook: { key: 'cook', title: 'Diner Cook', craft: 'Cooking', workplace: 'building', station: 'counter', tasks: ['Breakfast service', 'Lunch rush', 'Prep the soup', 'Dinner service'], flexible: true },
+  child: { key: 'child', title: 'Child', craft: 'Learning', workplace: 'none', station: 'none', tasks: [] },
+  retired: { key: 'retired', title: 'Retired', craft: 'Wisdom', workplace: 'none', station: 'none', tasks: [] },
 };
+
+/** Two years pass per game day, so children grow up in nine days and generations turn over in weeks. */
+export const YEARS_PER_DAY = 2;
+export const ADULT_AGE = 18;
+export const RETIRE_AGE = 66;
+
+// ------------------------------------------------------------------ town priorities (player)
+
+export type PriorityKey = 'housing' | 'food' | 'materials' | 'community';
+export const PRIORITY_KEYS: PriorityKey[] = ['housing', 'food', 'materials', 'community'];
+export const PRIORITY_LABEL: Record<PriorityKey, string> = {
+  housing: 'Housing',
+  food: 'Food',
+  materials: 'Wood & stone',
+  community: 'Community',
+};
+/** Low / Normal / High multipliers. */
+export const PRIORITY_WEIGHT = [0.4, 1, 1.9];
 
 // ------------------------------------------------------------------ traits
 
@@ -111,7 +142,9 @@ export type MemoryKind =
   | 'goodChat' | 'argument' | 'sharedMeal' | 'ateAlone' | 'greatCoffee' | 'noCoffee'
   | 'finishedTask' | 'praised' | 'missedDeadline' | 'pizza' | 'party' | 'wonPingPong' | 'lostPingPong'
   | 'soaked' | 'sleptWell' | 'badNight' | 'stinky' | 'starving' | 'longDay' | 'newFriend' | 'newRival'
-  | 'meeting' | 'skillUp' | 'playedMusic' | 'goodRead' | 'commuteScare';
+  | 'meeting' | 'skillUp' | 'playedMusic' | 'goodRead' | 'commuteScare'
+  | 'newPartner' | 'newBaby' | 'grief' | 'movedIn' | 'builtSomething' | 'townGrowing' | 'sleptRough' | 'proposed'
+  | 'grewUp' | 'harvest' | 'school' | 'festival' | 'drought' | 'storm';
 
 export interface MemoryDef {
   label: string;
@@ -152,4 +185,18 @@ export const MEMORIES: Record<MemoryKind, MemoryDef> = {
   playedMusic: { label: 'Played the piano', mood: 4, duration: 8 * H, major: false, maxStack: 1 },
   goodRead: { label: 'Got lost in a good book', mood: 3, duration: 8 * H, major: false, maxStack: 1 },
   commuteScare: { label: 'Nearly got hit by a car', mood: -6, duration: 8 * H, major: true, maxStack: 1 },
+  newPartner: { label: 'Fell in love', mood: 14, duration: 3 * D, major: true, maxStack: 1 },
+  newBaby: { label: 'A new baby in the family', mood: 15, duration: 3 * D, major: true, maxStack: 2 },
+  grief: { label: 'Lost someone close', mood: -18, duration: 3 * D, major: true, maxStack: 2 },
+  movedIn: { label: 'Moved into a new home', mood: 10, duration: 2 * D, major: true, maxStack: 1 },
+  builtSomething: { label: 'Helped build something', mood: 6, duration: D, major: true, maxStack: 2 },
+  townGrowing: { label: 'The town is growing', mood: 3, duration: D, major: false, maxStack: 1 },
+  sleptRough: { label: 'Had nowhere to sleep', mood: -10, duration: D, major: true, maxStack: 1 },
+  proposed: { label: 'My idea was picked at the town meeting', mood: 5, duration: D, major: true, maxStack: 1 },
+  grewUp: { label: 'All grown up', mood: 8, duration: 2 * D, major: true, maxStack: 1 },
+  harvest: { label: 'Brought in a good harvest', mood: 4, duration: 12 * H, major: false, maxStack: 1 },
+  school: { label: 'Learned something at school', mood: 3, duration: 12 * H, major: false, maxStack: 1 },
+  festival: { label: 'Danced at the town festival', mood: 12, duration: 2 * D, major: true, maxStack: 1 },
+  drought: { label: 'Worried about the drought', mood: -6, duration: D, major: true, maxStack: 1 },
+  storm: { label: 'Rode out a storm', mood: -4, duration: D, major: true, maxStack: 1 },
 };

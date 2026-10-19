@@ -1,7 +1,10 @@
 import type { Facing } from '../assets/manifest';
 import type { Prop, UseKind } from '../world/map';
-import { newTask } from './agents';
-import { MIN_PER_DAY, ROLES, SKILL_LABEL, type SkillKey } from './defs';
+import { ageOf, newTask } from './agents';
+import { ADULT_AGE, MIN_PER_DAY, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
+import { FOOD_PER_CROP } from './economy';
+import { CARRY, laborPlan } from './labor';
+import { buildCap, completeProject } from './planner';
 import { clamp } from './rng';
 import {
   addMemory, bondNearby, converse, expireMemories, first, moodTarget, rel, RIVAL, say, shiftOpinion, socialGain, think,
@@ -13,6 +16,17 @@ import { laneThreat } from './traffic';
 /** Tiles per game minute on flat ground. */
 export const WALK_SPEED = 3.2;
 const INERTIA = 0.15;
+/** The original park, where festivals happen. */
+const PARK = { x: 45, y: 2, w: 18, h: 20 };
+
+type Stage = 'toddler' | 'child' | 'adult' | 'elder';
+
+export function stageOf(sim: Sim, a: Agent): Stage {
+  const age = ageOf(sim, a);
+  if (age < 4) return 'toddler';
+  if (age < ADULT_AGE) return 'child';
+  return a.role === 'retired' ? 'elder' : 'adult';
+}
 
 // ------------------------------------------------------------------ time helpers
 
@@ -24,17 +38,25 @@ export function inWindow(h: number, from: number, to: number): boolean {
 }
 
 export function isWorkTime(sim: Sim, a: Agent): boolean {
-  return !sim.weekend && inWindow(sim.hour, a.schedule.workStart, a.schedule.workEnd);
+  if (a.role === 'child' || a.role === 'retired') return false;
+  // Farms, building sites and the woods don't take weekends off; offices and shops do.
+  if (ROLES[a.role].station !== 'labor' && sim.weekend) return false;
+  return inWindow(sim.hour, a.schedule.workStart, a.schedule.workEnd);
 }
 
 export function isSleepTime(sim: Sim, a: Agent): boolean {
   return inWindow(sim.hour, a.schedule.sleep, a.schedule.wake);
 }
 
+const isOffice = (a: Agent) => ROLES[a.role].workplace === 'office';
+const hasHome = (sim: Sim, a: Agent) => sim.town.households[a.household].building >= 0;
+
 function where(sim: Sim, a: Agent): 'home' | 'work' | 'out' {
   const r = sim.roomOf(a);
   if (!r) return 'out';
   if (r.kind === 'home' && sim.town.households[a.household].room === r.id) return 'home';
+  const wb = sim.building(a.workBuilding);
+  if (wb?.rooms.includes(r.id)) return 'work';
   const wp = sim.town.workplaces.find((w) => w.id === ROLES[a.role].workplace);
   return wp?.rooms.includes(r.id) ? 'work' : 'out';
 }
@@ -43,17 +65,20 @@ function where(sim: Sim, a: Agent): 'home' | 'work' | 'out' {
 
 /** Can this agent use this prop's spot right now? Encodes ownership, opening hours and reservations. */
 function canUse(sim: Sim, a: Agent, p: Prop): boolean {
-  const holder = sim.reserved.get(p.id);
-  if (holder !== undefined && holder !== a.id) return false;
   if (!p.spot) return false;
-  if (p.use === 'work') return p.id === a.deskId;
+  const holder = sim.reserved.get(p.id);
+  if (holder !== undefined && holder !== a.id && p.use !== 'deposit') return false;
+  if (p.use === 'work' || p.use === 'teach') return p.id === a.deskId;
+  if (p.use === 'learn') return a.role === 'child';
   const room = p.room >= 0 ? sim.map.rooms[p.room] : undefined;
   if (p.household !== undefined) return p.household === a.household;
   if (room?.kind === 'home') return sim.town.households[a.household].room === room.id;
-  if (room?.building === 'Northwind Studio') return ROLES[a.role].workplace === 'office';
+  if (room?.building === 'Northwind Studio') return isOffice(a);
   if (room) {
     const wp = sim.town.workplaces.find((w) => w.rooms.includes(room.id));
     if (wp && ROLES[a.role].workplace !== wp.id && !inWindow(sim.hour, wp.open, wp.close)) return false;
+    // Built cafés and schools keep similar hours.
+    if (!wp && (room.kind === 'cafe' || room.kind === 'school') && sim.building(p.building)?.id !== a.workBuilding && !inWindow(sim.hour, 7, 20)) return false;
   }
   return true;
 }
@@ -79,7 +104,7 @@ function findSpot(sim: Sim, a: Agent, uses: UseKind[], filter?: (p: Prop) => boo
   let best: Target | null = null;
   for (const { p } of cands) {
     const cell = m.idx(p.spot!.x, p.spot!.y);
-    const path = cell === a.at ? [] : sim.nav.findPath(a.at, cell);
+    const path = cell === a.at ? [] : sim.nav.findPath(a.at, cell, 40000);
     if (!path) continue;
     if (!best || path.length < best.cost) best = { prop: p, cell, facing: p.spot!.facing, path, cost: path.length };
     if (best.cost < 6) break;
@@ -97,22 +122,25 @@ function randomCellIn(sim: Sim, x: number, y: number, w: number, h: number): num
   return -1;
 }
 
+const roomKind = (sim: Sim, p: Prop) => (p.room >= 0 ? sim.map.rooms[p.room].kind : undefined);
+
 // ------------------------------------------------------------------ needs
 
-function updateNeeds(sim: Sim, a: Agent, dt: number): void {
+function updateNeeds(sim: Sim, a: Agent, dt: number, stage: Stage): void {
   const n = a.needs;
   const k = a.action.kind;
   const performing = a.action.stage === 'perform';
   const asleep = k === 'sleep' && performing;
-  const working = k === 'work' && performing;
-  if (!asleep) n.energy -= (working ? 0.075 : 0.06) * dt * (a.traits.includes('earlyBird') && sim.hour > 19 ? 1.4 : 1);
-  n.hunger -= (a.traits.includes('foodie') ? 0.13 : 0.105) * dt * (asleep ? 0.4 : 1);
-  n.hygiene -= (k === 'play' || k === 'stroll' ? 0.12 : 0.05) * dt * (asleep ? 0.5 : 1);
+  const working = (k === 'work' || k === 'build' || k === 'chop' || k === 'mine' || k === 'farm' || k === 'haul' || k === 'teach') && performing;
+  const tired = stage === 'elder' ? 1.25 : stage === 'toddler' ? 1.3 : 1;
+  if (!asleep) n.energy -= (working ? 0.075 : 0.06) * dt * tired * (a.traits.includes('earlyBird') && sim.hour > 19 ? 1.4 : 1);
+  n.hunger -= (a.traits.includes('foodie') ? 0.13 : 0.105) * dt * (asleep ? 0.4 : 1) * (working && k !== 'work' ? 1.2 : 1);
+  n.hygiene -= (k === 'play' || k === 'stroll' || k === 'chop' || k === 'mine' || k === 'build' || k === 'farm' ? 0.12 : 0.05) * dt * (asleep ? 0.5 : 1);
   const soc = a.traits.includes('extrovert') ? 0.1 : a.traits.includes('introvert') ? 0.04 : 0.065;
   n.social -= soc * dt * (asleep ? 0.2 : 1);
-  n.fun -= (working ? 0.08 : 0.045) * dt * (asleep ? 0.2 : 1);
+  n.fun -= (working ? 0.08 : 0.045) * dt * (asleep ? 0.2 : 1) * (stage === 'child' ? 1.3 : 1);
   if (isWorkTime(sim, a)) {
-    if (!working && k !== 'meet') n.work -= (a.traits.includes('workaholic') ? 0.16 : a.traits.includes('slacker') ? 0.05 : 0.1) * dt;
+    if (!working && k !== 'meet' && k !== 'deposit') n.work -= (a.traits.includes('workaholic') ? 0.16 : a.traits.includes('slacker') ? 0.05 : 0.1) * dt;
   } else n.work += (60 - n.work) * 0.002 * dt;
   a.bladder -= 0.32 * dt * (asleep ? 0.3 : 1);
   if (k === 'coffee' && performing) a.bladder -= 0.4 * dt;
@@ -127,22 +155,22 @@ function updateNeeds(sim: Sim, a: Agent, dt: number): void {
   if (a.bubble && a.bubble.until < sim.time) a.bubble = null;
 }
 
+export const xpToNext = (level: number): number => 120 + level * 90;
+
 function gainXp(sim: Sim, a: Agent, skill: SkillKey, amount: number): void {
   const s = a.skills[skill];
   if (s.level >= 10) return;
   s.xp += amount * (a.traits.includes('workaholic') && skill === 'craft' ? 1.25 : 1);
-  const need = 120 + s.level * 90;
+  const need = xpToNext(s.level);
   if (s.xp >= need) {
     s.xp -= need;
     s.level++;
     addMemory(sim, a, 'skillUp');
     const label = skill === 'craft' ? ROLES[a.role].craft : SKILL_LABEL[skill];
     think(sim, a, `I'm getting better at ${label.toLowerCase()}.`, 'good');
-    sim.log(`${first(a)} reached ${label} ${s.level}`, 'life', 'good', a);
+    if (s.level % 2 === 0) sim.log(`${first(a)} reached ${label} ${s.level}`, 'life', 'good', a);
   }
 }
-
-export const xpToNext = (level: number): number => 120 + level * 90;
 
 // ------------------------------------------------------------------ options
 
@@ -160,7 +188,8 @@ function start(sim: Sim, a: Agent, kind: ActionKind, label: string, reason: stri
   a.path = t.path;
   a.pathPos = 0;
   a.edgeT = 0;
-  if (t.prop) sim.reserved.set(t.prop.id, a.id);
+  if (t.prop && t.prop.use !== 'deposit') sim.reserved.set(t.prop.id, a.id);
+  if (extra.propId !== undefined) sim.reserved.set(extra.propId, a.id);
   if (a.action.stage === 'perform') arrive(sim, a);
   return true;
 }
@@ -168,6 +197,7 @@ function start(sim: Sim, a: Agent, kind: ActionKind, label: string, reason: stri
 function endAction(sim: Sim, a: Agent): void {
   const act = a.action;
   if (act.propId !== undefined && sim.reserved.get(act.propId) === a.id) sim.reserved.delete(act.propId);
+  if (act.projectId !== undefined) sim.projects.find((p) => p.id === act.projectId)?.builders.delete(a.id);
   if (act.kind === 'socialize' && act.partnerId !== undefined) {
     const p = sim.agent(act.partnerId);
     if (p && p.action.kind === 'socialize' && p.action.partnerId === a.id) {
@@ -189,138 +219,160 @@ function finish(sim: Sim, a: Agent): void {
 }
 
 /** Spot-based option: score now, find the nearest spot only if chosen. */
-function spotOption(sim: Sim, a: Agent, kind: ActionKind, score: number, reason: string, uses: UseKind[], label: (p: Prop) => string, timer: number, filter?: (p: Prop) => boolean, onStart?: (p: Prop) => void): Option {
+function spotOption(sim: Sim, a: Agent, kind: ActionKind, score: number, reason: string, uses: UseKind[], label: (p: Prop) => string, timer: number, filter?: (p: Prop) => boolean, onStart?: (p: Prop) => boolean | void): Option {
   return {
     kind, score, reason,
     begin: () => {
       const t = findSpot(sim, a, uses, filter);
       if (!t?.prop) return false;
-      onStart?.(t.prop);
+      if (onStart?.(t.prop) === false) return false;
       return start(sim, a, kind, label(t.prop), reason, t, timer, score);
     },
   };
 }
 
 function roomName(sim: Sim, p: Prop): string {
-  return p.room >= 0 ? sim.map.rooms[p.room].name : 'outside';
+  return p.room >= 0 ? sim.map.rooms[p.room].name : 'park';
 }
 
-function buildOptions(sim: Sim, a: Agent): Option[] {
+/** Walk somewhere in an area and hang out there. */
+function areaOption(sim: Sim, a: Agent, kind: ActionKind, score: number, reason: string, label: string, area: { x: number; y: number; w: number; h: number }, timer: number): Option {
+  return {
+    kind, score, reason,
+    begin: () => {
+      const cell = randomCellIn(sim, area.x, area.y, area.w, area.h);
+      if (cell < 0) return false;
+      const path = cell === a.at ? [] : sim.nav.findPath(a.at, cell, 40000);
+      if (!path) return false;
+      return start(sim, a, kind, label, reason, { cell, path, cost: path.length }, timer, score);
+    },
+  };
+}
+
+function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   const n = a.needs;
   const o: Option[] = [];
   const workTime = isWorkTime(sim, a);
   const sleepTime = isSleepTime(sim, a);
   const loc = where(sim, a);
   const h = sim.hour;
-  const office = ROLES[a.role].workplace === 'office';
-  // During work hours, leisure has to beat the pull of the desk.
-  const breakMult = workTime ? (a.traits.includes('slacker') ? 0.85 : a.traits.includes('workaholic') ? 0.45 : 0.6) : 1;
+  const office = isOffice(a);
+  const homed = hasHome(sim, a);
+  const little = stage === 'toddler' || stage === 'child';
+  // During work (or school) hours, leisure has to beat the pull of the job.
+  const schoolTime = stage === 'child' && !sim.weekend && inWindow(h, 8.5, 15) && ageOf(sim, a) >= 6 && sim.map.buildings.some((b) => b.kind === 'school');
+  const breakMult = workTime || schoolTime ? (a.traits.includes('slacker') ? 0.85 : a.traits.includes('workaholic') ? 0.45 : 0.6) : 1;
   const evening = h >= 20.5 || h < 5;
+  const homeOnly = (p: Prop) => p.household === a.household;
 
   // ---- sleep
   {
     const x = 1 - n.energy / 100;
-    let s = Math.pow(x, 2) * 1.1 + (sleepTime ? 0.9 : 0);
+    let s = Math.pow(x, 2) * 1.1 + (sleepTime ? 0.9 : 0) + (stage === 'toddler' && h > 12.5 && h < 14.5 ? 0.5 : 0);
     if (n.energy < 10) s += 0.6;
     if (!sleepTime && n.energy > 35) s *= 0.3;
-    if (s > 0.15) o.push(spotOption(sim, a, 'sleep', s, sleepTime ? 'Bedtime' : `Exhausted (${Math.round(n.energy)})`, ['sleep'], () => 'Sleeping', 0));
+    if (s > 0.15) {
+      if (homed) o.push(spotOption(sim, a, 'sleep', s, sleepTime ? 'Bedtime' : `Exhausted (${Math.round(n.energy)})`, ['sleep'], () => 'Sleeping', 0, homeOnly));
+      else o.push(spotOption(sim, a, 'sleep', s, 'No home to go to', ['sit'], () => 'Sleeping rough', 0, (p) => p.household === undefined && roomKind(sim, p) !== 'home', () => {
+        addMemory(sim, a, 'sleptRough');
+        think(sim, a, 'Another night on a bench. We need a home.', 'bad');
+      }));
+    }
   }
 
   // ---- restroom / hygiene
   if (a.bladder < 45) {
-    const s = Math.pow(1 - a.bladder / 100, 2) * 1.6;
-    o.push(spotOption(sim, a, 'toilet', s, 'Needs the restroom', ['toilet'], () => 'In the restroom', 4));
+    o.push(spotOption(sim, a, 'toilet', Math.pow(1 - a.bladder / 100, 2) * 1.6, 'Needs the restroom', ['toilet'], () => 'In the restroom', 4));
   }
-  if (n.hygiene < 70) {
+  if (n.hygiene < 70 && homed) {
     const morning = inWindow(h, a.schedule.wake, a.schedule.wake + 1.5);
     const s = (1 - n.hygiene / 100) * (a.traits.includes('neatFreak') ? 1.3 : 0.9) + (morning ? 0.35 : 0) - (loc === 'home' ? 0 : 0.2);
-    o.push(spotOption(sim, a, 'shower', s * breakMult, morning ? 'Morning shower' : `Feeling grimy (${Math.round(n.hygiene)})`, ['shower'], () => 'Showering', 12));
+    o.push(spotOption(sim, a, 'shower', s * breakMult, morning ? 'Morning shower' : `Feeling grimy (${Math.round(n.hygiene)})`, ['shower'], () => (little ? 'Bath time' : 'Showering'), 12, homeOnly));
   }
 
   // ---- food
   const lunchy = inWindow(h, a.schedule.lunch - 0.4, a.schedule.lunch + 1);
   const breakfast = inWindow(h, a.schedule.wake, a.schedule.wake + 1.2);
   const dinner = inWindow(h, 18, 20.5);
+  const pantry = sim.pantry[a.household] ?? 0;
   if (a.mealReady) {
-    o.push(spotOption(sim, a, 'eat', 1.4, 'Dinner is ready', ['eat'], () => 'Eating at home', 22, (p) => p.household === a.household));
+    o.push(spotOption(sim, a, 'eat', 1.4, 'Food is ready', ['eat'], () => 'Eating at home', 22, homeOnly));
   } else if (n.hunger < 75) {
     const x = 1 - n.hunger / 100;
     let s = Math.pow(x, 1.5) * 1.3 + (lunchy || breakfast || dinner ? 0.35 : 0) + (a.traits.includes('foodie') ? 0.1 : 0);
     if (n.hunger < 15) s += 0.5;
     const reason = lunchy ? 'Lunchtime' : breakfast ? 'Breakfast' : dinner ? 'Dinnertime' : `Hungry (${Math.round(n.hunger)})`;
-    if (loc === 'home' || (!workTime && evening) || (!workTime && dinner && loc !== 'work')) {
-      if (sim.pantry[a.household] > 0) o.push(spotOption(sim, a, 'cook', s, reason, ['cook'], () => 'Cooking at home', 18, (p) => p.household === a.household));
+    const atHomeTime = loc === 'home' || (!workTime && !schoolTime && (evening || dinner || breakfast));
+    if (homed && atHomeTime && pantry > 0 && stage !== 'toddler') {
+      o.push(spotOption(sim, a, 'cook', s, reason, ['cook'], () => (stage === 'child' ? 'Making a sandwich' : 'Cooking at home'), stage === 'child' ? 8 : 18, homeOnly));
     }
-    if (office && !sim.weekend && loc !== 'home') {
-      o.push(spotOption(sim, a, 'eat', s * (workTime ? 1 : 0.6) + (sim.events.pizza ? 0.4 : 0), sim.events.pizza ? 'Free pizza!' : reason, ['eat'], () => (sim.events.pizza ? 'Eating pizza in the kitchen' : 'Lunch in the kitchen'), 24, (p) => sim.map.rooms[p.room]?.kind === 'kitchen'));
-    }
-    if (a.money >= 9 && !evening) {
-      o.push(spotOption(sim, a, 'eat', s * (a.traits.includes('foodie') ? 1.15 : 0.9), reason, ['eat'], () => 'Eating at the café', 26, (p) => sim.map.rooms[p.room]?.kind === 'cafe', () => {
-        a.money -= 9;
+    if (little && homed && pantry > 0) {
+      o.push(spotOption(sim, a, 'eat', s * 0.9, reason, ['eat'], () => 'Having a snack at home', 15, homeOnly, () => {
+        if (sim.pantry[a.household] < 1) return false;
+        sim.pantry[a.household] -= 0.5;
       }));
     }
-    if (n.hunger < 55 && workTime) o.push(spotOption(sim, a, 'snack', s * 0.7, 'Quick snack', ['snack'], () => 'Grabbing a snack', 5));
+    if (sim.stock.food >= 1) {
+      if (office && !sim.weekend && loc !== 'home') {
+        o.push(spotOption(sim, a, 'eat', s * (workTime ? 1 : 0.6) + (sim.events.pizza ? 0.4 : 0), sim.events.pizza ? 'Free pizza!' : reason, ['eat'], () => (sim.events.pizza ? 'Eating pizza in the kitchen' : 'Lunch in the kitchen'), 24, (p) => roomKind(sim, p) === 'kitchen'));
+      }
+      if (a.money >= 9 && !evening && !little) {
+        o.push(spotOption(sim, a, 'eat', s * (a.traits.includes('foodie') ? 1.15 : 0.9) + (!homed ? 0.3 : 0), reason, ['eat'], (p) => `Eating at the ${roomName(sim, p)}`, 26, (p) => roomKind(sim, p) === 'cafe', () => {
+          a.money -= 9;
+        }));
+      }
+    }
+    if (n.hunger < 55 && workTime && stage === 'adult') o.push(spotOption(sim, a, 'snack', s * 0.7, 'Quick snack', ['snack'], () => 'Grabbing a snack', 5));
   }
 
-  // ---- coffee
-  {
+  // ---- coffee (grown-ups only)
+  if (!little) {
     const morningHabit = a.coffeeDay !== sim.day && inWindow(h, a.schedule.wake + 0.3, a.schedule.wake + 3.5);
     const tired = n.energy < 55 && !sleepTime;
     if (morningHabit || tired) {
       const s = (morningHabit ? 0.75 : 0) + (tired ? (1 - n.energy / 100) * 0.6 : 0);
-      o.push(spotOption(sim, a, 'coffee', s, morningHabit ? 'Morning coffee' : `Tired (${Math.round(n.energy)})`, ['coffee'], (p) => `Getting coffee at the ${roomName(sim, p).toLowerCase()}`, 6, (p) => !(sim.events.coffeeBroken && sim.map.rooms[p.room]?.kind === 'kitchen')));
+      o.push(spotOption(sim, a, 'coffee', s, morningHabit ? 'Morning coffee' : `Tired (${Math.round(n.energy)})`, ['coffee'], (p) => `Getting coffee at the ${roomName(sim, p).toLowerCase()}`, 6, (p) => !(sim.events.coffeeBroken && roomKind(sim, p) === 'kitchen')));
     }
   }
 
   // ---- work
-  if (a.deskId !== null && (workTime || (a.traits.includes('workaholic') && !sim.weekend && h > 7 && h < 21))) {
-    const task = a.task;
-    const due = task?.due !== undefined && task.due - sim.time < 4 * 60;
-    let s = workTime ? 0.72 + (100 - n.work) / 300 + (due ? 0.25 : 0) : 0.3;
-    s *= a.traits.includes('workaholic') ? 1.2 : a.traits.includes('slacker') ? 0.8 : 1;
-    const label = ROLES[a.role].station === 'desk' ? `Working: ${task?.title ?? 'busywork'}` : ROLES[a.role].station === 'reception' ? `At reception: ${task?.title ?? ''}` : `On shift: ${task?.title ?? ''}`;
-    o.push({
-      kind: 'work', score: s, reason: due ? 'Deadline coming up' : workTime ? 'Work hours' : 'Staying late',
-      begin: () => {
-        const desk = sim.prop(a.deskId!);
-        if (!desk?.spot) return false;
-        const t = findSpot(sim, a, ['work'], (p) => p.id === desk.id);
-        if (!t) return false;
-        return start(sim, a, 'work', label, due ? 'Deadline coming up' : workTime ? 'Work hours' : 'Staying late', t, sim.rng.range(50, 95), s);
-      },
-    });
+  if (stage === 'adult') workOptions(sim, a, o, workTime, h);
+
+  // ---- school
+  if (schoolTime) {
+    o.push(spotOption(sim, a, 'learn', 1.15, 'School day', ['learn'], () => 'In class at school', sim.rng.range(60, 120)));
   }
 
-  // ---- meetings
+  // ---- meetings and parties
   if (sim.events.standup && office && workTime) {
     o.push(spotOption(sim, a, 'meet', 1.3, 'Daily standup', ['meet'], () => 'In the standup meeting', 9999));
   }
-
-  // ---- party
   if (sim.events.party && office && !sleepTime) {
-    o.push(spotOption(sim, a, 'party', 1.0 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.35 : 0), 'Office party', ['sit', 'play', 'music'], () => 'At the office party', 9999, (p) => sim.map.rooms[p.room]?.kind === 'lounge' || sim.map.rooms[p.room]?.kind === 'kitchen'));
+    o.push(spotOption(sim, a, 'party', 1.0 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.35 : 0), 'Office party', ['sit', 'play', 'music'], () => 'At the office party', 9999, (p) => roomKind(sim, p) === 'lounge' || roomKind(sim, p) === 'kitchen'));
   }
-
-  // ---- repair
+  if (sim.events.festival && !sleepTime && stage !== 'toddler') {
+    o.push(areaOption(sim, a, 'party', 1.15 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.25 : 0), 'Town festival', 'At the town festival', PARK, 9999));
+  }
   if (sim.events.coffeeBroken && office && workTime && (a.role === 'engineer' || a.role === 'receptionist')) {
-    const coffee = sim.map.props.find((p) => p.use === 'coffee' && sim.map.rooms[p.room]?.kind === 'kitchen');
+    const coffee = sim.map.props.find((p) => p.use === 'coffee' && roomKind(sim, p) === 'kitchen');
     if (coffee) o.push(spotOption(sim, a, 'repair', 0.95, 'The coffee machine is broken', ['coffee'], () => 'Fixing the coffee machine', 20, (p) => p.id === coffee.id));
   }
 
   // ---- social
-  if (n.social < 75) {
+  if (n.social < 75 && stage !== 'toddler') {
     const mult = a.traits.includes('extrovert') ? 1.3 : a.traits.includes('introvert') ? 0.6 : 1;
     const base = Math.pow(1 - n.social / 100, 1.3) * 0.95 * mult;
     let best: { p: Agent; score: number } | null = null;
     for (const p of sim.agents) {
-      if (p.id === a.id) continue;
+      if (p.id === a.id || stageOf(sim, p) === 'toddler') continue;
       const pk = p.action.kind;
-      const available = (pk === 'idle' || pk === 'wander' || pk === 'relax' || pk === 'coffee' || pk === 'stroll' || ((pk === 'eat' || pk === 'snack') && p.action.stage === 'perform')) && p.action.kind !== 'sleep';
+      const available = pk === 'idle' || pk === 'wander' || pk === 'relax' || pk === 'coffee' || pk === 'stroll' || pk === 'play' && !p.action.propId || ((pk === 'eat' || pk === 'snack') && p.action.stage === 'perform');
       if (!available) continue;
       const d = Math.hypot(p.x - a.x, p.y - a.y);
       if (d > 22) continue;
       const r = rel(a, p);
-      const pull = r.opinion <= RIVAL ? -0.35 : r.opinion / 220 + r.familiarity / 500;
+      const peers = little === (stageOf(sim, p) === 'child') ? 0.08 : 0;
+      const pull = r.opinion <= RIVAL ? -0.35 : r.opinion / 220 + r.familiarity / 500 + peers;
       const sc = base + pull - d * 0.012 + sim.rng.range(0, 0.06);
       if (!best || sc > best.score) best = { p, score: sc };
     }
@@ -346,44 +398,43 @@ function buildOptions(sim: Sim, a: Agent): Option[] {
   // ---- fun
   if (n.fun < 80) {
     const x = 1 - n.fun / 100;
-    const free = !workTime && !sleepTime;
-    if (office && !sim.weekend && loc !== 'home') {
-      const waiting = sim.agents.some((p) => p.id !== a.id && p.action.kind === 'play' && p.action.stage === 'perform');
+    const free = !workTime && !sleepTime && !schoolTime;
+    if (stage === 'toddler') {
+      o.push(areaOption(sim, a, 'play', x * 0.8 + 0.1, 'Playtime', 'Playing with toys', homeArea(sim, a), sim.rng.range(15, 30)));
+    } else if (little) {
+      o.push(spotOption(sim, a, 'play', (x * 0.9 + 0.15) * breakMult, `Bored (${Math.round(n.fun)})`, ['play'], () => 'Playing in the park', sim.rng.range(20, 40), (p) => roomKind(sim, p) !== 'lounge'));
+      if (free && !evening && !sim.events.rain) o.push(areaOption(sim, a, 'play', x * 0.7 + 0.1, 'Wants to run around', 'Running around the park', PARK, sim.rng.range(20, 35)));
+    }
+    if (office && !sim.weekend && loc !== 'home' && stage === 'adult') {
+      const waiting = sim.agents.some((p) => p.id !== a.id && p.action.kind === 'play' && p.action.stage === 'perform' && roomKind(sim, sim.prop(p.action.propId) ?? ({ room: -1 } as Prop)) === 'lounge');
       const s = (x * 0.85 + (a.traits.includes('competitive') ? 0.2 : 0) + (waiting ? 0.35 : 0)) * breakMult;
-      o.push(spotOption(sim, a, 'play', s, waiting ? 'Someone wants a game' : `Bored (${Math.round(n.fun)})`, ['play'], () => 'Playing ping pong', 16));
+      o.push(spotOption(sim, a, 'play', s, waiting ? 'Someone wants a game' : `Bored (${Math.round(n.fun)})`, ['play'], () => 'Playing ping pong', 16, (p) => roomKind(sim, p) === 'lounge'));
       o.push(spotOption(sim, a, 'music', (x * 0.6 + a.skills.music.level * 0.04 + (a.traits.includes('creative') ? 0.15 : 0)) * breakMult, `Bored (${Math.round(n.fun)})`, ['music'], () => 'Playing the piano', 22));
     }
-    o.push(spotOption(sim, a, 'read', (x * 0.55 + (a.traits.includes('introvert') ? 0.15 : 0) + (a.traits.includes('creative') ? 0.1 : 0)) * breakMult, `Bored (${Math.round(n.fun)})`, ['read'], (p) => `Reading in the ${roomName(sim, p).toLowerCase()}`, sim.rng.range(30, 50)));
-    o.push(spotOption(sim, a, 'relax', (x * 0.5 + (1 - n.energy / 100) * 0.3 + (evening ? 0.15 : 0)) * breakMult, n.energy < 45 ? 'Needs a sit-down' : `Unwinding`, ['sit'], (p) => `Relaxing in the ${roomName(sim, p).toLowerCase()}`, sim.rng.range(20, 40), (p) => (evening ? p.household === a.household : true)));
-    if (free && !evening && !sim.events.rain) {
-      o.push({
-        kind: 'stroll', score: x * 0.6 + (a.traits.includes('extrovert') ? 0.05 : 0.1), reason: 'Fresh air',
-        begin: () => {
-          const cell = randomCellIn(sim, 45, 2, 18, 20);
-          if (cell < 0) return false;
-          const path = sim.nav.findPath(a.at, cell);
-          if (!path) return false;
-          return start(sim, a, 'stroll', 'Walking in the park', 'Fresh air', { cell, path, cost: path.length }, sim.rng.range(15, 30), x * 0.6);
-        },
-      });
+    if (stage !== 'toddler') {
+      o.push(spotOption(sim, a, 'read', (x * 0.55 + (a.traits.includes('introvert') ? 0.15 : 0) + (a.traits.includes('creative') ? 0.1 : 0) + (stage === 'elder' ? 0.15 : 0)) * breakMult, `Bored (${Math.round(n.fun)})`, ['read'], (p) => `Reading in the ${roomName(sim, p).toLowerCase()}`, sim.rng.range(30, 50)));
+      o.push(spotOption(sim, a, 'relax', (x * 0.5 + (1 - n.energy / 100) * 0.3 + (evening ? 0.15 : 0)) * breakMult, n.energy < 45 ? 'Needs a sit-down' : 'Unwinding', ['sit'], (p) => `Relaxing in the ${roomName(sim, p).toLowerCase()}`, sim.rng.range(20, 40), (p) => (evening ? homeOnly(p) : true)));
+    }
+    if (free && !evening && !sim.events.rain && !little) {
+      o.push(areaOption(sim, a, 'stroll', x * 0.6 + (stage === 'elder' ? 0.2 : 0.1), 'Fresh air', 'Walking in the park', PARK, sim.rng.range(15, 30)));
     }
   }
 
   // ---- errands
-  const housemateShopping = sim.agents.some((o) => o.id !== a.id && o.household === a.household && o.action.kind === 'shop');
-  if (sim.pantry[a.household] <= 1 && !housemateShopping && !workTime && !evening && a.money >= 24) {
+  const housemateShopping = sim.agents.some((p) => p.id !== a.id && p.household === a.household && p.action.kind === 'shop');
+  if (homed && pantry <= 1 && !housemateShopping && !workTime && !evening && a.money >= 18 && sim.stock.food >= 6 && !little) {
     o.push(spotOption(sim, a, 'shop', 0.85, 'Fridge is empty', ['shop'], () => 'Shopping for groceries', 14));
   }
 
-  // ---- go home at night / idle
-  if (evening && loc !== 'home') {
-    o.push(spotOption(sim, a, 'relax', 0.7, 'Heading home for the night', ['sit'], () => 'Relaxing at home', 30, (p) => p.household === a.household));
+  // ---- go home at night / stay near home when small
+  if ((evening || stage === 'toddler') && loc !== 'home' && homed) {
+    o.push(spotOption(sim, a, 'relax', stage === 'toddler' ? 1.2 : 0.7, 'Heading home', ['sit'], () => 'Relaxing at home', 30, homeOnly));
   }
   o.push({
     kind: 'wander', score: 0.06, reason: 'Nothing pressing',
     begin: () => {
-      const r = sim.roomOf(a);
-      const cell = r ? randomCellIn(sim, r.x, r.y, r.w, r.h) : randomCellIn(sim, sim.map.cx(a.at) - 6, sim.map.cy(a.at) - 6, 12, 12);
+      const r = stage === 'toddler' ? homeArea(sim, a) : sim.roomOf(a) ?? { x: sim.map.cx(a.at) - 6, y: sim.map.cy(a.at) - 6, w: 12, h: 12 };
+      const cell = randomCellIn(sim, r.x, r.y, r.w, r.h);
       if (cell < 0) return false;
       const path = sim.nav.findPath(a.at, cell);
       if (!path) return false;
@@ -393,46 +444,102 @@ function buildOptions(sim: Sim, a: Agent): Option[] {
   return o;
 }
 
-function decide(sim: Sim, a: Agent): void {
+function homeArea(sim: Sim, a: Agent): { x: number; y: number; w: number; h: number } {
+  const room = sim.map.rooms[sim.town.households[a.household].room];
+  return room ?? { x: sim.map.cx(a.at) - 3, y: sim.map.cy(a.at) - 3, w: 6, h: 6 };
+}
+
+function workOptions(sim: Sim, a: Agent, o: Option[], workTime: boolean, h: number): void {
+  const n = a.needs;
+  const role = ROLES[a.role];
+  if (role.station === 'labor') {
+    if (!workTime && !(a.carry && h > 6 && h < 21)) return;
+    const mult = a.traits.includes('workaholic') ? 1.2 : a.traits.includes('slacker') ? 0.8 : 1;
+    // Peek first so the score reflects whether there's real work out there.
+    const plan = laborPlan(sim, a);
+    if (!plan) return;
+    const s = (0.7 + (100 - n.work) / 300) * mult * plan.score;
+    o.push({
+      kind: plan.kind, score: s, reason: plan.reason,
+      begin: () => {
+        const target: Target = { cell: plan.dest, path: plan.path, cost: plan.path.length };
+        const prop = sim.prop(plan.propId);
+        if (prop && sim.reserved.has(prop.id) && sim.reserved.get(prop.id) !== a.id && plan.kind !== 'deposit') return false;
+        const ok = start(sim, a, plan.kind, plan.label, plan.reason, target, plan.timer, s, { propId: plan.propId, projectId: plan.projectId, leg: plan.leg, material: plan.material });
+        if (plan.projectId !== undefined) sim.projects.find((p) => p.id === plan.projectId)?.builders.add(a.id);
+        return ok;
+      },
+    });
+    return;
+  }
+  if (a.deskId === null) return;
+  if (!workTime && !(a.traits.includes('workaholic') && !sim.weekend && h > 7 && h < 21)) return;
+  const task = a.task;
+  const due = task?.due !== undefined && task.due - sim.time < 4 * 60;
+  let s = workTime ? 0.72 + (100 - n.work) / 300 + (due ? 0.25 : 0) : 0.3;
+  s *= a.traits.includes('workaholic') ? 1.2 : a.traits.includes('slacker') ? 0.8 : 1;
+  const kind: ActionKind = a.role === 'teacher' ? 'teach' : 'work';
+  const label = a.role === 'teacher' ? `Teaching: ${task?.title ?? 'class'}` : role.station === 'desk' ? `Working: ${task?.title ?? 'busywork'}` : role.station === 'reception' ? `At reception: ${task?.title ?? ''}` : `On shift: ${task?.title ?? ''}`;
+  const reason = due ? 'Deadline coming up' : workTime ? 'Work hours' : 'Staying late';
+  o.push({
+    kind, score: s, reason,
+    begin: () => {
+      const t = findSpot(sim, a, [kind === 'teach' ? 'teach' : 'work'], (p) => p.id === a.deskId);
+      if (!t) return false;
+      return start(sim, a, kind, label, reason, t, sim.rng.range(50, 95), s);
+    },
+  });
+}
+
+function decide(sim: Sim, a: Agent, stage: Stage): void {
   a.thinkIn = 4 + sim.rng.range(0, 4);
-  const opts = buildOptions(sim, a).sort((x, y) => y.score - x.score);
+  const opts = buildOptions(sim, a, stage).sort((x, y) => y.score - x.score);
   const cur = a.action;
   let currentScore = 0;
   if (cur.kind !== 'idle') {
     const same = opts.find((x) => x.kind === cur.kind);
     currentScore = (same ? same.score : cur.score * 0.8) + INERTIA;
     // Don't abandon things halfway through for marginal gains.
-    if (cur.stage === 'perform' && ['sleep', 'eat', 'shower', 'toilet', 'socialize', 'cook', 'meet', 'play', 'repair', 'party'].includes(cur.kind)) currentScore += 0.6;
+    if (cur.stage === 'perform' && ['sleep', 'eat', 'shower', 'toilet', 'socialize', 'cook', 'meet', 'play', 'repair', 'party', 'chop', 'mine', 'farm', 'learn'].includes(cur.kind)) currentScore += 0.6;
+    if (cur.kind === 'haul' || cur.kind === 'deposit') currentScore += 1;
   }
   for (const opt of opts) {
     if (opt.score <= currentScore) return;
     if (opt.kind === cur.kind && cur.kind !== 'wander' && cur.kind !== 'idle') return;
     if (opt.begin()) {
-      if (opt.kind !== 'wander' && opt.kind !== 'socialize') think(sim, a, thoughtFor(a, opt), opt.score > 1.1 ? 'alert' : 'neutral');
+      if (opt.kind !== 'wander' && opt.kind !== 'socialize') think(sim, a, thoughtFor(a, opt, stage), opt.score > 1.1 ? 'alert' : 'neutral');
       return;
     }
   }
 }
 
-function thoughtFor(a: Agent, o: Option): string {
+function thoughtFor(a: Agent, o: Option, stage: Stage): string {
   switch (o.kind) {
     case 'work': return a.task ? `Back to "${a.task.title}".` : 'Time to get some work done.';
+    case 'teach': return 'Class is starting. Where did I put my chalk?';
+    case 'learn': return stage === 'child' ? 'School again. I hope we do science today.' : 'Learning something new.';
     case 'eat': return o.reason === 'Free pizza!' ? 'Someone said free pizza?' : `${o.reason}. ${a.action.label}.`;
-    case 'cook': return `${o.reason}. I'll cook something.`;
+    case 'cook': return `${o.reason}. I'll make something.`;
     case 'coffee': return o.reason === 'Morning coffee' ? 'Not human until I have coffee.' : 'Need a coffee to keep going.';
-    case 'sleep': return o.reason === 'Bedtime' ? 'Long day. Off to bed.' : 'I can barely keep my eyes open.';
+    case 'sleep': return o.reason === 'Bedtime' ? 'Long day. Off to bed.' : o.reason === 'No home to go to' ? 'No bed tonight. I will find a bench.' : 'I can barely keep my eyes open.';
     case 'toilet': return 'Quick restroom break.';
-    case 'shower': return o.reason === 'Morning shower' ? 'Shower first, then the world.' : 'I really need a shower.';
-    case 'play': return o.reason === 'Someone wants a game' ? 'Someone is at the ping pong table. Game on.' : 'Ping pong break!';
+    case 'shower': return o.reason === 'Morning shower' ? 'Shower first, then the world.' : 'I really need a wash.';
+    case 'play': return stage === 'adult' ? (o.reason === 'Someone wants a game' ? 'Someone is at the ping pong table. Game on.' : 'Ping pong break!') : 'Playtime!';
     case 'music': return 'I feel like playing something.';
     case 'read': return 'A few pages of my book.';
-    case 'relax': return o.reason === 'Heading home for the night' ? 'Heading home.' : 'Taking a breather.';
+    case 'relax': return o.reason === 'Heading home' ? 'Heading home.' : 'Taking a breather.';
     case 'stroll': return 'A walk in the park sounds nice.';
     case 'shop': return 'We are out of food at home. Grocery run.';
     case 'meet': return 'Standup time.';
-    case 'party': return 'Party in the lounge!';
+    case 'party': return o.reason === 'Town festival' ? 'The whole town is out for the festival!' : 'Party in the lounge!';
     case 'repair': return 'I will take a look at that coffee machine.';
     case 'snack': return 'Just a quick snack.';
+    case 'chop': return a.action.projectId !== undefined ? 'Clearing trees for the new build.' : 'The town needs timber. Off to the woods.';
+    case 'mine': return a.action.projectId !== undefined ? 'These rocks have to go before we can build.' : 'Time to break some stone.';
+    case 'haul': return `${o.reason}. I'll fetch it from the storehouse.`;
+    case 'build': return `${a.action.label}. Let's get this up.`;
+    case 'farm': return o.reason === 'The crop is ripe' ? 'The crop looks ready. Harvest time.' : 'Watering and weeding.';
+    case 'deposit': return 'Dropping this off at the storehouse.';
     default: return o.reason;
   }
 }
@@ -440,9 +547,10 @@ function thoughtFor(a: Agent, o: Option): string {
 /** Needs urgent enough to interrupt anything except sleep. */
 function urgent(sim: Sim, a: Agent): boolean {
   const k = a.action.kind;
+  if (k === 'haul' && a.action.leg === 'deliver') return false;
   if (a.bladder < 12 && k !== 'toilet') return true;
   if (a.needs.hunger < 10 && k !== 'eat' && k !== 'cook' && k !== 'snack' && k !== 'sleep') return true;
-  if (sim.events.standup && ROLES[a.role].workplace === 'office' && isWorkTime(sim, a) && k !== 'meet' && k !== 'toilet') return true;
+  if (sim.events.standup && isOffice(a) && isWorkTime(sim, a) && k !== 'meet' && k !== 'toilet') return true;
   return false;
 }
 
@@ -463,6 +571,18 @@ function arrive(sim: Sim, a: Agent): void {
       }
       if (sim.roomOf(a)?.kind === 'cafe') a.money -= 4;
       break;
+    case 'eat': {
+      // Kitchens, the café and diners serve from the town's stores.
+      const k = sim.roomOf(a)?.kind;
+      if (!a.mealReady && (k === 'kitchen' || k === 'cafe')) {
+        if (sim.stock.food < 1) {
+          think(sim, a, 'They are out of food. The whole town is.', 'bad');
+          return finish(sim, a);
+        }
+        sim.stock.food -= 1;
+      }
+      break;
+    }
     case 'socialize': {
       const p = sim.agent(act.partnerId);
       if (p && p.action.kind === 'socialize' && p.action.partnerId === a.id) {
@@ -472,19 +592,72 @@ function arrive(sim: Sim, a: Agent): void {
       break;
     }
     case 'party':
-      sim.events.party?.attendees.add(a.id);
+      (sim.events.party ?? sim.events.festival)?.attendees.add(a.id);
       break;
     case 'meet':
       sim.events.standup?.attendees.add(a.id);
       break;
+    case 'deposit':
+      if (a.carry) {
+        sim.stock[a.carry.kind] += a.carry.amount;
+        if (a.carry.amount >= 6 && sim.rng.chance(0.06)) sim.log(`${first(a)} brought ${Math.round(a.carry.amount)} ${a.carry.kind} to the storehouse`, 'build', 'neutral', a);
+        a.carry = null;
+      }
+      return finish(sim, a);
+    case 'haul':
+      return arriveHaul(sim, a);
   }
+}
+
+function arriveHaul(sim: Sim, a: Agent): void {
+  const act = a.action;
+  const pr = sim.projects.find((p) => p.id === act.projectId);
+  const mat = act.material!;
+  if (!pr) {
+    // Project finished or gone; anything in hand goes back to the store.
+    return finish(sim, a);
+  }
+  if (act.leg === 'pickup') {
+    const take = Math.min(CARRY, Math.floor(sim.stock[mat]), Math.ceil(pr.need[mat] - pr.delivered[mat]));
+    if (take <= 0) return finish(sim, a);
+    sim.stock[mat] -= take;
+    a.carry = { kind: mat, amount: take };
+    // Second leg: walk it to the site.
+    const m = sim.map;
+    let best: number[] | null = null;
+    let dest = -1;
+    for (let y = pr.y; y < pr.y + pr.h && !best; y++) for (let x = pr.x; x < pr.x + pr.w; x++) {
+      const edge = x === pr.x || y === pr.y || x === pr.x + pr.w - 1 || y === pr.y + pr.h - 1;
+      if (!edge || !m.walkable(x, y)) continue;
+      const path = sim.nav.findPath(a.at, m.idx(x, y), 40000);
+      if (path) {
+        best = path;
+        dest = m.idx(x, y);
+        break;
+      }
+    }
+    if (!best) return finish(sim, a);
+    act.leg = 'deliver';
+    act.label = `Carrying ${mat} to ${pr.name}`;
+    act.dest = dest;
+    act.stage = 'travel';
+    a.path = best;
+    a.pathPos = 0;
+    a.edgeT = 0;
+    return;
+  }
+  if (a.carry) {
+    pr.delivered[mat] += a.carry.amount;
+    a.carry = null;
+  }
+  finish(sim, a);
 }
 
 function others(sim: Sim, a: Agent, kinds: ActionKind[], radius: number): Agent[] {
   return sim.agents.filter((o) => o.id !== a.id && kinds.includes(o.action.kind) && o.action.stage === 'perform' && Math.abs(o.x - a.x) <= radius && Math.abs(o.y - a.y) <= radius && sim.roomOf(o) === sim.roomOf(a));
 }
 
-function perform(sim: Sim, a: Agent, dt: number): void {
+function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
   const act = a.action;
   const n = a.needs;
   const tick = () => {
@@ -507,7 +680,19 @@ function perform(sim: Sim, a: Agent, dt: number): void {
       if (tick()) finish(sim, a);
       return;
     case 'work':
+    case 'teach':
       return performWork(sim, a, dt, tick);
+    case 'learn': {
+      n.fun = Math.min(100, n.fun + 0.1 * dt);
+      n.social = Math.min(100, n.social + socialGain(a, 0.15) * dt);
+      gainXp(sim, a, sim.rng.pick(SKILL_KEYS), dt * 0.4);
+      for (const o of others(sim, a, ['learn'], 6)) bondNearby(sim, a, o, dt);
+      if (tick() || !inWindow(sim.hour, 8.5, 15)) {
+        addMemory(sim, a, 'school');
+        finish(sim, a);
+      }
+      return;
+    }
     case 'meet': {
       n.work = Math.min(100, n.work + 0.15 * dt);
       n.social = Math.min(100, n.social + socialGain(a, 0.12) * dt);
@@ -546,18 +731,24 @@ function perform(sim: Sim, a: Agent, dt: number): void {
     case 'cook':
       gainXp(sim, a, 'cooking', dt * 0.4);
       if (tick()) {
-        sim.pantry[a.household] = Math.max(0, sim.pantry[a.household] - 1);
+        if (sim.pantry[a.household] < 1) {
+          think(sim, a, 'The cupboards are bare.', 'bad');
+          return finish(sim, a);
+        }
+        sim.pantry[a.household] -= 1;
+        // One pot feeds whoever in the family is home and hungry.
         a.mealReady = true;
+        for (const o of sim.agents) if (o.household === a.household && o.id !== a.id && o.needs.hunger < 70 && sim.roomOf(o) === sim.roomOf(a)) o.mealReady = true;
         say(sim, a, '♨', 'good');
         finish(sim, a);
       }
       return;
     case 'sleep': {
-      n.energy = Math.min(100, n.energy + 0.21 * dt);
+      n.energy = Math.min(100, n.energy + (stage === 'toddler' ? 0.3 : 0.21) * dt);
       const wakeTime = !isSleepTime(sim, a);
-      if ((wakeTime && n.energy > 70) || (n.energy >= 99.5 && wakeTime)) {
+      if (wakeTime && (n.energy > 70 || (stage === 'toddler' && n.energy > 55))) {
         addMemory(sim, a, n.energy > 85 ? 'sleptWell' : 'badNight');
-        think(sim, a, n.energy > 85 ? 'Good morning! Slept like a log.' : 'Did I even sleep?', n.energy > 85 ? 'good' : 'bad');
+        if (stage !== 'toddler') think(sim, a, n.energy > 85 ? 'Good morning! Slept like a log.' : 'Did I even sleep?', n.energy > 85 ? 'good' : 'bad');
         finish(sim, a);
       }
       return;
@@ -576,6 +767,17 @@ function perform(sim: Sim, a: Agent, dt: number): void {
     case 'socialize':
       return performSocial(sim, a, dt);
     case 'play':
+      if (stage !== 'adult') {
+        n.fun = Math.min(100, n.fun + 1.1 * dt);
+        n.energy = Math.max(0, n.energy - 0.03 * dt);
+        for (const o of others(sim, a, ['play'], 5)) {
+          bondNearby(sim, a, o, dt);
+          n.social = Math.min(100, n.social + socialGain(a, 0.2) * dt);
+        }
+        gainXp(sim, a, 'athletics', dt * 0.2);
+        if (tick()) finish(sim, a);
+        return;
+      }
       return performPlay(sim, a, dt, tick);
     case 'music': {
       n.fun = Math.min(100, n.fun + (a.traits.includes('creative') ? 1.1 : 0.8) * dt);
@@ -604,71 +806,164 @@ function perform(sim: Sim, a: Agent, dt: number): void {
       return;
     case 'shop':
       if (tick()) {
-        sim.pantry[a.household] += 6;
-        a.money -= 24;
-        sim.log(`${first(a)} bought groceries`, 'life', 'neutral', a);
+        const buy = Math.min(6, Math.floor(sim.stock.food));
+        sim.stock.food -= buy;
+        sim.pantry[a.household] += buy;
+        a.money -= buy * 3;
+        sim.log(buy ? `${first(a)} bought groceries` : `${first(a)} found the market shelves empty`, 'life', buy ? 'neutral' : 'bad', a);
         finish(sim, a);
       }
       return;
-    case 'party':
+    case 'party': {
+      const festival = !!sim.events.festival;
       n.fun = Math.min(100, n.fun + 0.9 * dt);
       n.social = Math.min(100, n.social + socialGain(a, 0.7) * dt);
       n.hunger = Math.min(100, n.hunger + 0.6 * dt);
-      for (const o of others(sim, a, ['party'], 10)) bondNearby(sim, a, o, dt * 2);
+      for (const o of sim.agents) if (o.id !== a.id && o.action.kind === 'party' && Math.abs(o.x - a.x) < 6 && Math.abs(o.y - a.y) < 6) bondNearby(sim, a, o, dt * 2);
       if (sim.rng.chance(0.02 * dt)) say(sim, a, sim.rng.pick(['woo!', '♪', 'ha!', 'cheers']), 'good', 3);
-      if (!sim.events.party) finish(sim, a);
+      if (!sim.events.party && !festival) finish(sim, a);
       return;
+    }
     case 'repair':
       gainXp(sim, a, 'craft', dt * 0.2);
       if (tick()) {
         if (sim.events.coffeeBroken) {
           sim.events.coffeeBroken = false;
           sim.log(`${first(a)} fixed the coffee machine`, 'event', 'good', a);
-          for (const o of sim.agents) if (ROLES[o.role].workplace === 'office' && o.id !== a.id) shiftOpinion(sim, o, a, 3);
+          for (const o of sim.agents) if (isOffice(o) && o.id !== a.id) shiftOpinion(sim, o, a, 3);
           think(sim, a, 'Fixed it. You are welcome, everyone.', 'good');
           say(sim, a, '☕', 'good');
         }
         finish(sim, a);
       }
       return;
+    case 'chop':
+    case 'mine':
+      return performGather(sim, a, dt, tick);
+    case 'build':
+      return performBuild(sim, a, dt, tick);
+    case 'farm':
+      return performFarm(sim, a, dt, tick);
+    case 'deposit':
+    case 'haul':
+      return finish(sim, a);
   }
+}
+
+function laborRate(a: Agent): number {
+  return (0.55 + a.skills.craft.level * 0.07) * (a.needs.energy < 20 ? 0.6 : 1) * (a.traits.includes('workaholic') ? 1.15 : a.traits.includes('slacker') ? 0.8 : 1);
+}
+
+function performGather(sim: Sim, a: Agent, dt: number, tick: () => boolean): void {
+  const act = a.action;
+  const p = sim.prop(act.propId);
+  if (!p) return finish(sim, a);
+  a.workedToday += dt;
+  a.money += 0.3 * dt;
+  a.needs.work = Math.min(100, a.needs.work + 0.4 * dt);
+  gainXp(sim, a, 'craft', dt * 0.3);
+  if (Math.floor(sim.time * 3) % 5 === 0) say(sim, a, act.kind === 'chop' ? 'thunk' : 'clink', 'neutral', 1);
+  act.timer -= dt * (laborRate(a) - 1);
+  if (!tick()) return;
+  const kind = p.resource!;
+  let amount = p.amount ?? 6;
+  sim.map.removeProp(p);
+  if (kind === 'wood') sim.map.addProp({ key: 'stump', drawn: true, x: p.x, y: p.y, w: 1, h: 1, blocks: false, flat: true, expires: sim.time + MIN_PER_DAY });
+  const pr = sim.projects.find((x) => x.id === act.projectId);
+  if (pr) {
+    // Cleared timber and stone go straight into the build; any surplus heads to the store.
+    const use = Math.min(amount, Math.max(0, pr.need[kind] - pr.delivered[kind]));
+    pr.delivered[kind] += use;
+    amount -= use;
+  }
+  if (amount > 0) a.carry = { kind, amount: (a.carry?.kind === kind ? a.carry.amount : 0) + amount };
+  finish(sim, a);
+}
+
+function performBuild(sim: Sim, a: Agent, dt: number, tick: () => boolean): void {
+  const pr = sim.projects.find((x) => x.id === a.action.projectId);
+  if (!pr) return finish(sim, a);
+  pr.builders.add(a.id);
+  const cap = buildCap(pr);
+  if (pr.progress >= cap - 0.01 && pr.progress < pr.work) {
+    think(sim, a, `We're out of materials for ${pr.name}.`, 'neutral');
+    return finish(sim, a);
+  }
+  pr.progress = Math.min(cap, pr.progress + laborRate(a) * dt);
+  a.workedToday += dt;
+  a.money += 0.35 * dt;
+  a.needs.work = Math.min(100, a.needs.work + 0.45 * dt);
+  gainXp(sim, a, 'craft', dt * 0.3);
+  if (sim.rng.chance(0.02 * dt)) say(sim, a, sim.rng.pick(['tap tap', 'bonk', 'nearly!']), 'neutral', 1.5);
+  for (const id of pr.builders) {
+    const o = sim.agent(id);
+    if (o && o.id !== a.id) bondNearby(sim, a, o, dt * 0.5);
+  }
+  if (pr.progress >= pr.work - 0.01 && pr.delivered.wood >= pr.need.wood && pr.delivered.stone >= pr.need.stone) {
+    completeProject(sim, pr);
+    think(sim, a, `${pr.name} is done. I helped build that.`, 'good');
+    return finish(sim, a);
+  }
+  if (tick() || !isWorkTime(sim, a)) finish(sim, a);
+}
+
+function performFarm(sim: Sim, a: Agent, dt: number, tick: () => boolean): void {
+  const p = sim.prop(a.action.propId);
+  if (!p) return finish(sim, a);
+  a.workedToday += dt;
+  a.money += 0.3 * dt;
+  a.needs.work = Math.min(100, a.needs.work + 0.4 * dt);
+  gainXp(sim, a, 'craft', dt * 0.3);
+  if (!tick()) return;
+  if ((p.growth ?? 0) >= 1) {
+    p.growth = 0;
+    const amount = (a.carry?.kind === 'food' ? a.carry.amount : 0) + FOOD_PER_CROP * (1 + a.skills.craft.level * 0.04);
+    a.carry = { kind: 'food', amount };
+    if (amount >= 8) addMemory(sim, a, 'harvest');
+  } else {
+    p.growth = Math.min(1, (p.growth ?? 0) + 0.06 + a.skills.craft.level * 0.006);
+  }
+  finish(sim, a);
+  // Keep harvesting until the basket is full, then take it in.
+  if (a.carry && a.carry.amount < 8) a.thinkIn = 0;
 }
 
 function performWork(sim: Sim, a: Agent, dt: number, tick: () => boolean): void {
   const n = a.needs;
   if (!a.task) a.task = newTask(sim, a);
   const t = a.task;
-  const skill = a.skills.craft.level;
-  const moodF = 0.6 + a.mood / 125;
-  const energyF = n.energy < 20 ? 0.6 : 1;
-  const traitF = a.traits.includes('workaholic') ? 1.15 : a.traits.includes('slacker') ? 0.75 : 1;
-  const rate = (0.45 + skill * 0.06) * moodF * energyF * traitF;
-  t.progress += rate * dt;
+  if (t) {
+    const moodF = 0.6 + a.mood / 125;
+    const energyF = n.energy < 20 ? 0.6 : 1;
+    const traitF = a.traits.includes('workaholic') ? 1.15 : a.traits.includes('slacker') ? 0.75 : 1;
+    t.progress += (0.45 + a.skills.craft.level * 0.06) * moodF * energyF * traitF * dt;
+    if (a.traits.includes('creative') && sim.rng.chance(0.0015 * dt)) {
+      t.progress += 15;
+      think(sim, a, 'Oh! I just had a great idea for this.', 'good');
+      say(sim, a, '✨', 'good', 4);
+    }
+    if (t.due !== undefined && sim.time > t.due) {
+      addMemory(sim, a, 'missedDeadline');
+      think(sim, a, `"${t.title}" is overdue. Not good.`, 'bad');
+      sim.log(`${first(a)} missed the deadline for "${t.title}"`, 'work', 'bad', a);
+      t.due = undefined;
+    }
+    if (t.progress >= t.total) {
+      a.tasksDone++;
+      sim.tasksCompleted++;
+      addMemory(sim, a, 'finishedTask');
+      say(sim, a, '✓', 'good', 5);
+      think(sim, a, `Done with "${t.title}"!`, 'good');
+      sim.log(`${first(a)} finished "${t.title}"`, 'work', 'good', a);
+      a.task = newTask(sim, a);
+      if (a.task) a.action.label = a.action.label.replace(/: .*$/, `: ${a.task.title}`);
+    }
+  }
   a.workedToday += dt;
   a.money += 0.4 * dt;
   n.work = Math.min(100, n.work + 0.45 * dt);
   gainXp(sim, a, 'craft', dt * 0.3);
-  if (a.traits.includes('creative') && sim.rng.chance(0.0015 * dt)) {
-    t.progress += 15;
-    think(sim, a, 'Oh! I just had a great idea for this.', 'good');
-    say(sim, a, '✨', 'good', 4);
-  }
-  if (t.due !== undefined && sim.time > t.due) {
-    addMemory(sim, a, 'missedDeadline');
-    think(sim, a, `"${t.title}" is overdue. Not good.`, 'bad');
-    sim.log(`${first(a)} missed the deadline for "${t.title}"`, 'work', 'bad', a);
-    t.due = undefined;
-  }
-  if (t.progress >= t.total) {
-    a.tasksDone++;
-    sim.tasksCompleted++;
-    addMemory(sim, a, 'finishedTask');
-    say(sim, a, '✓', 'good', 5);
-    think(sim, a, `Done with "${t.title}"!`, 'good');
-    sim.log(`${first(a)} finished "${t.title}"`, 'work', 'good', a);
-    a.task = newTask(sim, a);
-    a.action.label = a.action.label.replace(/: .*$/, `: ${a.task.title}`);
-  }
+  if (a.role === 'teacher') for (const k of others(sim, a, ['learn'], 8)) gainXp(sim, k, sim.rng.pick(SKILL_KEYS), dt * 0.2);
   if (tick() || (!isWorkTime(sim, a) && !a.traits.includes('workaholic'))) finish(sim, a);
 }
 
@@ -704,10 +999,9 @@ function performSocial(sim: Sim, a: Agent, dt: number): void {
 
 function performPlay(sim: Sim, a: Agent, dt: number, tick: () => boolean): void {
   const n = a.needs;
-  const partner = sim.agents.find((o) => o.id !== a.id && o.action.kind === 'play' && o.action.stage === 'perform');
+  const partner = sim.agents.find((o) => o.id !== a.id && o.action.kind === 'play' && o.action.stage === 'perform' && stageOf(sim, o) === 'adult' && sim.roomOf(o)?.kind === 'lounge');
   n.energy = Math.max(0, n.energy - 0.05 * dt);
   if (!partner) {
-    // Waiting at the table; give up after a while.
     n.fun = Math.min(100, n.fun + 0.15 * dt);
     if (tick()) {
       think(sim, a, 'Nobody wants to play. Oh well.', 'neutral');
@@ -745,15 +1039,24 @@ function faceToward(a: Agent, b: Agent): Facing {
 
 // ------------------------------------------------------------------ movement
 
-function move(sim: Sim, a: Agent, dt: number): void {
+const ROAD = new Set(['asphalt', 'laneH', 'laneV', 'crossH', 'crossV']);
+
+function carApproaching(sim: Sim, x: number, y: number): boolean {
+  if (!ROAD.has(sim.map.ground[sim.map.idx(x, y)])) return false;
+  // Cars already stopped for us are no threat; moving ones are.
+  return sim.cars.some((c) => c.speed > 2 && laneThreat(c, x + 0.5, y + 0.5));
+}
+
+function move(sim: Sim, a: Agent, dt: number, stage: Stage): void {
   const m = sim.map;
-  let budget = WALK_SPEED * dt * (a.needs.energy < 15 ? 0.7 : 1);
+  const speed = stage === 'elder' ? 0.75 : stage === 'toddler' ? 0.6 : stage === 'child' ? 0.95 : 1;
+  let budget = WALK_SPEED * dt * speed * (a.needs.energy < 15 ? 0.7 : 1) * (a.carry ? 0.85 : 1);
   a.moving = true;
   while (budget > 0 && a.pathPos < a.path.length) {
     const next = a.path[a.pathPos];
     if (!m.walkable(m.cx(next), m.cy(next)) && next !== a.action.dest) {
-      // Something moved into the way; re-plan.
-      const p = sim.nav.findPath(a.at, a.action.dest);
+      // Something moved into the way (a tree grew, a wall went up); re-plan.
+      const p = sim.nav.findPath(a.at, a.action.dest, 40000);
       if (!p) return finish(sim, a);
       a.path = p;
       a.pathPos = 0;
@@ -764,7 +1067,6 @@ function move(sim: Sim, a: Agent, dt: number): void {
     const ay = m.cy(a.at);
     const bx = m.cx(next);
     const by = m.cy(next);
-    // Wait at the curb while a car is coming down the lane we're about to step into.
     if (a.edgeT === 0 && carApproaching(sim, bx, by)) {
       a.moving = false;
       return;
@@ -792,28 +1094,20 @@ function move(sim: Sim, a: Agent, dt: number): void {
   }
 }
 
-const ROAD = new Set(['asphalt', 'laneH', 'laneV', 'crossH', 'crossV']);
-
-function carApproaching(sim: Sim, x: number, y: number): boolean {
-  if (!ROAD.has(sim.map.ground[sim.map.idx(x, y)])) return false;
-  // Cars already stopped for us are no threat; moving ones are.
-  return sim.cars.some((c) => c.speed > 2 && laneThreat(c, x + 0.5, y + 0.5));
-}
-
 export function tickAgents(sim: Sim, dt: number): void {
   for (const a of sim.agents) {
     a.px = a.x;
     a.py = a.y;
-    updateNeeds(sim, a, dt);
+    const stage = stageOf(sim, a);
+    updateNeeds(sim, a, dt, stage);
     a.thinkIn -= dt;
     const asleep = a.action.kind === 'sleep' && a.action.stage === 'perform';
-    if (a.action.kind === 'idle' || (a.thinkIn <= 0 && !asleep) || (urgent(sim, a) && !asleep)) decide(sim, a);
-    if (a.action.stage === 'travel') move(sim, a, dt);
+    if (a.action.kind === 'idle' || (a.thinkIn <= 0 && !asleep) || (urgent(sim, a) && !asleep)) decide(sim, a, stage);
+    if (a.action.stage === 'travel') move(sim, a, dt, stage);
     else {
       a.moving = false;
-      perform(sim, a, dt);
+      perform(sim, a, dt, stage);
     }
   }
 }
 
-export const MINUTES_PER_DAY = MIN_PER_DAY;

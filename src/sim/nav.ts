@@ -99,12 +99,69 @@ export class Nav {
     return Math.max(dx, dy) + (SQRT2 - 1) * Math.min(dx, dy);
   }
 
+  private comp: Int32Array | null = null;
+  private compKey = '';
+
+  /** Connected walkable regions, recomputed only when walls or props change. */
+  private components(): Int32Array {
+    const m = this.map;
+    const key = `${m.propVersion}:${m.wallVersion}`;
+    if (this.comp && key === this.compKey) return this.comp;
+    const comp = (this.comp ??= new Int32Array(m.w * m.h));
+    comp.fill(-1);
+    let label = 0;
+    const stack: number[] = [];
+    for (let i = 0; i < comp.length; i++) {
+      if (comp[i] !== -1 || !m.walkable(m.cx(i), m.cy(i))) continue;
+      comp[i] = label;
+      stack.push(i);
+      while (stack.length) {
+        const c = stack.pop()!;
+        const x = m.cx(c);
+        const y = m.cy(c);
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (!m.walkable(nx, ny)) continue;
+          const n = ny * m.w + nx;
+          if (comp[n] !== -1) continue;
+          comp[n] = label;
+          stack.push(n);
+        }
+      }
+      label++;
+    }
+    this.compKey = key;
+    return comp;
+  }
+
+  /** Cheap check before a search: can you walk from a to b at all? */
+  connected(a: number, b: number): boolean {
+    const comp = this.components();
+    const m = this.map;
+    // A cell that isn't walkable itself (someone standing where a prop just landed, a seat on a
+    // blocked edge) belongs to whatever regions touch it.
+    const regions = (i: number): number[] => {
+      if (comp[i] >= 0) return [comp[i]];
+      const x = m.cx(i);
+      const y = m.cy(i);
+      const out: number[] = [];
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+        if (m.inBounds(x + dx, y + dy) && comp[m.idx(x + dx, y + dy)] >= 0) out.push(comp[m.idx(x + dx, y + dy)]);
+      }
+      return out;
+    };
+    const ra = regions(a);
+    return regions(b).some((r) => ra.includes(r));
+  }
+
   /** Path of cell indices from start (exclusive) to goal (inclusive), or null if unreachable. */
   findPath(start: number, goal: number, maxExpand = 20000): number[] | null {
     const m = this.map;
     const w = m.w;
     if (start === goal) return [];
     if (!this.passable(goal % w, (goal / w) | 0, goal)) return null;
+    if (!this.connected(start, goal)) return null;
     this.searches++;
     const gen = this.nextGen();
     const { g, stamp, closed, prev, heap } = this;

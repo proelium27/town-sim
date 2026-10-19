@@ -1,18 +1,13 @@
 import type { Facing, GroundKey, PropKey } from '../assets/manifest';
+import { Rng, valueNoise2 } from '../sim/rng';
+import { stampFarm, stampHouse, stampStorehouse } from './blueprints';
 import { Cell, type DrawnKey, type RoomKind, TownMap, type UseKind } from './map';
 
-export const TOWN_W = 84;
-export const TOWN_H = 54;
-
-/** Movement cost added per ground type (base step is 1). Roads are crossable but avoided. */
-export const GROUND_COST: Partial<Record<GroundKey, number>> = {
-  grass: 0.35,
-  dirt: 0.1,
-  asphalt: 8,
-  laneH: 8,
-  laneV: 8,
-  water: 99,
-};
+export const TOWN_W = 132;
+export const TOWN_H = 92;
+/** Where the original town ends; everything beyond is wilderness for the townsfolk to settle. */
+export const CORE_W = 84;
+export const CORE_H = 54;
 
 export interface Household {
   id: number;
@@ -20,6 +15,8 @@ export interface Household {
   /** Room id of the home. */
   room: number;
   door: { x: number; y: number };
+  /** Building id of the home, or -1 while they have none. */
+  building: number;
 }
 
 export interface Workplace {
@@ -42,8 +39,9 @@ export interface Town {
  * Hand-laid town: an office, a café and park to the north, homes, a market and a library to the south,
  * split by two crossing roads.
  */
-export function buildTown(): Town {
+export function buildTown(seed = 7): Town {
   const m = new TownMap(TOWN_W, TOWN_H);
+  const rng = new Rng(seed * 7919 + 13);
   const households: Household[] = [];
 
   const fill = (x: number, y: number, w: number, h: number, g: GroundKey) => {
@@ -227,29 +225,9 @@ export function buildTown(): Town {
   for (const y0 of [31, 42]) {
     for (const x0 of [3, 15, 27]) {
       const name = `${surnames[hh]} home`;
-      wallRect(x0, y0, 9, 8);
-      const home = room(name, 'home', x0 + 1, y0 + 1, 7, 6, 'floorWood', name);
-      // Bathroom tucked into the top-right corner.
-      vwall(x0 + 5, y0 + 1, y0 + 2);
-      hwall(x0 + 5, x0 + 7, y0 + 3);
-      door(x0 + 6, y0 + 3, 'floorTile');
-      fill(x0 + 6, y0 + 1, 2, 2, 'floorTile');
-      door(x0 + 4, y0, 'floorWood');
+      const b = stampHouse(m, x0, y0, true, name, hh, false);
       fill(x0 + 4, y0 - 2, 1, 2, 'plaza');
-      drawn('toilet', x0 + 6, y0 + 1, 1, 1, { use: 'toilet', spot: [x0 + 6, y0 + 1, 'down'], blocks: false });
-      drawn('shower', x0 + 7, y0 + 1, 1, 1, { use: 'shower', spot: [x0 + 7, y0 + 1, 'down'], blocks: false });
-      prop('bedDouble', x0 + 1, y0 + 1, 2, 2, { blocks: false, cost: 6, household: hh });
-      m.addProp({ key: 'bedDouble', x: 0, y: 0, w: 0, h: 0, use: 'sleep', spot: { x: x0 + 1, y: y0 + 1, facing: 'down' }, blocks: false, household: hh });
-      m.addProp({ key: 'bedDouble', x: 0, y: 0, w: 0, h: 0, use: 'sleep', spot: { x: x0 + 2, y: y0 + 1, facing: 'down' }, blocks: false, household: hh });
-      prop('bookshelf2', x0 + 3, y0 + 1, 1, 1, { use: 'read', spot: [x0 + 3, y0 + 2, 'up'], household: hh });
-      prop('counter', x0 + 1, y0 + 6, 1, 1);
-      prop('stove', x0 + 2, y0 + 6, 1, 1, { use: 'cook', spot: [x0 + 2, y0 + 5, 'down'], household: hh });
-      prop('tableSmall', x0 + 5, y0 + 5, 1, 1);
-      seat('chairRight', x0 + 4, y0 + 5, 'right', 'eat').household = hh;
-      seat('chairLeft', x0 + 6, y0 + 5, 'left', 'eat').household = hh;
-      prop('couchLeft', x0 + 7, y0 + 4, 1, 2, { use: 'sit', spot: [x0 + 7, y0 + 4, 'left'], blocks: false, cost: 3, household: hh });
-      prop(hh % 2 ? 'rugGreen' : 'rugOrange', x0 + 2, y0 + 3, 3, 1, { blocks: false, flat: true });
-      households.push({ id: hh, name, room: home.id, door: { x: x0 + 4, y: y0 - 1 } });
+      households.push({ id: hh, name, room: b.rooms[0], door: b.door, building: b.id });
       hh++;
     }
   }
@@ -306,11 +284,56 @@ export function buildTown(): Town {
     { id: 'library', name: LIB, rooms: [library.id], open: 9, close: 17 },
   ];
 
-  // Ground cost from surface type.
-  for (let i = 0; i < m.ground.length; i++) {
-    const c = GROUND_COST[m.ground[i]];
-    if (c) m.cost[i] += c;
-    if (m.ground[i] === 'water') m.blocked[i] = 1;
-  }
+  m.addBuilding({ kind: 'office', name: OFFICE, x: 3, y: 3, w: 36, h: 19, rooms: [openOffice.id, meeting.id, kitchen.id, lounge.id, lobby.id, restroom.id], door: { x: 19, y: 22 }, built: 0 });
+  m.addBuilding({ kind: 'cafe', name: CAFE, x: 64, y: 3, w: 18, h: 12, rooms: [cafe.id], door: { x: 72, y: 15 }, built: 0 });
+  m.addBuilding({ kind: 'market', name: MARKET, x: 46, y: 30, w: 15, h: 10, rooms: [market.id], door: { x: 53, y: 29 }, built: 0 });
+  m.addBuilding({ kind: 'library', name: LIB, x: 64, y: 30, w: 17, h: 12, rooms: [library.id], door: { x: 72, y: 29 }, built: 0 });
+
+  // Starter infrastructure on the edge of town: a storehouse and one farm.
+  stampStorehouse(m, 86, 30, true, 'Town Storehouse');
+  fill(89, 29, 1, 1, 'plaza');
+  stampFarm(m, 86, 38, true, 'Meadow Farm');
+  fill(84, 37, 1, 1, 'dirt');
+  for (let x = 84; x < 96; x++) fill(x, 37, 1, 1, 'dirt');
+
+  generateWilderness(m, rng);
+  m.refreshAll();
+  m.groundDirty.length = 0;
   return { map: m, households, workplaces };
+}
+
+const ROADISH = new Set<GroundKey>(['asphalt', 'laneH', 'laneV', 'crossH', 'crossV', 'sidewalk', 'plaza', 'dirt', 'field', 'water']);
+
+/** Forests, rock outcrops and a lake outside the original town. Trees and rocks are harvestable. */
+function generateWilderness(m: TownMap, rng: Rng): void {
+  const seed = rng.int(1, 9999);
+  // A lake in the south-east.
+  const lx = 108;
+  const ly = 72;
+  for (let y = ly - 6; y <= ly + 6; y++) for (let x = lx - 10; x <= lx + 10; x++) {
+    const d = ((x - lx) / 10) ** 2 + ((y - ly) / 5.5) ** 2 + (valueNoise2(x * 0.3, y * 0.3, seed) - 0.5) * 0.5;
+    if (d < 1 && m.inBounds(x, y)) m.ground[m.idx(x, y)] = 'water';
+  }
+  const trees: PropKey[] = ['treeGreen', 'treeGreen', 'treeLime', 'treeOrange', 'treeTall'];
+  for (let y = 0; y < m.h; y++) {
+    for (let x = 0; x < m.w; x++) {
+      const core = x < CORE_W && y < CORE_H;
+      if (core) continue;
+      const i = m.idx(x, y);
+      if (ROADISH.has(m.ground[i]) || m.cell[i] !== Cell.Open || m.room[i] >= 0) continue;
+      if (m.propsOn(x, y).length) continue;
+      // Keep the land near roads mostly open so there is room to build.
+      const nearRoad = Math.min(Math.abs(y - 26), Math.abs(x - 42));
+      const open = nearRoad < 5 ? 0.25 : nearRoad < 10 ? 0.7 : 1;
+      const forest = valueNoise2(x * 0.09, y * 0.09, seed) * open;
+      const rocky = valueNoise2(x * 0.13, y * 0.13, seed + 7) * open;
+      if (forest > 0.52 && rng.chance(0.55)) {
+        m.addProp({ key: rng.pick(trees), x, y, w: 1, h: 1, resource: 'wood', amount: 6 });
+      } else if (rocky > 0.66 && rng.chance(0.4)) {
+        m.addProp({ key: 'rock', drawn: true, x, y, w: 1, h: 1, resource: 'stone', amount: 8 });
+      } else if (rng.chance(0.012)) {
+        m.addProp({ key: rng.pick(trees), x, y, w: 1, h: 1, resource: 'wood', amount: 6 });
+      }
+    }
+  }
 }

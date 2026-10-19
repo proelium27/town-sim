@@ -1,4 +1,5 @@
 import { Assets, Rectangle, Texture, TextureSource } from 'pixi.js';
+import type { DrawnKey } from '../world/map';
 import { CHARACTER_BASES, type FrameRef, type Facing, SHEETS, type SheetKey, TILE, characterFrame } from './manifest';
 
 TextureSource.defaultOptions.scaleMode = 'nearest';
@@ -127,11 +128,11 @@ export class Art {
   }
 
   /** Small procedural props the Kenney packs don't include, drawn in the same palette. */
-  drawn(key: 'monitor' | 'toilet' | 'basin' | 'whiteboard' | 'coffee' | 'doorMat' | 'shower' | 'counterTop' | 'net'): Texture {
+  drawn(key: DrawnKey | 'doorMat' | 'counterTop'): Texture {
     const cached = this.custom.get(key);
     if (cached) return cached;
     const cv = document.createElement('canvas');
-    const W = key === 'whiteboard' ? TILE * 3 : TILE;
+    const W = key === 'whiteboard' || key === 'chalkboard' ? TILE * 3 : key === 'logs' || key === 'stones' ? TILE * 2 : TILE;
     cv.width = W;
     cv.height = TILE;
     const g = cv.getContext('2d')!;
@@ -166,6 +167,75 @@ export class Art {
         r(1, 1, 14, 1, '#ffffff');
         for (let x = 3; x < 14; x += 3) r(x, 4, 1, 9, '#b4cfd9');
         r(7, 7, 2, 2, '#7d8b95');
+        break;
+      case 'rock':
+        // Boulder: lit top-left, shaded bottom-right, dark outline.
+        r(3, 5, 10, 9, '#4f4a45');
+        r(4, 4, 8, 10, '#4f4a45');
+        r(4, 5, 8, 8, '#8d877f');
+        r(5, 5, 4, 3, '#b3ada4');
+        r(9, 9, 3, 4, '#6f6962');
+        r(5, 11, 3, 2, '#6f6962');
+        r(3, 14, 10, 1, 'rgba(0,0,0,0.25)');
+        break;
+      case 'stump':
+        r(5, 9, 6, 5, '#5e3d24');
+        r(5, 8, 6, 2, '#b98a55');
+        r(7, 8, 2, 1, '#8a5f37');
+        break;
+      case 'crop0':
+      case 'crop1':
+      case 'crop2':
+      case 'crop3': {
+        const stage = Number(key[4]);
+        // Furrows, then sprouts growing into a ripe golden crop.
+        r(0, 5, 16, 1, '#6b4a2f');
+        r(0, 11, 16, 1, '#6b4a2f');
+        const leaf = stage === 3 ? '#d6b13c' : stage === 2 ? '#5f9a3c' : '#7fbf4f';
+        for (const [cx, cy] of [[3, 4], [11, 4], [7, 10], [14, 10], [1, 10]]) {
+          if (stage === 0) r(cx, cy, 1, 1, '#7fbf4f');
+          else {
+            const hgt = stage === 1 ? 2 : 4;
+            r(cx, cy - hgt + 1, 1, hgt, stage === 3 ? '#9b8a2a' : '#4a7d2f');
+            r(cx - 1, cy - hgt + 1, 3, 1, leaf);
+            if (stage === 3) r(cx, cy - hgt - 1, 1, 2, '#e9c74c');
+          }
+        }
+        break;
+      }
+      case 'crate':
+        r(2, 4, 12, 10, '#7a5531');
+        r(3, 5, 10, 8, '#a97a47');
+        r(3, 8, 10, 1, '#7a5531');
+        r(7, 5, 1, 8, '#7a5531');
+        break;
+      case 'logs':
+        for (const [y, x0] of [[9, 1], [9, 11], [5, 6]]) {
+          r(x0, y, 14, 5, '#7a5531');
+          r(x0, y, 14, 1, '#a97a47');
+          r(x0 + 13, y, 2, 5, '#d4a56a');
+          r(x0 + 13, y + 2, 1, 1, '#8a5f37');
+        }
+        break;
+      case 'stones':
+        for (const [x, y, s] of [[2, 8, 6], [9, 9, 5], [15, 7, 7], [22, 9, 6], [6, 4, 5], [18, 3, 5]]) {
+          r(x, y, s, s - 1, '#6f6962');
+          r(x + 1, y, s - 2, 2, '#a8a29a');
+        }
+        break;
+      case 'chalkboard':
+        r(1, 2, W - 2, 11, '#6b4a2f');
+        r(2, 3, W - 4, 9, '#2f4a3a');
+        r(5, 5, 12, 1, '#e8e4d8');
+        r(5, 8, 18, 1, '#e8e4d8');
+        r(28, 5, 8, 4, '#e8e4d8');
+        break;
+      case 'deskKid':
+        r(2, 4, 12, 7, '#b9895a');
+        r(2, 4, 12, 2, '#d0a273');
+        r(3, 11, 1, 3, '#7a5531');
+        r(12, 11, 1, 3, '#7a5531');
+        r(5, 6, 5, 3, '#f4f1e8');
         break;
       case 'whiteboard':
         r(1, 2, W - 2, 10, '#8f9aa6');

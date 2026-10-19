@@ -53,6 +53,7 @@ export const GROUND = {
   floorWood: [c(21, 4), c(22, 4), c(23, 4)],
   floorTile: [c(1, 20), c(2, 20)],
   water: [u(9, 7)],
+  field: [c(5, 24)],
 } satisfies Record<string, FrameRef[]>;
 
 export type GroundKey = keyof typeof GROUND;

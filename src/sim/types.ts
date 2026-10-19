@@ -29,7 +29,8 @@ export interface Thought {
 
 export type ActionKind =
   | 'idle' | 'wander' | 'stroll' | 'work' | 'meet' | 'eat' | 'snack' | 'coffee' | 'cook'
-  | 'sleep' | 'toilet' | 'shower' | 'socialize' | 'play' | 'music' | 'read' | 'relax' | 'shop' | 'party' | 'repair';
+  | 'sleep' | 'toilet' | 'shower' | 'socialize' | 'play' | 'music' | 'read' | 'relax' | 'shop' | 'party' | 'repair'
+  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach';
 
 export interface Action {
   kind: ActionKind;
@@ -46,6 +47,11 @@ export interface Action {
   timer: number;
   started: number;
   score: number;
+  /** Construction project this action serves. */
+  projectId?: number;
+  /** Haul: 'pickup' at the storehouse, then 'deliver' at the site. */
+  leg?: 'pickup' | 'deliver';
+  material?: 'wood' | 'stone';
 }
 
 export interface Task {
@@ -115,9 +121,42 @@ export interface Agent {
   coffeeDay: number;
   /** Game minute of the last near-miss with a car, to avoid repeat scares. */
   lastScare: number;
+
+  /** Game minute they were born (may be negative for the founders). */
+  birth: number;
+  partner: number | null;
+  parents: number[];
+  children: number[];
+  /** What they're carrying back to the storehouse or to a build site. */
+  carry: { kind: 'wood' | 'stone' | 'food'; amount: number } | null;
+  /** Building they work at, for teacher/cook roles. */
+  workBuilding: number | null;
 }
 
-export type ActivityKind = 'work' | 'social' | 'life' | 'event';
+export interface Project {
+  id: number;
+  blueprint: import('../world/blueprints').BlueprintKey;
+  name: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  doorTop: boolean;
+  /** Grass cells that become a dirt path from the door to the street on completion. */
+  path: number[];
+  need: { wood: number; stone: number };
+  delivered: { wood: number; stone: number };
+  work: number;
+  progress: number;
+  reason: string;
+  proposedBy?: number;
+  /** Agents who will live here (houses). */
+  forAgents: number[];
+  started: number;
+  builders: Set<number>;
+}
+
+export type ActivityKind = 'work' | 'social' | 'life' | 'event' | 'build' | 'family';
 
 export interface Activity {
   t: number;
