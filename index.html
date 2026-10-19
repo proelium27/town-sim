@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Townsfolk</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Crect x='1' y='7' width='14' height='8' fill='%23f2c14e'/%3E%3Cpath d='M0 8 8 1l8 7z' fill='%23c8473a'/%3E%3Crect x='6' y='10' width='4' height='5' fill='%232a241e'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="stage" aria-label="Town view"></div>
+
+    <header class="hud panel" id="hud">
+      <div class="hud-clock">
+        <span class="phase" id="phase" aria-hidden="true"></span>
+        <span class="time"><span class="day" id="day">Mon</span><span class="hm num" id="clock">07:00</span></span>
+        <span class="daystrip" aria-hidden="true"><i id="daymark"></i></span>
+      </div>
+      <span class="weather" id="weather"></span>
+      <div class="stats" id="stats"></div>
+      <div class="speed" role="group" aria-label="Simulation speed" id="speed">
+        <button data-speed="0" title="Pause (Space)" aria-label="Pause"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="3" height="8" /><rect x="7" y="2" width="3" height="8" /></svg></button>
+        <button data-speed="1" title="Normal (1)" aria-label="Normal speed"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 2v8l6-4z" /></svg></button>
+        <button data-speed="2" title="Fast (2)" aria-label="Fast"><svg viewBox="0 0 14 12" aria-hidden="true"><path d="M1 2v8l5-4zM7 2v8l5-4z" /></svg></button>
+        <button data-speed="3" title="Fastest (3)" aria-label="Fastest"><svg viewBox="0 0 18 12" aria-hidden="true"><path d="M1 2v8l5-4zM6 2v8l5-4zM11 2v8l5-4z" /></svg></button>
+      </div>
+    </header>
+
+    <aside class="tracker panel" id="tracker" aria-label="People"></aside>
+    <section class="activity panel" id="activity" aria-label="Activity log"></section>
+    <aside class="inspector panel" id="inspector" aria-label="Inspector" hidden></aside>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
