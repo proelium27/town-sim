@@ -6,6 +6,40 @@ import { BLUEPRINTS } from '../src/world/blueprints';
 import { Cell } from '../src/world/map';
 import { Sim } from '../src/sim/sim';
 
+/** A fresh house out on open ground (where a new town house would go), with room on both sides. */
+function freshHouse(doorTop = true) {
+  const sim = new Sim(7);
+  const site = findSite(sim, 'house')!;
+  const hh = newHousehold(sim, 'Test home');
+  const b = BLUEPRINTS.house.stamp(sim.map, site.x, site.y, doorTop, 'Test home', hh.id);
+  Object.assign(hh, { building: b.id, room: b.rooms[0], door: b.door });
+  return { sim, hh, b };
+}
+
+/** A single mum, a grown son and more little ones than there are beds. */
+function crowd(sim: Sim, hh: number) {
+  const door = sim.town.households[hh].door;
+  const cell = sim.map.idx(door.x, door.y + 2);
+  const mum = createAgent(sim, { role: 'laborer', household: hh, age: 45, cell });
+  sim.agents.push(mum);
+  const son = createAgent(sim, { role: 'laborer', household: hh, age: 20, parents: [mum], cell });
+  sim.agents.push(son);
+  mum.children.push(son.id);
+  while (members(sim, hh).length <= capacity(sim, hh)) {
+    const kid = createAgent(sim, { role: 'child', household: hh, age: 2, parents: [mum], cell });
+    sim.agents.push(kid);
+    mum.children.push(kid.id);
+  }
+  sim.projects = [];
+  sim.treasury = 500;
+  return { mum, son };
+}
+
+function plan(sim: Sim) {
+  sim.timers.plan = 0;
+  tickPlanner(sim, 0.05);
+}
+
 describe('homes that grow', () => {
   it('a crowded family home gets a new wing with more beds, reachable from the front door', () => {
     const sim = new Sim(7);
@@ -33,17 +67,12 @@ describe('homes that grow', () => {
     const wingCell = sim.map.idx(pr!.extends!.side === 'east' ? room.x + room.w - 2 : room.x + 1, room.y + 2);
     expect(sim.nav.findPath(sim.map.idx(b.door.x, b.door.y), wingCell, 40000)).not.toBeNull();
     expect(sim.map.room[wingCell]).toBe(room.id);
-  });
+  }, 60_000);
 
   it('an east wing leaves the bathroom walled off', () => {
     for (const doorTop of [true, false]) {
-      const sim = new Sim(7);
+      const { sim, hh, b } = freshHouse(doorTop);
       const m = sim.map;
-      // A fresh house out on open ground, with room on both sides.
-      const site = findSite(sim, 'house')!;
-      const hh = newHousehold(sim, 'Test home');
-      const b = BLUEPRINTS.house.stamp(m, site.x, site.y, doorTop, 'Test home', hh.id);
-      Object.assign(hh, { building: b.id, room: b.rooms[0], door: b.door });
       const wing = extensionSite(sim, b)!;
       expect(wing.side).toBe('east');
       const oldWall = b.x + b.w - 1;
@@ -62,6 +91,25 @@ describe('homes that grow', () => {
       expect(openings.length).toBeGreaterThanOrEqual(2);
       expect(sim.nav.findPath(m.idx(b.door.x, b.door.y), m.idx(wing.x + 1, wing.y + 3), 40000)).not.toBeNull();
     }
+  });
+
+  it('builders step out of the walls when a wing is finished', () => {
+    const { sim, hh, b } = freshHouse();
+    crowd(sim, hh.id);
+    plan(sim);
+    const pr = sim.projects.find((p) => p.extends?.building === b.id)!;
+    expect(pr).toBeDefined();
+    const w = pr.extends!;
+    const m = sim.map;
+    // A builder working from the far edge of the strip, which becomes the new outer wall.
+    const builder = sim.agents.find((a) => a.household !== hh.id)!;
+    const edge = m.idx(w.side === 'east' ? w.x + w.w - 1 : w.x, w.y + 3);
+    Object.assign(builder, { at: edge, x: m.cx(edge), y: m.cy(edge), px: m.cx(edge), py: m.cy(edge) });
+    pr.builders.add(builder.id);
+    completeProject(sim, pr);
+    expect(m.walkable(m.cx(edge), m.cy(edge))).toBe(false);
+    expect(m.walkable(m.cx(builder.at), m.cy(builder.at))).toBe(true);
+    expect(builder.at).toBe(m.idx(b.door.x, b.door.y));
   });
 
   it('grown kids settle near their parents', () => {

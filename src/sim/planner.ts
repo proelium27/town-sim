@@ -405,17 +405,7 @@ export function completeProject(sim: Sim, pr: Project): void {
   const b = bp.stamp(m, pr.x, pr.y, pr.doorTop, pr.name, hhId);
   for (const i of pr.path) if (BUILDABLE.has(m.ground[i])) m.setGround(m.cx(i), m.cy(i), 'dirt');
   m.setGround(b.door.x, b.door.y, 'plaza');
-  // Anyone standing where a wall now is steps out the front door.
-  for (const a of sim.agents) {
-    if (!m.walkable(m.cx(a.at), m.cy(a.at))) {
-      a.at = m.idx(b.door.x, b.door.y);
-      a.x = a.px = b.door.x;
-      a.y = a.py = b.door.y;
-      a.path = [];
-      a.action.stage = 'perform';
-      a.thinkIn = 0;
-    }
-  }
+  stepOut(sim, b.door);
   sim.projects = sim.projects.filter((p) => p.id !== pr.id);
   if (hhId !== undefined) {
     const h = sim.town.households[hhId];
@@ -448,12 +438,28 @@ export function completeProject(sim: Sim, pr: Project): void {
   if (pr.blueprint !== 'house') allocateRoles(sim);
 }
 
+/** Anyone standing where a wall now is steps out the front door. */
+function stepOut(sim: Sim, door: { x: number; y: number }): void {
+  const m = sim.map;
+  for (const a of sim.agents) {
+    if (!m.walkable(m.cx(a.at), m.cy(a.at))) {
+      a.at = m.idx(door.x, door.y);
+      a.x = a.px = door.x;
+      a.y = a.py = door.y;
+      a.path = [];
+      a.action.stage = 'perform';
+      a.thinkIn = 0;
+    }
+  }
+}
+
 /** The wing is up: the family spreads out into it. */
 function finishExtension(sim: Sim, pr: Project, wing: ExtensionSite): void {
   const hh = sim.town.households.find((h) => h.building === wing.building);
   sim.projects = sim.projects.filter((p) => p.id !== pr.id);
   if (!hh) return;
   stampExtension(sim, wing, hh.id);
+  stepOut(sim, sim.building(wing.building)!.door);
   for (const id of pr.builders) {
     const a = sim.agent(id);
     if (a) addMemory(sim, a, 'builtSomething');
