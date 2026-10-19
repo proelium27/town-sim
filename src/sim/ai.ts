@@ -135,7 +135,8 @@ function updateNeeds(sim: Sim, a: Agent, dt: number, stage: Stage): void {
   const working = (k === 'work' || k === 'build' || k === 'chop' || k === 'mine' || k === 'farm' || k === 'haul' || k === 'teach' || k === 'split' || k === 'stoke') && performing;
   const tired = stage === 'elder' ? 1.25 : stage === 'toddler' ? 1.3 : 1;
   if (!asleep) n.energy -= (working ? 0.075 : 0.06) * dt * tired * (a.traits.includes('earlyBird') && sim.hour > 19 ? 1.4 : 1);
-  n.hunger -= (a.traits.includes('foodie') ? 0.13 : 0.105) * dt * (asleep ? 0.4 : 1) * (working && k !== 'work' ? 1.2 : 1);
+  // The cold makes people hungrier.
+  n.hunger -= (a.traits.includes('foodie') ? 0.13 : 0.105) * dt * (asleep ? 0.4 : 1) * (working && k !== 'work' ? 1.2 : 1) * (1 + 0.3 * chill(sim));
   n.hygiene -= (k === 'play' || k === 'stroll' || k === 'chop' || k === 'mine' || k === 'build' || k === 'farm' ? 0.12 : 0.05) * dt * (asleep ? 0.5 : 1);
   const soc = a.traits.includes('extrovert') ? 0.1 : a.traits.includes('introvert') ? 0.04 : 0.065;
   n.social -= soc * dt * (asleep ? 0.2 : 1);
@@ -471,7 +472,8 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   // Cold: back home to the fire, or into the café or library if there's no firewood.
   if (n.warmth < 60 && chill(sim) > 0 && !sim.roomOf(a) && stage !== 'toddler') {
     const fire = homed && sim.fuel[a.household] > 0;
-    o.push(spotOption(sim, a, 'relax', (1 - n.warmth / 100) * 1.5, `Cold (${Math.round(n.warmth)})`, ['sit'], (p) => (p.household === a.household ? 'Warming up by the fire' : `Warming up ${where_(sim, p)}`), 30, (p) => (fire ? homeOnly(p) : ['cafe', 'library', 'lobby'].includes(roomKind(sim, p) ?? ''))));
+    // Getting properly cold (with a walk home still to come) outweighs any job.
+    o.push(spotOption(sim, a, 'relax', (1 - n.warmth / 100) * 1.5 + (n.warmth < 35 ? 0.9 : 0), `Cold (${Math.round(n.warmth)})`, ['sit'], (p) => (p.household === a.household ? 'Warming up by the fire' : `Warming up ${where_(sim, p)}`), 30, (p) => (fire ? homeOnly(p) : ['cafe', 'library', 'lobby'].includes(roomKind(sim, p) ?? ''))));
   }
   // After dinner, a couple at home together goes out for a walk, side by side.
   if (chill(sim) < 0.5 && loc === 'home' && inWindow(h, 19.25, 21) && n.hunger > 50 && !sleepTime && n.energy > 40 && stage !== 'toddler' && !sim.events.rain && !a.memories.some((x) => x.kind === 'eveningWalk')) {

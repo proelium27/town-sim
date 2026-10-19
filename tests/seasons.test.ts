@@ -8,10 +8,13 @@ import { winterLine } from '../src/ui/townPanel';
 const at = (sim: Sim, day: number, hour: number) => sim.run(day * 1440 + hour * 60 - sim.time);
 
 describe('seasons', () => {
-  // One town, simulated to the eve of winter once; each test gets its own copy.
+  // One town, simulated to the start of autumn and the eve of winter once; each test gets its own copy.
+  let autumn = '';
   let eve = '';
   beforeAll(() => {
     const sim = new Sim(7);
+    at(sim, 4, 0);
+    autumn = saveSim(sim);
     at(sim, 5, 23.9);
     eve = saveSim(sim);
   }, 300_000);
@@ -51,16 +54,15 @@ describe('seasons', () => {
     expect(winterLine(sim)).toContain('Winter ends in 1.0 days');
   });
 
-  it('the first frost clears unripe crops, and nothing grows until spring', () => {
+  it('the first frost clears the fields, and nothing grows until spring', () => {
     const sim = winterTown();
     sim.run(10);
     expect(sim.season).toBe(3);
     const crops = sim.map.props.filter((p) => p.use === 'farm');
-    expect(crops.every((p) => p.growth === 0 || p.growth === 1)).toBe(true);
+    expect(crops.every((p) => p.growth === 0)).toBe(true);
     expect(sim.activity.some((e) => e.text.startsWith('First frost'))).toBe(true);
     const before = crops.map((p) => p.growth);
     sim.run(600);
-    // Ripe crops can still be harvested (back to 0), but none grows.
     expect(crops.every((p, i) => (p.growth ?? 0) <= (before[i] ?? 0))).toBe(true);
   }, 120_000);
 
@@ -82,6 +84,23 @@ describe('seasons', () => {
     expect(sim.activity.some((e) => e.text === 'Winter lights in the park tonight!')).toBe(true);
     expect(winterReadiness(sim).food).toBeGreaterThan(1);
   }, 120_000);
+
+  it('a Low food priority through autumn leaves the stores much lower in winter', () => {
+    const lowest = (sim: Sim) => {
+      let min = Infinity;
+      at(sim, 6, 0);
+      while (sim.time < 8 * 1440) {
+        sim.run(60);
+        min = Math.min(min, sim.stock.food);
+      }
+      return min;
+    };
+    const normal = lowest(winterTown());
+    const low = loadSim(autumn);
+    low.priorities.food = 0;
+    // Fewer hands bring in the autumn harvest, so more of it freezes in the fields.
+    expect(lowest(low)).toBeLessThan(normal * 0.75);
+  }, 300_000);
 
   it('firewood carried to a hearth gets there', () => {
     const sim = winterTown();
@@ -114,6 +133,7 @@ describe('seasons', () => {
     at(sim, 6, 10);
     const wet = sim.events.wet;
     const from = sim.time;
+    sim.events.rain = null;
     sim.events.plan.push({ at: sim.time + 1, kind: 'rain', length: 150 });
     sim.events.plan.sort((x, y) => x.at - y.at);
     sim.run(180);

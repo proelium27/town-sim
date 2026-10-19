@@ -199,7 +199,7 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
 
   // Farming (nothing grows in winter; only ripe crops are worth a trip).
   const farmers = sim.agents.filter((o) => o.role === 'farmer').length;
-  if (role === 'farmer' || (role === 'laborer' && farmers < 2)) {
+  if (role === 'farmer' || (role === 'laborer' && farmers < 2 && sim.priorities.food > 0)) {
     const base = role === 'farmer' ? 1 : 0.55;
     plans.push(() => {
       const crops = m.props.filter((p) => p.use === 'farm' && free(sim, a, p) && (sim.season !== 3 || (p.growth ?? 0) >= 1));

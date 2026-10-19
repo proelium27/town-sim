@@ -6,7 +6,7 @@ import type { Sim } from './sim';
 
 /** Days for a crop to ripen untended. */
 export const CROP_DAYS = 1.5;
-export const FOOD_PER_CROP = 2;
+export const FOOD_PER_CROP = 1.5;
 const TREES: PropKey[] = ['treeGreen', 'treeLime', 'treeOrange', 'treeTall'];
 
 export function cropStage(growth: number): DrawnKey {
