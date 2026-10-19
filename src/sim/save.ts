@@ -21,7 +21,9 @@ function replacer(this: unknown, key: string, v: unknown): unknown {
   return v;
 }
 
-function reviver(_key: string, v: unknown): unknown {
+function reviver(key: string, v: unknown): unknown {
+  // A hand-edited file could swap the Sim's prototype through Object.assign.
+  if (key === '__proto__' || key === 'constructor') return undefined;
   if (!v || typeof v !== 'object' || Array.isArray(v)) return v;
   const o = v as Record<string, unknown>;
   if ('$n' in o) return Number(o.$n);
@@ -53,8 +55,10 @@ const MIGRATIONS: ((s: Record<string, unknown>) => void)[] = [];
 /** Rebuilds a running town from saveSim's output. Throws on files it can't read. */
 export function loadSim(text: string): Sim {
   const file = JSON.parse(text, reviver) as SaveFile;
-  if (!file || typeof file.v !== 'number' || !file.sim) throw new Error('This is not a Townsfolk save file.');
-  if (file.v > SAVE_VERSION) throw new Error('This save was made by a newer version of Townsfolk.');
+  if (!file || typeof file !== 'object' || !Number.isInteger(file.v) || file.v < 1 || !file.sim || typeof file.sim !== 'object') {
+    throw new Error('This is not a Townsfolk save file.');
+  }
+  if (file.v > SAVE_VERSION) throw new Error(`This save was made by a newer version of Townsfolk (save version ${file.v}; this one reads up to ${SAVE_VERSION}).`);
   for (let v = file.v; v < SAVE_VERSION; v++) MIGRATIONS[v - 1](file.sim);
 
   const { town, rng, ...rest } = file.sim as { town: Record<string, unknown>; rng: { s: number } } & Record<string, unknown>;

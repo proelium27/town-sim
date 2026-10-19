@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { billText, GOOD_KEYS, NEEDS } from '../src/sim/defs';
-import { loadSim, saveSim, snapshot } from '../src/sim/save';
+import { loadSim, SAVE_VERSION, saveSim, snapshot } from '../src/sim/save';
 import { Sim } from '../src/sim/sim';
 
 describe('saving and loading', () => {
@@ -45,6 +45,17 @@ describe('saving and loading', () => {
 
   it('rejects files that are not saves', () => {
     expect(() => loadSim('{"hello":1}')).toThrow(/not a Townsfolk save/);
+    expect(() => loadSim('{"v":0,"sim":{}}')).toThrow(/not a Townsfolk save/);
+    expect(() => loadSim('{"v":1.5,"sim":{}}')).toThrow(/not a Townsfolk save/);
+    expect(() => loadSim(`{"v":${SAVE_VERSION + 1},"sim":{}}`)).toThrow(/newer version/);
+  });
+
+  it("ignores __proto__ and constructor keys in a file", () => {
+    const a = new Sim(3);
+    const text = saveSim(a).replace('"sim":{', '"sim":{"__proto__":{"evil":1},"constructor":{"evil":1},');
+    const b = loadSim(text);
+    expect(Object.getPrototypeOf(b)).toBe(Sim.prototype);
+    expect(Object.hasOwn(b, 'constructor')).toBe(false);
   });
 });
 
