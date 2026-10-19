@@ -813,7 +813,7 @@ function urgent(sim: Sim, a: Agent): boolean {
 }
 
 /** What someone off sick stops doing at once, whatever stage it's at. */
-const SICK_STOPS: ActionKind[] = ['work', 'teach', 'learn', 'build', 'chop', 'mine', 'farm', 'haul', 'split', 'stoke', 'craft', 'meet'];
+const SICK_STOPS: ActionKind[] = ['work', 'teach', 'learn', 'build', 'chop', 'mine', 'farm', 'haul', 'split', 'stoke', 'craft', 'pave', 'meet'];
 
 // ------------------------------------------------------------------ performing
 
