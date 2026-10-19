@@ -224,10 +224,17 @@ function askForEscort(sim: Sim, kid: Agent): void {
   think(sim, adult, `I'll walk ${first(kid)} to school on my way.`, 'good');
 }
 
-/** Off for a stroll: a partner at home with nothing much on comes along, side by side. */
-function invitePartner(sim: Sim, a: Agent): void {
+/** Same room indoors, or a few steps apart outdoors. */
+function together(sim: Sim, a: Agent, b: Agent): boolean {
+  const ra = sim.roomOf(a);
+  const rb = sim.roomOf(b);
+  return ra || rb ? ra === rb : Math.hypot(a.x - b.x, a.y - b.y) <= 4;
+}
+
+/** Off for a stroll: a partner nearby with nothing much on comes along, side by side. */
+export function invitePartner(sim: Sim, a: Agent): void {
   const b = sim.agent(a.partner ?? undefined);
-  if (!b || sim.roomOf(b) !== sim.roomOf(a) || !['idle', 'wander', 'relax', 'read'].includes(b.action.kind)) return;
+  if (!b || !together(sim, a, b) || !['idle', 'wander', 'relax', 'read'].includes(b.action.kind)) return;
   if (b.needs.energy < 35 || isWorkTime(sim, b) || stageOf(sim, b) === 'toddler' || !sim.rng.chance(a.action.reason === 'Evening walk' ? 1 : 0.6)) return;
   const m = sim.map;
   const dx = m.cx(a.action.dest);
