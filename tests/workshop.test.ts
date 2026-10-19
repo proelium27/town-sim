@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { triggerWorldEvent } from '../src/sim/events';
 import { allocateRoles, findSite } from '../src/sim/planner';
 import { Sim } from '../src/sim/sim';
-import { chains, hasWorkshop } from '../src/sim/workshop';
+import { chains, hasWorkshop, targetOf } from '../src/sim/workshop';
 import { BLUEPRINTS } from '../src/world/blueprints';
 
 /** A town with a workshop dropped in and stocked with raw materials. */
@@ -53,6 +53,16 @@ describe('workshop', () => {
     expect(home.need.furniture).toBe(2);
     expect(home.need.planks).toBeGreaterThan(0);
   }, 120_000);
+
+  it('the plank target covers the planks that tools still need', () => {
+    const sim = new Sim(7);
+    sim.stock.tools = 100;
+    sim.stock.furniture = 100;
+    const base = targetOf(sim, 'planks');
+    sim.stock.tools = 0;
+    expect(targetOf(sim, 'tools')).toBeGreaterThan(0);
+    expect(targetOf(sim, 'planks')).toBe(base + Math.ceil(targetOf(sim, 'tools') / 2));
+  });
 
   it('only jobs that go faster with tools pick them up or wear them down', () => {
     const sim = new Sim(7);

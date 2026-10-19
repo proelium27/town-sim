@@ -42,12 +42,12 @@ export function toolUsers(sim: Sim): number {
 export function targetOf(sim: Sim, g: Good): number {
   const owed = sim.projects.reduce((s, p) => s + Math.max(0, (p.need[g] ?? 0) - (p.delivered[g] ?? 0)), 0);
   const base: Partial<Record<Good, number>> = { planks: 24, bricks: 16, furniture: 2, tools: Math.ceil(toolUsers(sim) * 0.5) };
-  // Planks also feed furniture and tools.
-  const forFurniture = g === 'planks' ? Math.max(0, targetOf(sim, 'furniture') - sim.stock.furniture) * 4 : 0;
-  return (base[g] ?? 0) + owed + forFurniture;
+  // Planks also feed furniture and tools: add what those still need to make.
+  const downstream = g === 'planks' ? RECIPES.reduce((s, r) => s + (r.inputs.planks ? Math.ceil(Math.max(0, targetOf(sim, r.good) - sim.stock[r.good]) / r.out) * r.inputs.planks : 0), 0) : 0;
+  return (base[g] ?? 0) + owed + downstream;
 }
 
-/** Batches still to make for a recipe (none if stocked). */
+/** Units of a recipe's good still to make, counting batches already at a station (none if stocked). */
 export function shortfall(sim: Sim, r: Recipe): number {
   const making = sim.agents.filter((a) => a.action.kind === 'craft' && a.action.material === r.good).length * r.out;
   return Math.max(0, targetOf(sim, r.good) - sim.stock[r.good] - making);
