@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { triggerWorldEvent } from '../src/sim/events';
 import { loadSim, saveSim } from '../src/sim/save';
-import { chill, winterReadiness } from '../src/sim/seasons';
+import { chill, tickSeasons, winterReadiness } from '../src/sim/seasons';
 import { Sim } from '../src/sim/sim';
 
 const at = (sim: Sim, day: number, hour: number) => sim.run(day * 1440 + hour * 60 - sim.time);
@@ -24,6 +24,20 @@ describe('seasons', () => {
     expect(chill(sim)).toBeGreaterThan(0.2);
     sim.time = 6 * 1440 + 3 * 60;
     expect(chill(sim)).toBe(1);
+  });
+
+  it('a homeless family has no hearth to burn', () => {
+    const sim = new Sim(7);
+    sim.time = 6 * 1440 + 3 * 60;
+    const a = sim.agents[0];
+    const hh = sim.town.households[a.household];
+    hh.room = -1;
+    hh.building = -1;
+    sim.fuel[hh.id] = 5;
+    const m = sim.map;
+    a.at = m.room.findIndex((r, i) => r < 0 && m.walkable(m.cx(i), m.cy(i)));
+    tickSeasons(sim, 60);
+    expect(sim.fuel[hh.id]).toBe(5);
   });
 
   it('the first frost clears unripe crops, and nothing grows until spring', () => {

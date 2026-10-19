@@ -42,9 +42,12 @@ export function winterReadiness(sim: Sim): { food: number; firewood: number } {
 export function tickSeasons(sim: Sim, dt: number): void {
   const c = chill(sim);
   if (c > 0) {
-    // A hearth burns while anyone is home.
+    // A hearth burns while anyone is home (the homeless have no hearth, and outdoors isn't home).
     const home = new Set<number>();
-    for (const a of sim.agents) if (sim.map.room[a.at] === sim.town.households[a.household].room) home.add(a.household);
+    for (const a of sim.agents) {
+      const room = sim.town.households[a.household].room;
+      if (room >= 0 && sim.map.room[a.at] === room) home.add(a.household);
+    }
     for (const hh of home) if (sim.fuel[hh] > 0) sim.fuel[hh] = Math.max(0, sim.fuel[hh] - (c * BURN_PER_HOUR * dt) / 60);
   }
   const season = sim.season;
