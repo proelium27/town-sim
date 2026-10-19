@@ -112,6 +112,22 @@ describe('homes that grow', () => {
     expect(builder.at).toBe(m.idx(b.door.x, b.door.y));
   });
 
+  it('a home with a wing going up does not also send someone off to build a house', () => {
+    const { sim, hh, b } = freshHouse();
+    const { son } = crowd(sim, hh.id);
+    // Housing is all the town is thinking about.
+    Object.assign(sim.priorities, { housing: 2, food: 0, materials: 0, community: 0 });
+    plan(sim);
+    expect(sim.projects.some((p) => p.extends?.building === b.id)).toBe(true);
+    for (let k = 0; k < 3; k++) {
+      // Room in the builders' schedule for something else.
+      sim.projects = sim.projects.filter((p) => p.extends);
+      plan(sim);
+      expect(sim.projects.filter((p) => p.extends?.building === b.id)).toHaveLength(1);
+      expect(sim.projects.some((p) => p.forAgents.includes(son.id))).toBe(false);
+    }
+  });
+
   it('grown kids settle near their parents', () => {
     const sim = new Sim(7);
     const home = sim.town.households.find((h) => h.building >= 0)!;

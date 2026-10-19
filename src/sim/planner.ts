@@ -180,7 +180,9 @@ function proposals(sim: Sim): Proposal[] {
     if (mem.length > cap) {
       // A family with young ones builds on a wing; grown-up kids move out (to somewhere nearby).
       const b = sim.building(h.building);
-      const wing = b && !sim.projects.some((p) => p.extends?.building === b.id) ? extensionSite(sim, b) : null;
+      // A wing already going up is the answer for now; don't also send someone off to build.
+      if (b && sim.projects.some((p) => p.extends?.building === b.id)) continue;
+      const wing = b ? extensionSite(sim, b) : null;
       const young = mem.some((a) => ageOf(sim, a) < ADULT_AGE);
       if (wing && young) {
         out.push({ bp: 'extension', score: 1.3 * hw, reason: `the ${h.name} is bursting at the seams`, forAgents: [], proposer: mem.find((a) => ageOf(sim, a) >= ADULT_AGE) ?? mem[0], name: `${h.name} extension`, extends: wing });
