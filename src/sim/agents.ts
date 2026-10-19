@@ -3,6 +3,7 @@ import {
   ADULT_AGE, MIN_PER_DAY, NEED_KEYS, RETIRE_AGE, ROLES, type RoleKey, SKILL_KEYS, type SkillKey, TRAITS, TRAIT_KEYS, type TraitKey, YEARS_PER_DAY,
 } from './defs';
 import type { Agent, Schedule, Skill, Task } from './types';
+import { startingAptitude } from './careers';
 import type { Sim } from './sim';
 
 const FIRST = [
@@ -153,6 +154,7 @@ export function createAgent(sim: Sim, o: NewAgentOpts): Agent {
     workBuilding: null,
     lastBirthday: 0,
     tool: 0,
+    aptitude: startingAptitude(sim, traits, parents),
   };
   if (namesake) a.namedAfter = namesake.id;
   a.needs.energy = rng.range(70, 95);
@@ -260,4 +262,5 @@ export const hasUmbrella = (a: Agent): boolean => ((a.id * 2654435761) >>> 0) % 
 export function backfillAgent(a: Agent): void {
   a.lastBirthday ??= 0;
   a.tool ??= 0;
+  a.aptitude ??= { hands: 20, numbers: 20, people: 20, outdoors: 20 };
 }

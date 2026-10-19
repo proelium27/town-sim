@@ -209,7 +209,7 @@ export type MemoryKind =
   | 'newPartner' | 'newBaby' | 'grief' | 'movedIn' | 'builtSomething' | 'townGrowing' | 'sleptRough' | 'proposed'
   | 'grewUp' | 'harvest' | 'school' | 'festival' | 'drought' | 'storm'
   | 'birthday' | 'myBirthday' | 'familyDinner' | 'paidRespects' | 'eveningWalk'
-  | 'snowDay' | 'cozyFire' | 'coldHome' | 'blizzard' | 'madeSomething' | 'toolBroke' | 'unpaid' | 'broke';
+  | 'snowDay' | 'cozyFire' | 'coldHome' | 'blizzard' | 'madeSomething' | 'toolBroke' | 'unpaid' | 'broke' | 'qualified';
 
 export interface MemoryDef {
   label: string;
@@ -277,4 +277,5 @@ export const MEMORIES: Record<MemoryKind, MemoryDef> = {
   toolBroke: { label: 'My tools broke', mood: -2, duration: 4 * H, major: false, maxStack: 1 },
   unpaid: { label: 'The town could not pay me', mood: -5, duration: D, major: true, maxStack: 1 },
   broke: { label: "Can't afford groceries", mood: -7, duration: D, major: true, maxStack: 1 },
+  qualified: { label: 'Finished my apprenticeship', mood: 8, duration: 1.5 * D, major: true, maxStack: 1 },
 };

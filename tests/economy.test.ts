@@ -48,9 +48,12 @@ describe('the treasury', () => {
   it("a broke town can't start new buildings (except homes for the homeless)", () => {
     const sim = new Sim(7);
     sim.run(60);
-    sim.treasury = 0;
     sim.projects = [];
-    sim.run(6 * 60);
+    // Keep it broke: shop takings would otherwise refill it within hours.
+    for (let k = 0; k < 12; k++) {
+      sim.treasury = 0;
+      sim.run(30);
+    }
     expect(sim.projects.every((p) => p.blueprint === 'house' && p.forAgents.length > 0)).toBe(true);
   }, 60_000);
 });

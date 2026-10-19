@@ -449,14 +449,20 @@ export function allocateRoles(sim: Sim): void {
 
   const assigned = new Set<number>();
   const changes: string[] = [];
+  // Someone whose own trade is hiring isn't held in another job.
+  const hiring = new Set(demand.map(([r]) => r));
+  const calledAway = (a: Agent, role: RoleKey) => a.career !== undefined && a.career !== role && hiring.has(a.career);
   for (const [role, n, building] of demand) {
-    // Keep people where they are when possible; then pull from the least-needed.
-    const already = pool.filter((a) => !assigned.has(a.id) && a.role === role && (building === null || a.workBuilding === building));
+    // Keep people where they are when possible; then those who trained for it; then anyone.
+    const already = pool.filter((a) => !assigned.has(a.id) && a.role === role && (building === null || a.workBuilding === building) && !calledAway(a, role));
     const pick = [...already];
-    for (const a of pool) {
-      if (pick.length >= n) break;
-      if (assigned.has(a.id) || pick.includes(a)) continue;
-      pick.push(a);
+    for (const a of pool) if (pick.length < n && !assigned.has(a.id) && !pick.includes(a) && a.career === role) pick.push(a);
+    for (const pass of [0, 1]) {
+      for (const a of pool) {
+        if (pick.length >= n) break;
+        if (assigned.has(a.id) || pick.includes(a) || (pass === 0 && calledAway(a, role))) continue;
+        pick.push(a);
+      }
     }
     for (const a of pick.slice(0, n)) {
       assigned.add(a.id);
