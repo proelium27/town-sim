@@ -50,6 +50,31 @@ describe('illness', () => {
   }, 120_000);
 });
 
+describe('off sick', () => {
+  it('a pupil leaves class and a farmer leaves the field as soon as they are too ill to carry on', () => {
+    const sim = new Sim(7);
+    for (let d = 0; d < 8 && !sim.map.buildings.some((b) => b.kind === 'school'); d++) sim.run(720);
+    let day = sim.day + 1;
+    while (day % 7 >= 5) day++;
+    sim.run(day * 1440 + 10 * 60 - sim.time);
+    const busy = (kind: string) => sim.agents.find((a) => a.action.kind === kind && a.action.stage === 'perform' && !a.illness);
+    for (let k = 0; k < 120 && !(busy('learn') && busy('farm')); k++) sim.run(1);
+    const pupil = busy('learn')!;
+    const farmer = busy('farm')!;
+    expect(pupil).toBeDefined();
+    expect(farmer).toBeDefined();
+    for (const a of [pupil, farmer]) {
+      fallIll(sim, a, 'cold', '');
+      // At the peak of a cold: just ill enough to be off sick.
+      a.illness!.severity = 0.45;
+      a.illness!.age = 0.25 * 0.6 * 1440;
+    }
+    sim.run(2);
+    expect(pupil.action.kind).not.toBe('learn');
+    expect(farmer.action.kind).not.toBe('farm');
+  }, 120_000);
+});
+
 describe('clinic', () => {
   it('a doctor at the clinic treats patients, who recover faster', () => {
     const run = (withClinic: boolean) => {

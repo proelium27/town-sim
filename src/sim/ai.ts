@@ -676,6 +676,8 @@ function workOptions(sim: Sim, a: Agent, o: Option[], workTime: boolean, h: numb
 }
 
 function decide(sim: Sim, a: Agent, stage: Stage): void {
+  // Off sick: down tools first, so staying put at work or school isn't even an option.
+  if (offSick(a) && SICK_STOPS.includes(a.action.kind) && !(a.action.kind === 'haul' && a.action.leg === 'deliver')) finish(sim, a);
   a.thinkIn = 4 + sim.rng.range(0, 4);
   const opts = buildOptions(sim, a, stage).sort((x, y) => y.score - x.score);
   const cur = a.action;
@@ -748,9 +750,12 @@ function urgent(sim: Sim, a: Agent): boolean {
   // Freezing outdoors: stop and go somewhere warm.
   if (a.needs.warmth < 20 && sim.map.room[a.at] < 0 && k !== 'relax' && chill(sim) > 0) return true;
   // Too ill to carry on: down tools and go lie down.
-  if (offSick(a) && ['work', 'teach', 'learn', 'build', 'chop', 'mine', 'farm', 'haul', 'split', 'stoke', 'craft', 'meet'].includes(k)) return true;
+  if (offSick(a) && SICK_STOPS.includes(k)) return true;
   return false;
 }
+
+/** What someone off sick stops doing at once, whatever stage it's at. */
+const SICK_STOPS: ActionKind[] = ['work', 'teach', 'learn', 'build', 'chop', 'mine', 'farm', 'haul', 'split', 'stoke', 'craft', 'meet'];
 
 // ------------------------------------------------------------------ performing
 
