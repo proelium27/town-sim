@@ -78,6 +78,14 @@ export class TownMap {
     return y * this.w + x;
   }
 
+  cx(i: number): number {
+    return i % this.w;
+  }
+
+  cy(i: number): number {
+    return (i / this.w) | 0;
+  }
+
   inBounds(x: number, y: number): boolean {
     return x >= 0 && y >= 0 && x < this.w && y < this.h;
   }

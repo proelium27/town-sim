@@ -81,15 +81,16 @@ export function buildTown(): Town {
   const seat = (key: PropKey, x: number, y: number, facing: Facing, use: UseKind) => prop(key, x, y, 1, 1, { use, spot: [x, y, facing], blocks: false, cost: 2 });
 
   // ---------------------------------------------------------------- roads
+  // Sidewalks first, then asphalt over them, so the roads cut cleanly through at the crossings.
   fill(0, 24, TOWN_W, 1, 'sidewalk');
   fill(0, 28, TOWN_W, 1, 'sidewalk');
-  fill(0, 25, TOWN_W, 3, 'asphalt');
-  fill(0, 26, TOWN_W, 1, 'laneH');
   fill(40, 0, 1, TOWN_H, 'sidewalk');
   fill(44, 0, 1, TOWN_H, 'sidewalk');
   fill(41, 0, 3, TOWN_H, 'asphalt');
   fill(42, 0, 1, TOWN_H, 'laneV');
-  fill(41, 25, 3, 3, 'asphalt');
+  fill(0, 25, TOWN_W, 3, 'asphalt');
+  fill(0, 26, TOWN_W, 1, 'laneH');
+  fill(40, 25, 5, 3, 'asphalt');
   for (const x of [20, 62]) fill(x, 25, 1, 3, 'crossH');
   for (const y of [14, 38]) fill(41, y, 3, 1, 'crossV');
 
