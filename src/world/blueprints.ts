@@ -204,7 +204,7 @@ export function graveSlots(b: Building): { x: number; y: number }[] {
   return out;
 }
 
-export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park' | 'cemetery' | 'workshop' | 'clinic', Blueprint> = {
+export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park' | 'cemetery' | 'workshop' | 'clinic' | 'extension', Blueprint> = {
   house: {
     kind: 'house', noun: 'a new home', coins: 40, w: 11, h: 8, cost: { wood: 40, stone: 20 }, refined: { wood: 16, stone: 10, planks: 16, bricks: 8, furniture: 2 }, work: 300, doorX: 4, outdoor: false,
     stamp: (m, x, y, top, name, hh) => stampHouse(m, x, y, top, name, hh ?? 0, true),
@@ -216,6 +216,13 @@ export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'di
   park: { kind: 'park', noun: 'a little park', coins: 25, w: 8, h: 8, cost: { wood: 6, stone: 8 }, work: 100, doorX: 3, outdoor: true, stamp: (m, x, y, top, name) => stampPark(m, x, y, top, name) },
   workshop: { kind: 'workshop', noun: 'a workshop', coins: 70, w: 11, h: 8, cost: { wood: 35, stone: 25 }, work: 320, doorX: 5, outdoor: false, stamp: (m, x, y, top, name) => stampWorkshop(m, x, y, top, name) },
   clinic: { kind: 'clinic', noun: 'a clinic', coins: 60, w: 9, h: 7, cost: { wood: 25, stone: 20 }, refined: { wood: 8, planks: 12, bricks: 12, furniture: 1 }, work: 260, doorX: 4, outdoor: false, stamp: (m, x, y, top, name) => stampClinic(m, x, y, top, name) },
+  // A bedroom wing on an existing house; its footprint comes from the house, not from a site search.
+  extension: {
+    kind: 'house', noun: 'a new wing', coins: 20, w: 4, h: 8, cost: { wood: 14, stone: 6 }, refined: { wood: 4, planks: 8, bricks: 4, furniture: 1 }, work: 140, doorX: 0, outdoor: false,
+    stamp: () => {
+      throw new Error('Extensions are built by stampExtension');
+    },
+  },
   cemetery: { kind: 'cemetery', noun: 'a cemetery', coins: 15, w: 9, h: 7, cost: { wood: 4, stone: 10 }, work: 100, doorX: 4, outdoor: true, stamp: (m, x, y, top, name) => stampCemetery(m, x, y, top, name) },
 };
 

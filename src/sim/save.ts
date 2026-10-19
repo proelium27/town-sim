@@ -80,6 +80,7 @@ export function loadSim(text: string): Sim {
   if (sim.fuel.length < sim.town.households.length) sim.fuel = sim.town.households.map((_, i) => sim.fuel[i] ?? 8);
   for (const a of sim.agents) a.needs.warmth ??= 100;
   sim.departed ??= [];
+  sim.tier ??= 0;
   sim.hardDays ??= [];
   return sim;
 }

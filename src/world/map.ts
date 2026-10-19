@@ -73,6 +73,8 @@ export interface Building {
   /** Outside tile in front of the door. */
   door: { x: number; y: number };
   built: number;
+  /** Bumped when the building grows (a house extension), so views redraw it. */
+  extended?: number;
 }
 
 export const enum Cell {

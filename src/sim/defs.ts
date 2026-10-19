@@ -216,7 +216,7 @@ export type MemoryKind =
   | 'grewUp' | 'harvest' | 'school' | 'festival' | 'drought' | 'storm'
   | 'birthday' | 'myBirthday' | 'familyDinner' | 'paidRespects' | 'eveningWalk'
   | 'snowDay' | 'cozyFire' | 'coldHome' | 'blizzard' | 'madeSomething' | 'toolBroke' | 'unpaid' | 'broke' | 'qualified'
-  | 'feelingIll' | 'hurt' | 'recovered' | 'frail' | 'caredFor' | 'lookedAfter';
+  | 'feelingIll' | 'hurt' | 'recovered' | 'frail' | 'caredFor' | 'lookedAfter' | 'proudTown' | 'roomToBreathe';
 
 export interface MemoryDef {
   label: string;
@@ -291,4 +291,6 @@ export const MEMORIES: Record<MemoryKind, MemoryDef> = {
   frail: { label: 'Growing frail', mood: -3, duration: 4 * D, major: true, maxStack: 1 },
   caredFor: { label: 'Family looked after me', mood: 6, duration: 8 * H, major: false, maxStack: 2 },
   lookedAfter: { label: 'Looked after family', mood: 3, duration: 12 * H, major: false, maxStack: 3 },
+  proudTown: { label: 'Our town is growing up', mood: 6, duration: 1.5 * D, major: true, maxStack: 1 },
+  roomToBreathe: { label: 'Room to breathe at home', mood: 7, duration: 1.5 * D, major: true, maxStack: 1 },
 };

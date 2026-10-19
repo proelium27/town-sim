@@ -4,6 +4,7 @@ import type { Household } from '../world/town';
 import { ageOf, makeSchedule, newTask } from './agents';
 import { ADULT_AGE, billGoods, type Good, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
 import { foodBalance } from './economy';
+import { checkTier, EXTENSION_W, extensionSite, type ExtensionSite, stampExtension } from './growth';
 import { bury } from './life';
 import { CRAFT_ROLES, hasWorkshop, RECIPES, shortfall } from './workshop';
 import { addMemory, first, think } from './social';
@@ -115,6 +116,22 @@ interface Proposal {
   forAgents: Agent[];
   proposer?: Agent;
   name: string;
+  /** Build near here (grown kids near their parents). */
+  near?: { x: number; y: number };
+  /** For extensions: where the wing goes. */
+  extends?: ExtensionSite;
+}
+
+/** The door of a home someone's family lives in, to settle near. */
+function familyHome(sim: Sim, people: Agent[]): { x: number; y: number } | undefined {
+  for (const a of people) {
+    for (const id of a.parents) {
+      const p = sim.agent(id);
+      const h = p && sim.town.households[p.household];
+      if (h && h.building >= 0 && h.id !== a.household) return h.door;
+    }
+  }
+  return undefined;
 }
 
 const HOME_SUFFIX = ['home', 'house', 'cottage', 'place', 'lodge'];
@@ -151,16 +168,23 @@ function proposals(sim: Sim): Proposal[] {
     const sharedHome = a.household === p.household && members(sim, a.household).every((m) => fam.includes(m));
     if (sharedHome) continue;
     // A couple living apart, or sharing with housemates, wants a place of their own.
-    out.push({ bp: 'house', score: 1.45 * hw, reason: `${first(a)} and ${first(p)} want a home of their own`, forAgents: fam, proposer: a, name: homeName(sim, a) });
+    out.push({ bp: 'house', score: 1.45 * hw, reason: `${first(a)} and ${first(p)} want a home of their own`, forAgents: fam, proposer: a, name: homeName(sim, a), near: familyHome(sim, [a, p]) });
   }
   for (const h of sim.town.households) {
     if (h.building < 0) continue;
     const mem = members(sim, h.id).filter((a) => !planned.has(a.id));
     const cap = capacity(sim, h.id);
     if (mem.length > cap) {
-      // The grown-up kids (or the newest housemate) move out.
-      const movers = mem.filter((a) => ageOf(sim, a) >= ADULT_AGE && !a.partner).sort((x, y) => ageOf(sim, x) - ageOf(sim, y)).slice(0, 1);
-      if (movers.length) out.push({ bp: 'house', score: 1.2 * hw, reason: `the ${h.name.replace(' home', '')} home is overcrowded`, forAgents: movers, proposer: movers[0], name: homeName(sim, movers[0]) });
+      // A family with young ones builds on a wing; grown-up kids move out (to somewhere nearby).
+      const b = sim.building(h.building);
+      const wing = b && !sim.projects.some((p) => p.extends?.building === b.id) ? extensionSite(sim, b) : null;
+      const young = mem.some((a) => ageOf(sim, a) < ADULT_AGE);
+      if (wing && young) {
+        out.push({ bp: 'extension', score: 1.3 * hw, reason: `the ${h.name} is bursting at the seams`, forAgents: [], proposer: mem.find((a) => ageOf(sim, a) >= ADULT_AGE) ?? mem[0], name: `${h.name} extension`, extends: wing });
+      } else {
+        const movers = mem.filter((a) => ageOf(sim, a) >= ADULT_AGE && !a.partner).sort((x, y) => ageOf(sim, x) - ageOf(sim, y)).slice(0, 1);
+        if (movers.length) out.push({ bp: 'house', score: 1.2 * hw, reason: `the ${h.name.replace(' home', '')} home is overcrowded`, forAgents: movers, proposer: movers[0], name: homeName(sim, movers[0]), near: familyHome(sim, movers) });
+      }
     }
   }
   const spare = sim.town.households.filter((h) => h.building >= 0).reduce((n, h) => n + Math.max(0, capacity(sim, h.id) - members(sim, h.id).length), 0);
@@ -267,10 +291,12 @@ function pathToStreet(sim: Sim, sx: number, sy: number, avoid: (x: number, y: nu
   return null;
 }
 
-export function findSite(sim: Sim, key: BlueprintKey): Site | null {
+export function findSite(sim: Sim, key: BlueprintKey, near?: { x: number; y: number }): Site | null {
   const m = sim.map;
   const bp = BLUEPRINTS[key];
-  const [cx, cy] = townCenter(sim);
+  const [tx, ty] = townCenter(sim);
+  // Settle near family if there's a home to be near; otherwise hug the town center.
+  const [cx, cy] = near && bp.kind !== 'farm' ? [near.x, near.y] : [tx, ty];
   const taken = new Set<number>();
   for (const pr of sim.projects) {
     const a = projectArea(pr);
@@ -281,7 +307,7 @@ export function findSite(sim: Sim, key: BlueprintKey): Site | null {
   for (let y = 1; y + bp.h + 2 < m.h; y += 2) {
     for (let x = 1; x + bp.w + 2 < m.w; x += 2) {
       const d = Math.hypot(x + bp.w / 2 - cx, y + bp.h / 2 - cy);
-      if (d > 70) continue;
+      if (d > 70 || Math.hypot(x + bp.w / 2 - tx, y + bp.h / 2 - ty) > 70) continue;
       let ok = true;
       let clear = 0;
       for (let yy = y - 1; yy <= y + bp.h && ok; yy++) {
@@ -326,7 +352,8 @@ function startProject(sim: Sim, p: Proposal): Project | null {
   // The treasury has to be able to pay for it; a home for the homeless gets built on credit.
   const urgent = p.bp === 'house' && p.forAgents.some((a) => sim.town.households[a.household].building < 0);
   if (sim.treasury < bp.coins && !urgent) return null;
-  const site = findSite(sim, p.bp);
+  const wing = p.extends;
+  const site = wing ? { x: wing.x, y: wing.y, doorTop: true, path: [], cost: 0 } : findSite(sim, p.bp, p.near);
   if (!site) return null;
   sim.treasury -= bp.coins;
   sim.ledger.projects += bp.coins;
@@ -349,6 +376,7 @@ function startProject(sim: Sim, p: Proposal): Project | null {
     forAgents: p.forAgents.map((a) => a.id),
     started: sim.time,
     builders: new Set(),
+    extends: wing,
   };
   sim.projects.push(pr);
   const who = p.proposer;
@@ -364,6 +392,7 @@ export function completeProject(sim: Sim, pr: Project): void {
   const m = sim.map;
   const bp = BLUEPRINTS[pr.blueprint];
   for (const p of clutter(sim, pr)) m.removeProp(p);
+  if (pr.extends) return finishExtension(sim, pr, pr.extends);
   let hhId: number | undefined;
   const residents = pr.forAgents.map((id) => sim.agent(id)).filter((a): a is Agent => !!a);
   if (pr.blueprint === 'house') {
@@ -414,6 +443,22 @@ export function completeProject(sim: Sim, pr: Project): void {
     if (laid.length) sim.log(`${laid.map((id) => sim.person(id)!.name).join(', ')} ${laid.length > 1 ? 'were' : 'was'} laid to rest at ${pr.name}`, 'family', 'neutral');
   }
   if (pr.blueprint !== 'house') allocateRoles(sim);
+}
+
+/** The wing is up: the family spreads out into it. */
+function finishExtension(sim: Sim, pr: Project, wing: ExtensionSite): void {
+  const hh = sim.town.households.find((h) => h.building === wing.building);
+  sim.projects = sim.projects.filter((p) => p.id !== pr.id);
+  if (!hh) return;
+  stampExtension(sim, wing, hh.id);
+  for (const id of pr.builders) {
+    const a = sim.agent(id);
+    if (a) addMemory(sim, a, 'builtSomething');
+  }
+  const fam = members(sim, hh.id);
+  for (const a of fam) addMemory(sim, a, 'roomToBreathe');
+  sim.log(`The ${hh.name} has a new wing: ${EXTENSION_W} tiles wider and two more beds`, 'build', 'good', fam[0]);
+  sim.milestone(`Built ${pr.name}`);
 }
 
 // ------------------------------------------------------------------ jobs
@@ -507,7 +552,9 @@ export function tickPlanner(sim: Sim, dt: number): void {
   if (sim.timers.plan > 0) return;
   sim.timers.plan = 120;
   const builders = sim.agents.filter((a) => a.role === 'builder' || a.role === 'laborer').length;
-  const capacityProjects = Math.min(3, 1 + Math.floor(builders / 2));
+  checkTier(sim);
+  // A bigger town can take on more at once.
+  const capacityProjects = Math.min(3 + sim.tier, 1 + Math.floor(builders / 2));
   if (sim.projects.length >= capacityProjects) return;
   for (const p of proposals(sim)) {
     if (p.score < 0.5) break;
