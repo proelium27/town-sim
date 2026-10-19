@@ -89,8 +89,10 @@ export class TownPanel {
         <h3>Workshop <small>${shop ? 'what the trades are making' : 'being built'}</small></h3>
         <ul class="chains">${chains(sim).map((c) => {
           const from = Object.keys(c.recipe.inputs).map(label).join(' + ');
-          const state = c.stuck ? `<span class="why neg">Stuck: ${esc(c.stuck)}</span>` : `<span class="why">${c.have >= c.target ? 'stocked' : 'in production'}</span>`;
-          return `<li class="${c.stuck ? 'stuck' : ''}"><span class="lbl">${from} → <b>${label(c.recipe.good)}</b></span><span class="num">${c.have}/${c.target}</span>${state}</li>`;
+          // While the workshop is still going up, nothing is stuck yet; it's just early.
+          const stuck = shop ? c.stuck : null;
+          const state = stuck ? `<span class="why neg">Stuck: ${esc(stuck)}</span>` : `<span class="why">${c.have >= c.target ? 'stocked' : !shop ? 'waiting for the workshop' : 'in production'}</span>`;
+          return `<li class="${stuck ? 'stuck' : ''}"><span class="lbl">${from} → <b>${label(c.recipe.good)}</b></span><span class="num">${c.have}/${c.target}</span>${state}</li>`;
         }).join('')}</ul>
       </section>`;
   }
