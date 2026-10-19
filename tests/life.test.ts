@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createAgent } from '../src/sim/agents';
 import { birthdayOf, milestoneFor } from '../src/sim/events';
 import { die } from '../src/sim/life';
+import { loadSim, saveSim } from '../src/sim/save';
 import { Sim } from '../src/sim/sim';
 import { kinship } from '../src/sim/social';
 
@@ -13,17 +14,59 @@ describe('birthdays', () => {
     const host = sim.agents.find((a) => sim.town.households[a.household].building >= 0 && sim.agents.some((o) => kinship(sim, a, o)) && birthdayOf(a.birth) >= 1)!;
     const day = birthdayOf(host.birth);
     at(sim, day, 18.5);
-    const party = sim.events.birthdays.find((b) => b.host === host.id);
+    const party = sim.events.birthdays.find((b) => b.hosts.includes(host.id));
     expect(party).toBeDefined();
     expect(sim.map.props.some((p) => p.key === 'cake')).toBe(true);
     at(sim, day, 20.6);
-    expect(sim.events.birthdays.some((b) => b.host === host.id)).toBe(false);
+    expect(sim.events.birthdays.some((b) => b.hosts.includes(host.id))).toBe(false);
     expect(sim.map.props.some((p) => p.key === 'cake')).toBe(false);
     expect(host.memories.some((m) => m.kind === 'myBirthday')).toBe(true);
     expect(sim.agents.some((o) => o.memories.some((m) => m.kind === 'birthday' && m.about === host.id) && kinship(sim, o, host))).toBe(true);
     // Not again until next year.
     at(sim, day + 1, 21);
-    expect(sim.activity.filter((e) => e.text.startsWith(`It's ${host.name.split(' ')[0]}'s birthday`)).length).toBe(1);
+    // (Seed 7's host shares the day with a housemate, so the log names both.)
+    expect(sim.activity.filter((e) => /^It's .*'s birthday/.test(e.text) && e.text.includes(host.name.split(' ')[0])).length).toBe(1);
+  }, 60_000);
+});
+
+describe('joint birthdays', () => {
+  /** Two housemates born the same day (day 1 of the calendar), and nobody else celebrating. */
+  const twins = () => {
+    const sim = new Sim(7);
+    const homed = sim.agents.filter((a) => sim.town.households[a.household].building >= 0);
+    const a = homed.find((x) => homed.some((y) => y !== x && y.household === x.household && kinship(sim, x, y)))!;
+    const b = homed.find((y) => y !== a && y.household === a.household && kinship(sim, a, y))!;
+    a.birth = b.birth = 1440 + 720 - 2 * 8 * 1440;
+    for (const x of sim.agents) if (x !== a && x !== b) x.lastBirthday = 1;
+    return { sim, a, b };
+  };
+  const fn = (x: { name: string }) => x.name.split(' ')[0];
+
+  it('housemates sharing a birthday throw one party with one cake', () => {
+    const { sim, a, b } = twins();
+    at(sim, 1, 18.2);
+    expect(sim.events.birthdays).toHaveLength(1);
+    expect(sim.events.birthdays[0].hosts).toEqual([a.id, b.id]);
+    expect(sim.map.props.filter((p) => p.key === 'cake')).toHaveLength(1);
+    expect(sim.activity.some((e) => e.text === `It's ${fn(a)} and ${fn(b)}'s birthday: both 32 today`)).toBe(true);
+    at(sim, 1, 20.6);
+    expect(sim.events.birthdays).toHaveLength(0);
+    expect(sim.activity.some((e) => /^Nobody came/.test(e.text))).toBe(false);
+    for (const h of [a, b]) expect(h.memories.find((m) => m.kind === 'myBirthday')!.mood).toBeGreaterThanOrEqual(12);
+    // Guests remember the party once, not once per host.
+    expect(sim.agents.every((g) => g.memories.filter((m) => m.kind === 'birthday').length <= 1)).toBe(true);
+  }, 60_000);
+
+  it('a party saved with a single host still loads and wraps up', () => {
+    const { sim, a, b } = twins();
+    at(sim, 1, 18.2);
+    const old = saveSim(sim).replace(`"hosts":[${a.id},${b.id}]`, `"host":${a.id},"age":32`);
+    expect(old).not.toContain('"hosts"');
+    const back = loadSim(old);
+    expect(back.events.birthdays[0].hosts).toEqual([a.id]);
+    at(back, 1, 20.6);
+    expect(back.events.birthdays).toHaveLength(0);
+    expect(back.agent(a.id)!.memories.some((m) => m.kind === 'myBirthday')).toBe(true);
   }, 60_000);
 });
 
@@ -48,7 +91,7 @@ describe('milestone birthdays', () => {
     old.birth = 1440 + 720 - 4 * 8 * 1440;
     for (const a of sim.agents) if (a !== young && a !== old) a.lastBirthday = 1;
     at(sim, 1, 18.2);
-    const party = (id: number) => sim.events.birthdays.find((b) => b.host === id)!;
+    const party = (id: number) => sim.events.birthdays.find((b) => b.hosts.includes(id))!;
     expect(party(young.id).milestone).toBe(false);
     expect(party(old.id).milestone).toBe(true);
     const said = (a: typeof young) => sim.activity.find((e) => e.text.startsWith(`It's ${a.name.split(' ')[0]}'s birthday`))!.text;

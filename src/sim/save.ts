@@ -74,5 +74,11 @@ export function loadSim(text: string): Sim {
     backfillAgent(a);
   }
   sim.events.birthdays ??= [];
+  // Parties saved before joint birthdays had a single host.
+  for (const b of sim.events.birthdays as (typeof sim.events.birthdays[number] & { host?: number; age?: number })[]) {
+    if (!b.hosts) b.hosts = b.host !== undefined ? [b.host] : [];
+    delete b.host;
+    delete b.age;
+  }
   return sim;
 }

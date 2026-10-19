@@ -3,6 +3,7 @@ import type { Prop, UseKind } from '../world/map';
 import { ageOf, newTask } from './agents';
 import { ADULT_AGE, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
 import { FOOD_PER_CROP } from './economy';
+import { birthdayNames } from './events';
 import { CARRY, laborPlan } from './labor';
 import { buildCap, completeProject, shortOf, supplied } from './planner';
 import { clamp } from './rng';
@@ -360,15 +361,16 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
     o.push(areaOption(sim, a, 'party', 1.15 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.25 : 0), 'Town festival', 'At the town festival', PARK, 9999));
   }
   for (const b of sim.events.birthdays) {
-    const host = sim.agent(b.host);
-    if (!host) continue;
-    const isHost = host.id === a.id;
-    const kin = !isHost && !!kinship(sim, a, host);
-    const friend = !isHost && b.milestone && (a.relations.get(host.id)?.opinion ?? 0) >= FRIEND;
+    const hosts = b.hosts.map((id) => sim.agent(id)).filter((x): x is Agent => !!x);
+    if (!hosts.length) continue;
+    const isHost = b.hosts.includes(a.id);
+    const kin = !isHost && hosts.some((h) => kinship(sim, a, h));
+    const friend = !isHost && b.milestone && hosts.some((h) => (a.relations.get(h.id)?.opinion ?? 0) >= FRIEND);
     if (!isHost && !kin && !friend) continue;
     if (sleepTime && a.household !== b.household) continue;
     const room = sim.map.rooms[sim.town.households[b.household].room];
-    o.push(areaOption(sim, a, 'party', isHost ? 1.4 : kin ? 1.2 : 0.95, `Birthday: ${first(host)}`, isHost ? 'Celebrating my birthday' : `At ${first(host)}'s birthday`, room, 9999, { partnerId: host.id }));
+    const names = birthdayNames(sim, b);
+    o.push(areaOption(sim, a, 'party', isHost ? 1.4 : kin ? 1.2 : 0.95, isHost ? 'My birthday' : `Birthday: ${names}`, isHost ? 'Celebrating my birthday' : `At ${names}'s birthday`, room, 9999, { partnerId: b.hosts[0] }));
   }
   // Join whoever in the family is already sitting down to dinner at home.
   if (homed && loc === 'home' && inWindow(h, 17.5, 20.5) && n.hunger < 92 && stage !== 'toddler' && !a.mealReady && pantry >= 0.5 && a.action.kind !== 'eat') {
@@ -584,7 +586,7 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
     case 'shop': return 'We are out of food at home. Grocery run.';
     case 'meet': return 'Standup time.';
     case 'party':
-      if (o.reason === `Birthday: ${first(a)}`) return "My birthday party! I wonder who'll come.";
+      if (o.reason === 'My birthday') return "My birthday party! I wonder who'll come.";
       if (o.reason.startsWith('Birthday: ')) return `Off to ${o.reason.slice(10)}'s birthday.`;
       return o.reason === 'Town festival' ? 'The whole town is out for the festival!' : 'Party in the lounge!';
     case 'mourn': return `I'll go and sit with ${o.reason.slice(7)} for a while.`;
@@ -648,7 +650,7 @@ function arrive(sim: Sim, a: Agent): void {
       break;
     }
     case 'party':
-      if (a.action.partnerId !== undefined) sim.events.birthdays.find((b) => b.host === a.action.partnerId)?.guests.add(a.id);
+      if (a.action.partnerId !== undefined) sim.events.birthdays.find((b) => b.hosts.includes(a.action.partnerId!))?.guests.add(a.id);
       else (sim.events.party ?? sim.events.festival)?.attendees.add(a.id);
       break;
     case 'meet':
@@ -879,9 +881,9 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       n.hunger = Math.min(100, n.hunger + 0.6 * dt);
       for (const o of sim.agents) if (o.id !== a.id && o.action.kind === 'party' && Math.abs(o.x - a.x) < 6 && Math.abs(o.y - a.y) < 6) bondNearby(sim, a, o, dt * 2);
       if (sim.rng.chance(0.02 * dt)) say(sim, a, sim.rng.pick(['woo!', '♪', 'ha!', 'cheers']), 'good', 3);
-      const bday = act.partnerId !== undefined ? sim.events.birthdays.find((b) => b.host === act.partnerId) : undefined;
+      const bday = act.partnerId !== undefined ? sim.events.birthdays.find((b) => b.hosts.includes(act.partnerId!)) : undefined;
       if (act.partnerId !== undefined ? !bday : !sim.events.party && !festival) finish(sim, a);
-      else if (bday && sim.rng.chance(0.015 * dt)) say(sim, a, a.id === bday.host ? 'thank you!' : sim.rng.pick(['happy birthday!', '♪', 'cake!']), 'good', 3);
+      else if (bday && sim.rng.chance(0.015 * dt)) say(sim, a, bday.hosts.includes(a.id) ? 'thank you!' : sim.rng.pick(['happy birthday!', '♪', 'cake!']), 'good', 3);
       return;
     }
     case 'mourn': {
