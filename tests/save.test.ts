@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { billText, GOOD_KEYS } from '../src/sim/defs';
+import { billText, GOOD_KEYS, NEEDS } from '../src/sim/defs';
 import { loadSim, saveSim, snapshot } from '../src/sim/save';
 import { Sim } from '../src/sim/sim';
 
@@ -25,6 +25,22 @@ describe('saving and loading', () => {
     expect([...p.relations.values()].some((r) => r.lastTalk === -Infinity)).toBe(true);
     expect(b.map.cell).toBeInstanceOf(Uint8Array);
     expect(b.map.propsOn(b.map.props[0].x, b.map.props[0].y)).toContain(b.map.props[0]);
+  });
+
+  it('starts a need missing from an old save at its own backfill value, not the generic 80', () => {
+    const a = new Sim(3);
+    a.run(60);
+    const file = JSON.parse(saveSim(a));
+    for (const p of file.sim.agents) delete p.needs.fun;
+    const prev = NEEDS.fun.backfill;
+    NEEDS.fun.backfill = 100;
+    try {
+      const b = loadSim(JSON.stringify(file));
+      expect(b.agents.every((p) => p.needs.fun === 100)).toBe(true);
+    } finally {
+      NEEDS.fun.backfill = prev;
+    }
+    expect(loadSim(JSON.stringify(file)).agents[0].needs.fun).toBe(80);
   });
 
   it('rejects files that are not saves', () => {

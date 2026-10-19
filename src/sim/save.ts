@@ -1,4 +1,4 @@
-import { emptyStock, NEED_KEYS } from './defs';
+import { emptyStock, NEED_KEYS, NEEDS } from './defs';
 import { Nav } from './nav';
 import { Sim } from './sim';
 
@@ -68,6 +68,10 @@ export function loadSim(text: string): Sim {
   sim.nav = new Nav(sim.town.map);
   // Anything added since the save was made starts from a sensible default.
   sim.stock = { ...emptyStock(), ...sim.stock };
-  for (const a of [...sim.agents, ...sim.deceased]) for (const k of NEED_KEYS) a.needs[k] ??= 80;
+  for (const a of [...sim.agents, ...sim.deceased]) {
+    // Per-person backfills that set a need go before this generic fallback, or it would fill the need first.
+    // Prefer NeedDef.backfill in defs.ts for a need's starting value.
+    for (const k of NEED_KEYS) a.needs[k] ??= NEEDS[k].backfill ?? 80;
+  }
   return sim;
 }
