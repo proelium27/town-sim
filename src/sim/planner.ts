@@ -122,13 +122,16 @@ interface Proposal {
   extends?: ExtensionSite;
 }
 
-/** The door of a home someone's family lives in, to settle near. */
+/**
+ * The door of the parents' home, to settle near. That's often the very home the mover is
+ * leaving (a grown kid moving out), which is exactly where they want to stay close to.
+ */
 function familyHome(sim: Sim, people: Agent[]): { x: number; y: number } | undefined {
   for (const a of people) {
     for (const id of a.parents) {
       const p = sim.agent(id);
       const h = p && sim.town.households[p.household];
-      if (h && h.building >= 0 && h.id !== a.household) return h.door;
+      if (h && h.building >= 0) return h.door;
     }
   }
   return undefined;

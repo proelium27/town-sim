@@ -41,6 +41,27 @@ describe('homes that grow', () => {
     const dist = (s: { x: number; y: number }) => Math.hypot(s.x - home.door.x, s.y - home.door.y);
     expect(dist(near)).toBeLessThanOrEqual(dist(anywhere));
   });
+
+  it('a grown kid moving out of an overcrowded home builds near the parents', () => {
+    const sim = new Sim(7);
+    const hh = sim.town.households.find((h) => h.name === 'Novak home')!;
+    const mum = sim.agents.find((a) => a.household === hh.id && a.name.startsWith('Anouk'))!;
+    const kid = createAgent(sim, { role: 'laborer', household: hh.id, age: 22, parents: [mum], cell: mum.at });
+    sim.agents.push(kid);
+    mum.children.push(kid.id);
+    expect(members(sim, hh.id).length).toBeGreaterThan(capacity(sim, hh.id));
+    sim.projects = [];
+    sim.treasury = 500;
+    sim.timers.plan = 0;
+    tickPlanner(sim, 0.05);
+    const pr = sim.projects.find((p) => p.forAgents.includes(kid.id))!;
+    expect(pr).toBeDefined();
+    const dist = (s: { x: number; y: number }) => Math.hypot(s.x - hh.door.x, s.y - hh.door.y);
+    // The town-centre default is further out; the kid stays close to home.
+    sim.projects = [];
+    expect(dist(pr)).toBeLessThan(dist(findSite(sim, 'house')!));
+    expect(dist(pr)).toBeLessThan(30);
+  });
 });
 
 describe('town tiers', () => {
