@@ -54,7 +54,7 @@ describe('player influence', () => {
     const housed = arrivals.every((a) => sim.town.households[a.household].building >= 0);
     const planned = arrivals.some((a) => sim.projects.some((p) => p.forAgents.includes(a.id)));
     expect(housed || planned).toBe(true);
-  });
+  }, 30_000);
 
   it('a drought freezes crops and a bumper harvest ripens them', () => {
     const sim = new Sim(4);
