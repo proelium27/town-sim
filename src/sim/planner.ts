@@ -413,18 +413,17 @@ export function completeProject(sim: Sim, pr: Project): void {
 
 // ------------------------------------------------------------------ jobs
 
+/** One line of what the town wants from its flexible workers: a role, how many, and where (null: anywhere). */
+export type RoleSlot = [role: RoleKey, n: number, building: number | null];
 
-/** Shifts people in flexible jobs toward what the town needs right now. */
-export function allocateRoles(sim: Sim): void {
+/** What the town needs of its flexible workers right now, in the order jobs are filled. A role can appear more than once. */
+export function roleDemand(sim: Sim): RoleSlot[] {
   const m = sim.map;
-  const adults = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE && a.role !== 'retired');
-  const pool = adults.filter((a) => ROLES[a.role].flexible);
-  if (!pool.length) return;
   const schools = m.buildings.filter((b) => b.kind === 'school');
   const diners = m.buildings.filter((b) => b.kind === 'cafe' && b.name.includes('Diner'));
   const farms = m.buildings.filter((b) => b.kind === 'farm').length;
   const kids = sim.agents.filter((a) => ageOf(sim, a) >= 5 && ageOf(sim, a) < ADULT_AGE).length;
-  const demand: [RoleKey, number, number | null][] = [];
+  const demand: RoleSlot[] = [];
   for (const s of schools) if (kids) demand.push(['teacher', 1, s.id]);
   for (const d of diners) demand.push(['cook', 1, d.id]);
   const hw = PRIORITY_WEIGHT[sim.priorities.housing];
@@ -446,15 +445,34 @@ export function allocateRoles(sim: Sim): void {
   const cold = sim.season >= 2 ? 1 : 0;
   const shop = hasWorkshop(sim) ? 1 : 0;
   demand.push(['woodcutter', Math.max(1, Math.round((sim.stock.wood < 60 || sim.stock.stone < 40 ? 2 : 1) * mw) + cold + shop), null]);
+  return demand;
+}
+
+/** Unfilled places per demanded role: the total wanted less the adults already doing it (zero or below: full). */
+export function openSlots(sim: Sim, demand: RoleSlot[] = roleDemand(sim)): Map<RoleKey, number> {
+  const open = new Map<RoleKey, number>();
+  for (const [r, n] of demand) open.set(r, (open.get(r) ?? 0) + n);
+  for (const a of sim.agents) if (open.has(a.role) && ageOf(sim, a) >= ADULT_AGE) open.set(a.role, open.get(a.role)! - 1);
+  return open;
+}
+
+/** Shifts people in flexible jobs toward what the town needs right now. */
+export function allocateRoles(sim: Sim): void {
+  const adults = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE && a.role !== 'retired');
+  const pool = adults.filter((a) => ROLES[a.role].flexible);
+  if (!pool.length) return;
+  const demand = roleDemand(sim);
 
   const assigned = new Set<number>();
   const changes: string[] = [];
-  // Someone whose own trade is hiring isn't held in another job.
-  const hiring = new Set(demand.map(([r]) => r));
-  const calledAway = (a: Agent, role: RoleKey) => a.career !== undefined && a.career !== role && hiring.has(a.career);
+  // Someone whose own trade has an opening isn't held in another job.
+  const open = openSlots(sim, demand);
+  const calledAway = (a: Agent, role: RoleKey) => a.career !== undefined && a.career !== role && (open.get(a.career) ?? 0) > 0;
   for (const [role, n, building] of demand) {
-    // Keep people where they are when possible; then those who trained for it; then anyone.
-    const already = pool.filter((a) => !assigned.has(a.id) && a.role === role && (building === null || a.workBuilding === building) && !calledAway(a, role));
+    // Keep people where they are when possible (those trained for it first); then those who trained for it; then anyone.
+    const already = pool
+      .filter((a) => !assigned.has(a.id) && a.role === role && (building === null || a.workBuilding === building) && !calledAway(a, role))
+      .sort((x, y) => Number(y.career === role) - Number(x.career === role));
     const pick = [...already];
     for (const a of pool) if (pick.length < n && !assigned.has(a.id) && !pick.includes(a) && a.career === role) pick.push(a);
     for (const pass of [0, 1]) {
@@ -466,8 +484,9 @@ export function allocateRoles(sim: Sim): void {
     }
     for (const a of pick.slice(0, n)) {
       assigned.add(a.id);
-      if (a.role !== role || (building !== null && a.workBuilding !== building)) setRole(sim, a, role, building);
-      if (!already.includes(a)) changes.push(`${first(a)} is now a ${ROLES[role].title.toLowerCase()}`);
+      if (a.role === role && (building === null || a.workBuilding === building)) continue;
+      setRole(sim, a, role, building);
+      changes.push(`${first(a)} is now a ${ROLES[role].title.toLowerCase()}`);
     }
   }
   for (const a of pool) if (!assigned.has(a.id) && a.role !== 'laborer') {

@@ -1,4 +1,5 @@
 import type { Outfit } from '../assets/loader';
+import type { Prop } from '../world/map';
 import {
   ADULT_AGE, MIN_PER_DAY, NEED_KEYS, RETIRE_AGE, ROLES, type RoleKey, SKILL_KEYS, type SkillKey, TRAITS, TRAIT_KEYS, type TraitKey, YEARS_PER_DAY,
 } from './defs';
@@ -175,18 +176,23 @@ export function createAgent(sim: Sim, o: NewAgentOpts): Agent {
   return a;
 }
 
-/** Fixed desks and counters for the hand-built workplaces. */
-export function stationFor(sim: Sim, role: RoleKey, taken: Set<number>): number | null {
+/** Free desks and counters that suit a role, skipping `taken` (which is left untouched). */
+export function freeStations(sim: Sim, role: RoleKey, taken: Set<number>): Prop[] {
   const m = sim.map;
   const def = ROLES[role];
   const kindOf = (p: { room: number }) => (p.room >= 0 ? m.rooms[p.room].kind : undefined);
-  const spots = m.props.filter((p) => p.use === 'work' && !taken.has(p.id) && (
+  return m.props.filter((p) => p.use === 'work' && !taken.has(p.id) && (
     def.station === 'desk' ? kindOf(p) === 'office'
     : def.station === 'reception' ? kindOf(p) === 'lobby'
     : def.workplace === 'cafe' ? kindOf(p) === 'cafe' && p.building === undefined
     : def.workplace === 'market' ? kindOf(p) === 'shop'
     : def.workplace === 'library' ? kindOf(p) === 'library'
     : false));
+}
+
+/** Fixed desks and counters for the hand-built workplaces: picks one and marks it taken. */
+export function stationFor(sim: Sim, role: RoleKey, taken: Set<number>): number | null {
+  const spots = freeStations(sim, role, taken);
   const pick = spots.length ? sim.rng.pick(spots) : undefined;
   if (pick) taken.add(pick.id);
   return pick?.id ?? null;
