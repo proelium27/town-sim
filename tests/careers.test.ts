@@ -71,16 +71,19 @@ describe('careers', () => {
     expect(laborRate(a)).toBeCloseTo(master * 1.25);
   });
 
-  it("an empty clinic doesn't recruit doctors at coming of age (allocateRoles staffs it, as with teachers and cooks)", () => {
+  it('a clinic recruits a doctor like the school and diner do: only while it has an opening', () => {
     const sim = new Sim(7);
     const site = findSite(sim, 'clinic')!;
     BLUEPRINTS.clinic.stamp(sim.map, site.x, site.y, site.doorTop, 'Test Clinic');
     expect(sim.agents.some((a) => a.role === 'doctor')).toBe(false);
+    expect(openSlots(sim).get('doctor')).toBe(1);
+    // allocateRoles staffs it, and then a grown kid isn't drawn to it.
+    allocateRoles(sim);
+    expect(sim.agents.filter((a) => a.role === 'doctor').length).toBe(1);
+    expect(openSlots(sim).get('doctor') ?? 0).toBe(0);
     for (const kid of sim.agents.filter((a) => a.role === 'child')) {
-      // Equal people and numbers: no trade beats another on aptitude alone.
-      kid.aptitude = { hands: 0, numbers: 50, people: 50, outdoors: 0 };
-      const pick = chooseCareer(sim, kid);
-      expect(pick.why).not.toContain('nobody doing it');
+      kid.aptitude = { hands: 0, numbers: 90, people: 90, outdoors: 0 };
+      expect(chooseCareer(sim, kid).role).not.toBe('doctor');
     }
   });
 
