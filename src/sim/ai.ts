@@ -1,13 +1,14 @@
 import type { Facing } from '../assets/manifest';
 import type { Prop, UseKind } from '../world/map';
 import { ageOf, hasUmbrella, newTask } from './agents';
-import { ADULT_AGE, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
+import { ADULT_AGE, type Good, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
 import { FOOD_PER_CROP } from './economy';
+import { birthdayNames } from './events';
 import { CARRY, laborPlan } from './labor';
 import { buildCap, completeProject, shortOf, supplied } from './planner';
-import { chill, HEARTH_FULL } from './seasons';
+import { chill, HEARTH_FULL, snowing } from './seasons';
 import { learnBoost, lessonAptitude } from './careers';
-import { askFamilyForHelp, payWage, price, spend } from './market';
+import { askFamilyForHelp, BROKE_RETRY, canAffordGroceries, familyAsk, payWage, price, spend } from './market';
 import { canMake, RECIPES, STATION_OF } from './workshop';
 import { clamp } from './rng';
 import {
@@ -128,6 +129,9 @@ function randomCellIn(sim: Sim, x: number, y: number, w: number, h: number): num
 
 const roomKind = (sim: Sim, p: Prop) => (p.room >= 0 ? sim.map.rooms[p.room].kind : undefined);
 
+/** Jobs that go faster with tools (they run on laborRate), and so wear them down. */
+const TOOL_WORK: ActionKind[] = ['build', 'chop', 'mine', 'split', 'craft'];
+
 // ------------------------------------------------------------------ needs
 
 function updateNeeds(sim: Sim, a: Agent, dt: number, stage: Stage): void {
@@ -137,7 +141,7 @@ function updateNeeds(sim: Sim, a: Agent, dt: number, stage: Stage): void {
   const asleep = k === 'sleep' && performing;
   const working = (k === 'work' || k === 'build' || k === 'chop' || k === 'mine' || k === 'farm' || k === 'haul' || k === 'teach' || k === 'split' || k === 'stoke' || k === 'craft') && performing;
   // Tools wear out with use.
-  if (a.tool > 0 && performing && (k === 'build' || k === 'chop' || k === 'mine' || k === 'farm' || k === 'split' || k === 'craft')) {
+  if (a.tool > 0 && performing && TOOL_WORK.includes(k)) {
     a.tool -= 0.0012 * dt;
     if (a.tool <= 0) {
       a.tool = 0;
@@ -147,7 +151,8 @@ function updateNeeds(sim: Sim, a: Agent, dt: number, stage: Stage): void {
   }
   const tired = stage === 'elder' ? 1.25 : stage === 'toddler' ? 1.3 : 1;
   if (!asleep) n.energy -= (working ? 0.075 : 0.06) * dt * tired * (a.traits.includes('earlyBird') && sim.hour > 19 ? 1.4 : 1);
-  n.hunger -= (a.traits.includes('foodie') ? 0.13 : 0.105) * dt * (asleep ? 0.4 : 1) * (working && k !== 'work' ? 1.2 : 1);
+  // The cold makes people hungrier.
+  n.hunger -= (a.traits.includes('foodie') ? 0.13 : 0.105) * dt * (asleep ? 0.4 : 1) * (working && k !== 'work' ? 1.2 : 1) * (1 + 0.3 * chill(sim));
   n.hygiene -= (k === 'play' || k === 'stroll' || k === 'chop' || k === 'mine' || k === 'build' || k === 'farm' ? 0.12 : 0.05) * dt * (asleep ? 0.5 : 1);
   const soc = a.traits.includes('extrovert') ? 0.1 : a.traits.includes('introvert') ? 0.04 : 0.065;
   n.social -= soc * dt * (asleep ? 0.2 : 1);
@@ -240,28 +245,68 @@ function callToDinner(sim: Sim, a: Agent): void {
   say(sim, a, sim.rng.pick(['dinner!', "food's ready!"]), 'good', 3);
 }
 
+/**
+ * Kids young enough to be walked to school. Ages run at two years a day, so a kid is only of
+ * school age (6 to 18) for six days; under 14 would leave just four, often lost to weekends.
+ */
+const SCHOOL_RUN_AGE = 16;
+/** What a kid can drop when it's time to set off. */
+const SCHOOL_RUN_READY = ['idle', 'wander', 'relax', 'read', 'play', 'coffee'];
+const isYoungScholar = (sim: Sim, k: Agent) => k.role === 'child' && ageOf(sim, k) >= 6 && ageOf(sim, k) < SCHOOL_RUN_AGE;
+const escorting = (sim: Sim, kid: Agent) => sim.agents.some((p) => p.action.kind === 'escort' && p.action.partnerId === kid.id);
+
+/** Same room indoors, or a few steps apart outdoors. */
+function together(sim: Sim, a: Agent, b: Agent): boolean {
+  const ra = sim.roomOf(a);
+  const rb = sim.roomOf(b);
+  return ra || rb ? ra === rb : Math.hypot(a.x - b.x, a.y - b.y) <= 4;
+}
+
+/** The grown-up heads for the school door with the kid alongside; from there it's on to work. */
+function escort(sim: Sim, adult: Agent, kid: Agent, school: { door: { x: number; y: number } }): boolean {
+  const dest = sim.map.idx(school.door.x, school.door.y);
+  const path = sim.nav.findPath(adult.at, dest, 40000);
+  if (!path) return false;
+  start(sim, adult, 'escort', `Walking ${first(kid)} to school`, `${first(kid)} has school`, { cell: dest, path, cost: path.length }, 2, 1.35, { partnerId: kid.id });
+  adult.walkWith = kid.id;
+  kid.walkWith = adult.id;
+  return true;
+}
+
 /** A young kid setting off for school gets walked there by a grown-up from home, if one is free. */
 function askForEscort(sim: Sim, kid: Agent): void {
-  if (ageOf(sim, kid) >= 14 || kid.path.length < 8) return;
+  if (!isYoungScholar(sim, kid) || kid.path.length < 8 || escorting(sim, kid)) return;
   const room = sim.roomOf(kid);
   const school = sim.map.buildings.find((b) => b.kind === 'school');
   if (!room || !school) return;
   const free = ['idle', 'wander', 'relax', 'read', 'coffee', 'eat', 'snack'];
   const adult = sim.agents.find((p) => p.household === kid.household && (stageOf(sim, p) === 'adult' || stageOf(sim, p) === 'elder') && sim.roomOf(p) === room && !p.walkWith && free.includes(p.action.kind));
-  if (!adult) return;
-  const dest = sim.map.idx(school.door.x, school.door.y);
-  const path = sim.nav.findPath(adult.at, dest, 40000);
-  if (!path) return;
-  start(sim, adult, 'escort', `Walking ${first(kid)} to school`, `${first(kid)} has school`, { cell: dest, path, cost: path.length }, 2, 1.35, { partnerId: kid.id });
-  adult.walkWith = kid.id;
-  kid.walkWith = adult.id;
-  think(sim, adult, `I'll walk ${first(kid)} to school on my way.`, 'good');
+  if (adult && escort(sim, adult, kid, school)) think(sim, adult, `I'll walk ${first(kid)} to school on my way.`, 'good');
 }
 
-/** Off for a stroll: a partner at home with nothing much on comes along, side by side. */
-function invitePartner(sim: Sim, a: Agent): void {
+/** A young kid at home, up and about, who has school today and hasn't left yet. */
+function schoolRunKid(sim: Sim, a: Agent): Agent | undefined {
+  const room = sim.town.households[a.household].room;
+  return sim.agents.find((k) => k.household === a.household && isYoungScholar(sim, k) && sim.roomOf(k)?.id === room && SCHOOL_RUN_READY.includes(k.action.kind) && k.walkWith === undefined && !isSleepTime(sim, k));
+}
+
+/** The morning school run, started by the grown-up: the kid sets off for class with them. */
+function walkToSchool(sim: Sim, adult: Agent, kid: Agent): boolean {
+  const t = findSpot(sim, kid, ['learn']);
+  const school = sim.building(t?.prop?.building) ?? sim.map.buildings.find((b) => b.kind === 'school');
+  if (!t || t.path.length < 8 || !school || !escort(sim, adult, kid, school)) return false;
+  // Early to class: stay until school's been on for an hour or two.
+  const early = Math.max(0, (8.5 - sim.hour) * 60);
+  start(sim, kid, 'learn', 'In class at school', 'School day', t, early + sim.rng.range(60, 120), 1.15);
+  kid.walkWith = adult.id;
+  think(sim, kid, `Walking to school with ${first(adult)}.`, 'good');
+  return true;
+}
+
+/** Off for a stroll: a partner nearby with nothing much on comes along, side by side. */
+export function invitePartner(sim: Sim, a: Agent): void {
   const b = sim.agent(a.partner ?? undefined);
-  if (!b || sim.roomOf(b) !== sim.roomOf(a) || !['idle', 'wander', 'relax', 'read'].includes(b.action.kind)) return;
+  if (!b || !together(sim, a, b) || !['idle', 'wander', 'relax', 'read'].includes(b.action.kind)) return;
   if (b.needs.energy < 35 || isWorkTime(sim, b) || stageOf(sim, b) === 'toddler' || !sim.rng.chance(a.action.reason === 'Evening walk' ? 1 : 0.6)) return;
   const m = sim.map;
   const dx = m.cx(a.action.dest);
@@ -431,6 +476,11 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   if (schoolTime) {
     o.push(spotOption(sim, a, 'learn', 1.15, 'School day', ['learn'], () => 'In class at school', sim.rng.range(60, 120)));
   }
+  // The school run: before leaving for work, a grown-up walks a young kid from home to school.
+  if ((stage === 'adult' || stage === 'elder') && loc === 'home' && !sim.weekend && !a.walkWith && inWindow(h, 7, 9.5)) {
+    const kid = schoolRunKid(sim, a);
+    if (kid) o.push({ kind: 'escort', score: 1.3, reason: `${first(kid)} has school`, begin: () => walkToSchool(sim, a, kid) });
+  }
 
   // ---- meetings and parties
   if (sim.events.standup && office && workTime) {
@@ -443,15 +493,16 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
     o.push(areaOption(sim, a, 'party', 1.15 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.25 : 0), 'Town festival', `At the ${(sim.events.festival.name ?? 'town festival').toLowerCase()}`, PARK, 9999));
   }
   for (const b of sim.events.birthdays) {
-    const host = sim.agent(b.host);
-    if (!host) continue;
-    const isHost = host.id === a.id;
-    const kin = !isHost && !!kinship(sim, a, host);
-    const friend = !isHost && b.milestone && (a.relations.get(host.id)?.opinion ?? 0) >= FRIEND;
+    const hosts = b.hosts.map((id) => sim.agent(id)).filter((x): x is Agent => !!x);
+    if (!hosts.length) continue;
+    const isHost = b.hosts.includes(a.id);
+    const kin = !isHost && hosts.some((h) => kinship(sim, a, h));
+    const friend = !isHost && b.milestone && hosts.some((h) => (a.relations.get(h.id)?.opinion ?? 0) >= FRIEND);
     if (!isHost && !kin && !friend) continue;
     if (sleepTime && a.household !== b.household) continue;
     const room = sim.map.rooms[sim.town.households[b.household].room];
-    o.push(areaOption(sim, a, 'party', isHost ? 1.4 : kin ? 1.2 : 0.95, `Birthday: ${first(host)}`, isHost ? 'Celebrating my birthday' : `At ${first(host)}'s birthday`, room, 9999, { partnerId: host.id }));
+    const names = birthdayNames(sim, b);
+    o.push(areaOption(sim, a, 'party', isHost ? 1.4 : kin ? 1.2 : 0.95, isHost ? 'My birthday' : `Birthday: ${names}`, isHost ? 'Celebrating my birthday' : `At ${names}'s birthday`, room, 9999, { partnerId: b.hosts[0] }));
   }
   // Join whoever in the family is already sitting down to dinner at home.
   if (homed && loc === 'home' && inWindow(h, 17.5, 20.5) && n.hunger < 92 && stage !== 'toddler' && !a.mealReady && pantry >= 0.5 && a.action.kind !== 'eat') {
@@ -490,7 +541,8 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   // Cold: back home to the fire, or into the café or library if there's no firewood.
   if (n.warmth < 60 && chill(sim) > 0 && !sim.roomOf(a) && stage !== 'toddler') {
     const fire = homed && sim.fuel[a.household] > 0;
-    o.push(spotOption(sim, a, 'relax', (1 - n.warmth / 100) * 1.5, `Cold (${Math.round(n.warmth)})`, ['sit'], (p) => (p.household === a.household ? 'Warming up by the fire' : `Warming up ${where_(sim, p)}`), 30, (p) => (fire ? homeOnly(p) : ['cafe', 'library', 'lobby'].includes(roomKind(sim, p) ?? ''))));
+    // Getting properly cold (with a walk home still to come) outweighs any job.
+    o.push(spotOption(sim, a, 'relax', (1 - n.warmth / 100) * 1.5 + (n.warmth < 35 ? 0.9 : 0), `Cold (${Math.round(n.warmth)})`, ['sit'], (p) => (p.household === a.household ? 'Warming up by the fire' : `Warming up ${where_(sim, p)}`), 30, (p) => (fire ? homeOnly(p) : ['cafe', 'library', 'lobby'].includes(roomKind(sim, p) ?? ''))));
   }
   // After dinner, a couple at home together goes out for a walk, side by side.
   if (chill(sim) < 0.5 && loc === 'home' && inWindow(h, 19.25, 21) && n.hunger > 50 && !sleepTime && n.energy > 40 && stage !== 'toddler' && !sim.events.rain && !a.memories.some((x) => x.kind === 'eveningWalk')) {
@@ -569,7 +621,9 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
 
   // ---- errands
   const housemateShopping = sim.agents.some((p) => p.id !== a.id && p.household === a.household && p.action.kind === 'shop');
-  if (homed && pantry <= 1 && !housemateShopping && !workTime && !evening && sim.stock.food >= 6 && !little) {
+  // Skip the trip if it can't buy anything, and for a few hours after coming home empty-handed.
+  const turnedAway = a.memories.some((m) => m.kind === 'broke' && sim.time - m.created < BROKE_RETRY);
+  if (homed && pantry <= 1 && !housemateShopping && !workTime && !evening && sim.stock.food >= 6 && !little && !turnedAway && canAffordGroceries(sim, a)) {
     o.push(spotOption(sim, a, 'shop', 0.85, 'Fridge is empty', ['shop'], () => 'Shopping for groceries', 14));
   }
 
@@ -614,7 +668,7 @@ function workOptions(sim: Sim, a: Agent, o: Option[], workTime: boolean, h: numb
         if (prop && sim.reserved.has(prop.id) && sim.reserved.get(prop.id) !== a.id && plan.kind !== 'deposit') return false;
         const ok = start(sim, a, plan.kind, plan.label, plan.reason, target, plan.timer, s, { propId: plan.propId, projectId: plan.projectId, leg: plan.leg, material: plan.material, household: plan.household });
         // Pick up a fresh set of tools on the way out, if the workshop has made any.
-        if (ok && a.tool <= 0 && sim.stock.tools >= 1 && plan.kind !== 'deposit') {
+        if (ok && a.tool <= 0 && sim.stock.tools >= 1 && TOOL_WORK.includes(plan.kind)) {
           sim.stock.tools -= 1;
           a.tool = 1;
           think(sim, a, 'New tools. This will go quicker.', 'good');
@@ -654,7 +708,9 @@ function decide(sim: Sim, a: Agent, stage: Stage): void {
     currentScore = (same ? same.score : cur.score * 0.8) + INERTIA;
     // Don't abandon things halfway through for marginal gains.
     if (cur.stage === 'perform' && ['sleep', 'eat', 'shower', 'toilet', 'socialize', 'cook', 'meet', 'play', 'repair', 'party', 'chop', 'mine', 'farm', 'learn'].includes(cur.kind)) currentScore += 0.6;
-    if (cur.kind === 'haul' || cur.kind === 'deposit') currentScore += 1;
+    if (cur.kind === 'haul' || cur.kind === 'deposit' || cur.kind === 'stoke') currentScore += 1;
+    // Don't wander off from someone you're walking with.
+    if (a.walkWith !== undefined && cur.stage === 'travel') currentScore += 0.4;
   }
   for (const opt of opts) {
     if (opt.score <= currentScore) return;
@@ -685,7 +741,7 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
     case 'shop': return 'We are out of food at home. Grocery run.';
     case 'meet': return 'Standup time.';
     case 'party':
-      if (o.reason === `Birthday: ${first(a)}`) return "My birthday party! I wonder who'll come.";
+      if (o.reason === 'My birthday') return "My birthday party! I wonder who'll come.";
       if (o.reason.startsWith('Birthday: ')) return `Off to ${o.reason.slice(10)}'s birthday.`;
       return o.reason === 'Town festival' ? 'The whole town is out for the festival!' : 'Party in the lounge!';
     case 'mourn': return `I'll go and sit with ${o.reason.slice(7)} for a while.`;
@@ -708,7 +764,8 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
 /** Needs urgent enough to interrupt anything except sleep. */
 function urgent(sim: Sim, a: Agent): boolean {
   const k = a.action.kind;
-  if (k === 'haul' && a.action.leg === 'deliver') return false;
+  // A load already on its way to a build site or a hearth gets there first.
+  if ((k === 'haul' || k === 'stoke') && a.action.leg === 'deliver') return false;
   if (a.bladder < 12 && k !== 'toilet') return true;
   if (a.needs.hunger < 10 && k !== 'eat' && k !== 'cook' && k !== 'snack' && k !== 'sleep') return true;
   if (sim.events.standup && isOffice(a) && isWorkTime(sim, a) && k !== 'meet' && k !== 'toilet') return true;
@@ -754,7 +811,7 @@ function arrive(sim: Sim, a: Agent): void {
       break;
     }
     case 'party':
-      if (a.action.partnerId !== undefined) sim.events.birthdays.find((b) => b.host === a.action.partnerId)?.guests.add(a.id);
+      if (a.action.partnerId !== undefined) sim.events.birthdays.find((b) => b.hosts.includes(a.action.partnerId!))?.guests.add(a.id);
       else (sim.events.party ?? sim.events.festival)?.attendees.add(a.id);
       break;
     case 'meet':
@@ -838,7 +895,7 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
     case 'stroll':
       n.fun = Math.min(100, n.fun + 0.5 * dt);
       for (const o of sim.agents) if (o.id === a.partner && o.action.kind === 'stroll' && Math.hypot(o.x - a.x, o.y - a.y) < 4) bondNearby(sim, a, o, dt);
-      if (sim.events.rain && !hasUmbrella(a)) {
+      if (sim.events.rain && !snowing(sim) && !hasUmbrella(a)) {
         addMemory(sim, a, 'soaked');
         think(sim, a, 'And now it is raining. Great.', 'bad');
         return finish(sim, a);
@@ -981,7 +1038,7 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       if (tick()) {
         // Groceries at today's price; short of money, family chips in, or the basket stays light.
         const unit = price(sim, 'food');
-        if (a.money < unit * 3) askFamilyForHelp(sim, a, Math.ceil(unit * 5));
+        if (a.money < unit * 3) askFamilyForHelp(sim, a, familyAsk(sim));
         const buy = Math.min(6, Math.floor(sim.stock.food), Math.floor(a.money / unit));
         if (buy > 0) {
           spend(sim, a, buy * unit);
@@ -1005,9 +1062,9 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       n.hunger = Math.min(100, n.hunger + 0.6 * dt);
       for (const o of sim.agents) if (o.id !== a.id && o.action.kind === 'party' && Math.abs(o.x - a.x) < 6 && Math.abs(o.y - a.y) < 6) bondNearby(sim, a, o, dt * 2);
       if (sim.rng.chance(0.02 * dt)) say(sim, a, sim.rng.pick(['woo!', '♪', 'ha!', 'cheers']), 'good', 3);
-      const bday = act.partnerId !== undefined ? sim.events.birthdays.find((b) => b.host === act.partnerId) : undefined;
+      const bday = act.partnerId !== undefined ? sim.events.birthdays.find((b) => b.hosts.includes(act.partnerId!)) : undefined;
       if (act.partnerId !== undefined ? !bday : !sim.events.party && !festival) finish(sim, a);
-      else if (bday && sim.rng.chance(0.015 * dt)) say(sim, a, a.id === bday.host ? 'thank you!' : sim.rng.pick(['happy birthday!', '♪', 'cake!']), 'good', 3);
+      else if (bday && sim.rng.chance(0.015 * dt)) say(sim, a, bday.hosts.includes(a.id) ? 'thank you!' : sim.rng.pick(['happy birthday!', '♪', 'cake!']), 'good', 3);
       return;
     }
     case 'escort': {
@@ -1128,6 +1185,13 @@ function arriveStoke(sim: Sim, a: Agent): void {
   finish(sim, a);
 }
 
+/** Adds goods to what's in hand. A load of something else is never dropped: it goes to the store. Returns the new load. */
+function pickUp(sim: Sim, a: Agent, kind: Good, amount: number): number {
+  if (a.carry && a.carry.kind !== kind) sim.stock[a.carry.kind] += a.carry.amount;
+  a.carry = { kind, amount: (a.carry?.kind === kind ? a.carry.amount : 0) + amount };
+  return a.carry.amount;
+}
+
 /** How fast someone gets through physical work: skill, tools, energy and temperament. */
 export function laborRate(a: Agent): number {
   return (a.tool > 0 ? 1.25 : 1) * (0.55 + a.skills.craft.level * 0.07) * (a.needs.energy < 20 ? 0.6 : 1) * (a.traits.includes('workaholic') ? 1.15 : a.traits.includes('slacker') ? 0.8 : 1);
@@ -1155,7 +1219,7 @@ function performGather(sim: Sim, a: Agent, dt: number, tick: () => boolean): voi
     pr.delivered[kind] = (pr.delivered[kind] ?? 0) + use;
     amount -= use;
   }
-  if (amount > 0) a.carry = { kind, amount: (a.carry?.kind === kind ? a.carry.amount : 0) + amount };
+  if (amount > 0) pickUp(sim, a, kind, amount);
   finish(sim, a);
 }
 
@@ -1196,8 +1260,7 @@ function performFarm(sim: Sim, a: Agent, dt: number, tick: () => boolean): void 
   if (!tick()) return;
   if ((p.growth ?? 0) >= 1) {
     p.growth = 0;
-    const amount = (a.carry?.kind === 'food' ? a.carry.amount : 0) + FOOD_PER_CROP * (1 + a.skills.craft.level * 0.04);
-    a.carry = { kind: 'food', amount };
+    const amount = pickUp(sim, a, 'food', FOOD_PER_CROP * (1 + a.skills.craft.level * 0.04));
     if (amount >= 8) addMemory(sim, a, 'harvest');
   } else {
     p.growth = Math.min(1, (p.growth ?? 0) + 0.06 + a.skills.craft.level * 0.006);
@@ -1337,8 +1400,8 @@ function move(sim: Sim, a: Agent, dt: number, stage: Stage): void {
     const gap = Math.hypot(mate.x - a.x, mate.y - a.y);
     if (ahead && gap > 1.2) budget *= gap > 3 ? 0.1 : 0.5;
   } else if (a.walkWith !== undefined && (!mate || mate.walkWith !== a.id)) a.walkWith = undefined;
-  // Out in the rain without an umbrella: hurry, and get soaked anyway.
-  if (sim.events.rain && m.room[a.at] < 0 && !hasUmbrella(a)) {
+  // Out in the rain without an umbrella: hurry, and get soaked anyway. (Snow doesn't soak.)
+  if (sim.events.rain && !snowing(sim) && m.room[a.at] < 0 && !hasUmbrella(a)) {
     budget *= 1.3;
     if (!a.memories.some((x) => x.kind === 'soaked')) {
       addMemory(sim, a, 'soaked');

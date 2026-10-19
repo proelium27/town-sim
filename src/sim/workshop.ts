@@ -33,21 +33,21 @@ export function hasWorkshop(sim: Sim): boolean {
   return sim.map.buildings.some((b) => b.kind === 'workshop');
 }
 
-/** The town's own workers who use tools on the job. */
+/** The town's own workers who use tools on the job (farming goes no faster with them). */
 export function toolUsers(sim: Sim): number {
-  return sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE && ['builder', 'farmer', 'woodcutter', 'laborer', 'carpenter', 'mason', 'toolmaker'].includes(a.role)).length;
+  return sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE && ['builder', 'woodcutter', 'laborer', 'carpenter', 'mason', 'toolmaker'].includes(a.role)).length;
 }
 
 /** How much of a good the town wants on hand: a working buffer plus whatever builds still need. */
 export function targetOf(sim: Sim, g: Good): number {
   const owed = sim.projects.reduce((s, p) => s + Math.max(0, (p.need[g] ?? 0) - (p.delivered[g] ?? 0)), 0);
   const base: Partial<Record<Good, number>> = { planks: 24, bricks: 16, furniture: 2, tools: Math.ceil(toolUsers(sim) * 0.5) };
-  // Planks also feed furniture and tools.
-  const forFurniture = g === 'planks' ? Math.max(0, targetOf(sim, 'furniture') - sim.stock.furniture) * 4 : 0;
-  return (base[g] ?? 0) + owed + forFurniture;
+  // Planks also feed furniture and tools: add what those still need to make.
+  const downstream = g === 'planks' ? RECIPES.reduce((s, r) => s + (r.inputs.planks ? Math.ceil(Math.max(0, targetOf(sim, r.good) - sim.stock[r.good]) / r.out) * r.inputs.planks : 0), 0) : 0;
+  return (base[g] ?? 0) + owed + downstream;
 }
 
-/** Batches still to make for a recipe (none if stocked). */
+/** Units of a recipe's good still to make, counting batches already at a station (none if stocked). */
 export function shortfall(sim: Sim, r: Recipe): number {
   const making = sim.agents.filter((a) => a.action.kind === 'craft' && a.action.material === r.good).length * r.out;
   return Math.max(0, targetOf(sim, r.good) - sim.stock[r.good] - making);
@@ -55,6 +55,23 @@ export function shortfall(sim: Sim, r: Recipe): number {
 
 export function canMake(sim: Sim, r: Recipe): boolean {
   return billGoods(r.inputs).every((g) => sim.stock[g] >= r.inputs[g]!);
+}
+
+/** Whether the town can supply a refined bill: a workshop, and each refined good already in stock or someone whose trade makes it. */
+export function canSupply(sim: Sim, bill: Bill): boolean {
+  if (!hasWorkshop(sim)) return false;
+  return billGoods(bill).every((g) => {
+    const r = RECIPES.find((x) => x.good === g);
+    return !r || sim.stock[g] >= bill[g]! || sim.agents.some((a) => a.role === r.role);
+  });
+}
+
+/** The raw materials n of a good is made from, following the recipes all the way down. */
+export function rawOf(g: Good, n: number, into: Bill = {}): Bill {
+  const r = RECIPES.find((x) => x.good === g);
+  if (!r) into[g] = (into[g] ?? 0) + n;
+  else for (const i of billGoods(r.inputs)) rawOf(i, (r.inputs[i]! * n) / r.out, into);
+  return into;
 }
 
 export function stationProps(sim: Sim, st: Station): Prop[] {

@@ -1,7 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { Shading } from '../src/render/shading';
 import { hasUmbrella } from '../src/sim/agents';
+import { invitePartner } from '../src/sim/ai';
 import { Sim } from '../src/sim/sim';
 import type { Agent } from '../src/sim/types';
+import { TownMap } from '../src/world/map';
 
 describe('desire paths', () => {
   it('busy shortcuts wear into trails, and abandoned ones grass over', () => {
@@ -18,6 +21,30 @@ describe('desire paths', () => {
     sim.run(3.5 * 1440);
     expect(m.ground[i]).toBe('grass');
   }, 120_000);
+
+  it('wear only redraws the lawn near it, not the whole map', () => {
+    const m = new TownMap(64, 64);
+    const sh = new Shading(m);
+    const lawn = vi.spyOn(Shading.prototype as unknown as { lawn: (c: number) => void }, 'lawn');
+    const v = m.lawnVersion;
+    const i = m.idx(20, 20);
+    for (let k = 0; k < 30; k++) m.step(i);
+    expect(m.ground[i]).toBe('trail');
+    expect(m.lawnVersion).toBe(v);
+    // The cell and its neighbours repaint (a trail's grassy edges depend on them).
+    expect(new Set(m.groundDirty)).toEqual(new Set([i, i - 1, i + 1, i - 64, i + 64]));
+    for (const d of m.groundDirty) sh.touch(d);
+    m.groundDirty.length = 0;
+    sh.sync();
+    expect(lawn).toHaveBeenCalledTimes(1);
+    // A real ground change (a new path) still rebuilds the lot.
+    lawn.mockClear();
+    m.setGround(5, 5, 'dirt');
+    expect(m.lawnVersion).toBe(v + 1);
+    sh.sync();
+    expect(lawn).toHaveBeenCalledTimes(16);
+    lawn.mockRestore();
+  });
 });
 
 describe('rain', () => {
@@ -43,12 +70,70 @@ describe('walking together', () => {
   it('couples go for strolls together', () => {
     const sim = new Sim(7);
     let strolls = 0;
-    for (let k = 0; k < 3 * 144; k++) {
+    for (let k = 0; k < 5 * 144; k++) {
       sim.run(10);
       for (const a of sim.agents) if (a.action.kind === 'stroll' && a.action.label.startsWith('Walking with')) strolls++;
     }
     expect(strolls).toBeGreaterThan(0);
   }, 120_000);
+
+  it('only a partner close by is asked along on a walk', () => {
+    const sim = new Sim(7);
+    sim.run(10 * 60);
+    const a = sim.agents.find((x) => x.partner !== null && sim.agent(x.partner)?.partner === x.id)!;
+    const b = sim.agent(a.partner!)!;
+    const m = sim.map;
+    const place = (p: Agent, x: number, y: number) => {
+      p.at = m.idx(x, y);
+      p.x = p.px = x;
+      p.y = p.py = y;
+      p.path = [];
+      p.walkWith = undefined;
+      p.needs.energy = 90;
+    };
+    // Both outdoors on open grass, but far apart.
+    const open = (x: number, y: number) => m.walkable(x, y) && m.room[m.idx(x, y)] < 0 && m.cost[m.idx(x, y)] < 1;
+    const spot = (x0: number) => {
+      for (let y = 2; y < m.h; y++) for (let x = x0; x < x0 + 10; x++) if (open(x, y) && open(x + 1, y) && open(x + 2, y)) return [x, y];
+      throw new Error('no open ground');
+    };
+    const [ax, ay] = spot(46);
+    const [bx, by] = spot(110);
+    const walk = () => {
+      a.action = { kind: 'stroll', label: 'Walking', reason: 'Evening walk', stage: 'travel', dest: m.idx(ax + 2, ay), timer: 30, started: sim.time, score: 1 };
+      b.action = { kind: 'idle', label: 'Idle', reason: '', stage: 'perform', dest: b.at, timer: 0, started: sim.time, score: 0 };
+      invitePartner(sim, a);
+    };
+    sim.time = sim.day * 1440 + 19.5 * 60;
+    place(a, ax, ay);
+    place(b, bx, by);
+    walk();
+    expect(b.action.kind).toBe('idle');
+    // Right next to each other, they go together.
+    place(b, ax + 1, ay);
+    walk();
+    expect(b.action.kind).toBe('stroll');
+    expect(b.walkWith).toBe(a.id);
+  }, 60_000);
+
+  it('on school mornings, a grown-up walks a young kid to school before work', () => {
+    // An untouched town: nobody is placed by hand.
+    const sim = new Sim(11);
+    const was = new Map<number, string>();
+    const runs: string[] = [];
+    for (let k = 0; k < 10 * 288; k++) {
+      sim.run(5);
+      for (const a of sim.agents) {
+        if (a.action.kind === 'escort' && was.get(a.id) !== 'escort') {
+          const kid = sim.agent(a.action.partnerId)!;
+          expect(kid.action.kind).toBe('learn');
+          runs.push(`day ${sim.day} ${a.action.label}`);
+        }
+        was.set(a.id, a.action.kind);
+      }
+    }
+    expect(runs.length).toBeGreaterThanOrEqual(2);
+  }, 600_000);
 
   it('a grown-up at home walks a young kid to school', () => {
     const sim = new Sim(7);
