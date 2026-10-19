@@ -58,4 +58,4 @@ The sim has no rendering dependencies, so it runs headless in tests (a simulated
 
 ## Credits
 
-Art: [Kenney](https://kenney.nl) — RPG Urban Pack, Roguelike Modern City, Roguelike Indoors. Public domain (CC0); licenses are alongside the sheets.
+Art by [Kenney](https://kenney.nl): RPG Urban Pack, Roguelike Modern City, Roguelike Indoors. Public domain (CC0); licenses are alongside the sheets.
