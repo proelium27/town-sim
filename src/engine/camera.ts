@@ -1,6 +1,6 @@
 const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
 
-export const MIN_ZOOM = 1.5;
+export const MIN_ZOOM = 0.5;
 export const MAX_ZOOM = 6;
 
 /** Smoothly-eased 2D camera. Positions are world pixels; zoom is screen px per world px. */

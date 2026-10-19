@@ -228,11 +228,13 @@ export class AgentsView {
         });
       }
       const headY = sy - 17 * z;
-      s.badges.visible = onScreen && badges.length > 0;
+      // Zoomed far out, per-person badges and bubbles would bury the town; the selection ring still shows.
+      const near = z >= 1;
+      s.badges.visible = near && onScreen && badges.length > 0;
       s.badges.position.set(Math.round(sx), Math.round(headY - 10));
       // Speech bubble
       const bub = a.bubble;
-      s.bubble.visible = onScreen && !!bub;
+      s.bubble.visible = near && onScreen && !!bub;
       if (bub) {
         const bsig = bub.text + bub.tone;
         if (bsig !== s.bubbleSig) {
