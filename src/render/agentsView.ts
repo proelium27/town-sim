@@ -385,8 +385,8 @@ export class AgentsView {
     this.rain.clear();
     if (!raining) return;
     const t = realMs / 1000;
-    if (season === 3) {
-      // Snow: soft flakes drifting down and sideways; a blizzard is thicker and faster.
+    if (season === 3 || blizzard) {
+      // Snow: soft flakes drifting down and sideways; a blizzard (in any season) is thicker and faster.
       const n = blizzard ? 320 : 150;
       const fall = blizzard ? 160 : 60;
       for (let i = 0; i < n; i++) {
