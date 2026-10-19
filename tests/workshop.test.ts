@@ -37,7 +37,8 @@ describe('workshop', () => {
     const sim = townWithWorkshop();
     expect(hasWorkshop(sim)).toBe(true);
     expect(sim.agents.some((a) => a.role === 'carpenter')).toBe(true);
-    sim.run(1440);
+    // A day and a half: the carpenters fill the plank shortfall before they turn to furniture.
+    sim.run(1440 + 12 * 60);
     expect(sim.stock.planks + sim.stock.furniture * 4).toBeGreaterThan(8);
     expect(sim.stock.bricks).toBeGreaterThan(0);
     expect(sim.stock.furniture + sim.agents.filter((a) => a.action.material === 'furniture').length).toBeGreaterThan(0);

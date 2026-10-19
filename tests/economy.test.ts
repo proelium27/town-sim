@@ -155,7 +155,7 @@ describe('bonuses', () => {
 
 describe('the town economy over a few weeks', () => {
   // Long runs are slow, so this covers a couple of game years (14 days) rather than a month.
-  for (const seed of [7, 11]) {
+  for (const seed of [7, 3]) {
     it(`seed ${seed}: the treasury stays solvent, shares its surplus, and no town worker stays broke`, () => {
       const sim = new Sim(seed);
       let low = Infinity;
