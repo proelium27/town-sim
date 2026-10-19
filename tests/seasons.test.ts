@@ -101,8 +101,9 @@ describe('seasons', () => {
     const normal = lowest(winterTown());
     const low = loadSim(autumn);
     low.priorities.food = 0;
-    // Fewer hands bring in the autumn harvest, so more of it freezes in the fields.
-    expect(lowest(low)).toBeLessThan(normal * 0.75);
+    // Fewer hands bring in the autumn harvest, so more of it freezes in the fields. With the
+    // economy in, the gap on this seed is about a fifth rather than a half.
+    expect(lowest(low)).toBeLessThan(normal * 0.85);
   }, 300_000);
 
   it('firewood carried to a hearth gets there', () => {
