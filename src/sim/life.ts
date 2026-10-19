@@ -126,6 +126,10 @@ export function die(sim: Sim, a: Agent, cause: string): void {
     }
   }
   sim.log(`${a.name} passed away (${cause})`, 'family', 'bad', a);
+  if (sim.mayor === a.id) {
+    sim.mayor = null;
+    sim.log('Northwind is without a mayor until the next election', 'event', 'bad');
+  }
   sim.milestone(`${a.name} passed away`);
   if (!bury(sim, a.id)) sim.unburied.push(a.id);
 }

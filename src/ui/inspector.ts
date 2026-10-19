@@ -138,7 +138,7 @@ export class Inspector {
     const age = Math.floor(ageOf(this.sim, a));
     const wpName = this.sim.town.workplaces.find((w) => w.id === role.workplace)?.name ?? this.sim.building(a.workBuilding)?.name;
     set('age', String(age));
-    set('title', `${role.title}${wpName ? ` · ${esc(wpName)}` : ''}`, true);
+    set('title', `${role.title}${wpName ? ` · ${esc(wpName)}` : ''}${this.sim.mayor === a.id ? ' · <b>Mayor</b>' : ''}`, true);
     const hh = this.sim.town.households[a.household];
     set('home', hh.building >= 0 ? `lives at ${esc(hh.name)}` : 'no home yet', true);
     // Family is the bond level above close friends: everyone related by blood or marriage, closest kin first.

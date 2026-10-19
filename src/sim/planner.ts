@@ -6,6 +6,7 @@ import { ADULT_AGE, billGoods, type Good, PRIORITY_WEIGHT, ROLES, type PriorityK
 import { foodBalance } from './economy';
 import { checkTier, EXTENSION_W, extensionSite, type ExtensionSite, stampExtension } from './growth';
 import { bury } from './life';
+import { agendaWeight } from './politics';
 import { CRAFT_ROLES, hasWorkshop, RECIPES, shortfall } from './workshop';
 import { addMemory, first, think } from './social';
 import type { Agent, Project } from './types';
@@ -62,7 +63,8 @@ export function familyOf(sim: Sim, a: Agent): Agent[] {
 
 // ------------------------------------------------------------------ project helpers
 
-const weight = (sim: Sim, k: PriorityKey) => PRIORITY_WEIGHT[sim.priorities[k]];
+/** The player's priority, nudged a little toward the mayor's agenda. */
+const weight = (sim: Sim, k: PriorityKey) => PRIORITY_WEIGHT[sim.priorities[k]] * agendaWeight(sim, k);
 
 export function projectArea(pr: Project): { x: number; y: number; w: number; h: number } {
   return { x: pr.x - 1, y: pr.y - 1, w: pr.w + 2, h: pr.h + 2 };
@@ -380,7 +382,8 @@ function startProject(sim: Sim, p: Proposal): Project | null {
   };
   sim.projects.push(pr);
   const who = p.proposer;
-  sim.log(`Town meeting: ${who ? first(who) : 'the town'} proposed ${bp.noun} because ${p.reason}`, 'build', 'good', who);
+  const chair = sim.agent(sim.mayor ?? undefined);
+  sim.log(`${chair ? `Mayor ${first(chair)}'s town meeting` : 'Town meeting'}: ${who ? first(who) : 'the town'} proposed ${bp.noun} because ${p.reason}`, 'build', 'good', who);
   if (who) {
     addMemory(sim, who, 'proposed');
     think(sim, who, `They liked my idea: ${bp.noun}.`, 'good');

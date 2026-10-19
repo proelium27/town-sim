@@ -216,7 +216,8 @@ export type MemoryKind =
   | 'grewUp' | 'harvest' | 'school' | 'festival' | 'drought' | 'storm'
   | 'birthday' | 'myBirthday' | 'familyDinner' | 'paidRespects' | 'eveningWalk'
   | 'snowDay' | 'cozyFire' | 'coldHome' | 'blizzard' | 'madeSomething' | 'toolBroke' | 'unpaid' | 'broke' | 'qualified'
-  | 'feelingIll' | 'hurt' | 'recovered' | 'frail' | 'caredFor' | 'lookedAfter' | 'proudTown' | 'roomToBreathe';
+  | 'feelingIll' | 'hurt' | 'recovered' | 'frail' | 'caredFor' | 'lookedAfter' | 'proudTown' | 'roomToBreathe'
+  | 'wonElection' | 'lostElection' | 'myCandidateWon';
 
 export interface MemoryDef {
   label: string;
@@ -293,4 +294,7 @@ export const MEMORIES: Record<MemoryKind, MemoryDef> = {
   lookedAfter: { label: 'Looked after family', mood: 3, duration: 12 * H, major: false, maxStack: 3 },
   proudTown: { label: 'Our town is growing up', mood: 6, duration: 1.5 * D, major: true, maxStack: 1 },
   roomToBreathe: { label: 'Room to breathe at home', mood: 7, duration: 1.5 * D, major: true, maxStack: 1 },
+  wonElection: { label: 'Elected mayor', mood: 10, duration: 2 * D, major: true, maxStack: 1 },
+  lostElection: { label: 'Lost the election', mood: -4, duration: D, major: true, maxStack: 1 },
+  myCandidateWon: { label: 'My candidate won', mood: 3, duration: D, major: false, maxStack: 1 },
 };

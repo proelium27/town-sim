@@ -473,6 +473,12 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   if (sim.events.festival && !sleepTime && stage !== 'toddler') {
     o.push(areaOption(sim, a, 'party', 1.15 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.25 : 0), 'Town festival', `At the ${(sim.events.festival.name ?? 'town festival').toLowerCase()}`, PARK, 9999));
   }
+  // Election rally: candidates make their case in the park; most grown-ups come and listen.
+  const race = sim.election;
+  if (race && race.year === sim.year && race.stage === 'rally' && stage !== 'toddler' && !sleepTime) {
+    const standing = race.candidates.some((c) => c.id === a.id);
+    o.push(areaOption(sim, a, 'party', standing ? 1.6 : stage === 'child' ? 0.4 : 0.95 + a.skills.charisma.level * 0.01, 'Election rally', standing ? 'Speaking at the rally' : 'At the election rally', PARK, 9999));
+  }
   for (const b of sim.events.birthdays) {
     const host = sim.agent(b.host);
     if (!host) continue;
@@ -718,6 +724,7 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
     case 'party':
       if (o.reason === `Birthday: ${first(a)}`) return "My birthday party! I wonder who'll come.";
       if (o.reason.startsWith('Birthday: ')) return `Off to ${o.reason.slice(10)}'s birthday.`;
+      if (o.reason === 'Election rally') return a.action.label === 'Speaking at the rally' ? 'Time to make my case.' : "Let's hear what the candidates have to say.";
       return o.reason === 'Town festival' ? 'The whole town is out for the festival!' : 'Party in the lounge!';
     case 'mourn': return `I'll go and sit with ${o.reason.slice(7)} for a while.`;
     case 'escort': return `I'll walk ${o.reason.split(' ')[0]} to school on my way.`;
@@ -793,6 +800,7 @@ function arrive(sim: Sim, a: Agent): void {
     }
     case 'party':
       if (a.action.partnerId !== undefined) sim.events.birthdays.find((b) => b.host === a.action.partnerId)?.guests.add(a.id);
+      else if (a.action.reason === 'Election rally') sim.election?.attendees.add(a.id);
       else (sim.events.party ?? sim.events.festival)?.attendees.add(a.id);
       break;
     case 'meet':
@@ -1044,6 +1052,13 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       for (const o of sim.agents) if (o.id !== a.id && o.action.kind === 'party' && Math.abs(o.x - a.x) < 6 && Math.abs(o.y - a.y) < 6) bondNearby(sim, a, o, dt * 2);
       if (sim.rng.chance(0.02 * dt)) say(sim, a, sim.rng.pick(['woo!', '♪', 'ha!', 'cheers']), 'good', 3);
       const bday = act.partnerId !== undefined ? sim.events.birthdays.find((b) => b.host === act.partnerId) : undefined;
+      const rally = act.reason === 'Election rally' ? sim.election : null;
+      if (rally) {
+        if (rally.stage !== 'rally') return finish(sim, a);
+        const me = rally.candidates.find((c) => c.id === a.id);
+        if (me && sim.rng.chance(0.03 * dt)) say(sim, a, `vote ${first(a)}: ${me.platform === 'housing' ? 'more homes!' : me.platform === 'food' ? 'full stores!' : me.platform === 'materials' ? 'build, build, build!' : 'parks & festivals!'}`, 'good', 4);
+        return;
+      }
       if (act.partnerId !== undefined ? !bday : !sim.events.party && !festival) finish(sim, a);
       else if (bday && sim.rng.chance(0.015 * dt)) say(sim, a, a.id === bday.host ? 'thank you!' : sim.rng.pick(['happy birthday!', '♪', 'cake!']), 'good', 3);
       return;

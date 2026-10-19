@@ -9,6 +9,7 @@ import { tickLife } from './life';
 import { Nav } from './nav';
 import { tickPlanner } from './planner';
 import { tickMarket } from './market';
+import { tickPolitics } from './politics';
 import { tickSeasons } from './seasons';
 import { Rng } from './rng';
 import { type Car, tickTraffic } from './traffic';
@@ -48,6 +49,11 @@ export class Sim {
   ledgerDay = 0;
   /** 0 village, 1 town, 2 city. */
   tier = 0;
+  /** The elected mayor and what they ran on. */
+  mayor: number | null = null;
+  agenda: PriorityKey | null = null;
+  election: import('./politics').ElectionState | null = null;
+  lastElection: import('./politics').ElectionResult | null = null;
   /** When the last outbreak began (or -Infinity). */
   outbreak = -Infinity;
   /** Consecutive days each household has been broke and miserable. */
@@ -184,6 +190,7 @@ export class Sim {
     tickEvents(this, STEP);
     tickSeasons(this, STEP);
     tickMarket(this);
+    tickPolitics(this);
     tickLife(this, STEP);
     tickPlanner(this, STEP);
     tickEconomy(this, STEP);
