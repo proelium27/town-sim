@@ -70,14 +70,14 @@ export function loadSim(text: string): Sim {
   // Anything added since the save was made starts from a sensible default.
   sim.stock = { ...emptyStock(), ...sim.stock };
   for (const a of [...sim.agents, ...sim.deceased]) {
-    for (const k of NEED_KEYS) a.needs[k] ??= 80;
+    // Specific defaults first; any need still missing gets the generic one.
     backfillAgent(a);
+    for (const k of NEED_KEYS) a.needs[k] ??= 80;
   }
   sim.events.birthdays ??= [];
   sim.events.wet ??= 0;
   sim.events.seasonal ??= null;
   sim.events.snowstorm ??= null;
   if (sim.fuel.length < sim.town.households.length) sim.fuel = sim.town.households.map((_, i) => sim.fuel[i] ?? 8);
-  for (const a of sim.agents) a.needs.warmth ??= 100;
   return sim;
 }

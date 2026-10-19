@@ -27,6 +27,14 @@ describe('saving and loading', () => {
     expect(b.map.propsOn(b.map.props[0].x, b.map.props[0].y)).toContain(b.map.props[0]);
   });
 
+  it('people in saves from before winter start warm', () => {
+    const a = new Sim(3);
+    const file = JSON.parse(saveSim(a));
+    for (const p of file.sim.agents) delete p.needs.warmth;
+    const b = loadSim(JSON.stringify(file));
+    expect(b.agents.every((p) => p.needs.warmth === 100)).toBe(true);
+  });
+
   it('rejects files that are not saves', () => {
     expect(() => loadSim('{"hello":1}')).toThrow(/not a Townsfolk save/);
   });
