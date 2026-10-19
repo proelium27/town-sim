@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createAgent } from '../src/sim/agents';
+import { createAgent, surnameOf } from '../src/sim/agents';
 import { birthdayOf, milestoneFor } from '../src/sim/events';
 import { die } from '../src/sim/life';
 import { loadSim, saveSim } from '../src/sim/save';
@@ -139,5 +139,29 @@ describe('names', () => {
     const named = babies.filter((b) => b.namedAfter === gp.id);
     expect(named.length).toBeGreaterThan(0);
     expect(named[0].name.split(' ')[0]).toBe(gp.name.split(' ')[0]);
+  });
+
+  it("a namesake's numeral is not passed down as part of the family name", () => {
+    expect(surnameOf('Ada Okafor II')).toBe('Okafor');
+    expect(surnameOf('Ada Okafor III')).toBe('Okafor');
+    expect(surnameOf('Ada Okafor')).toBe('Okafor');
+    const sim = new Sim(7);
+    const p = sim.agents.find((a) => a.partner !== null)!;
+    const q = sim.agent(p.partner!)!;
+    const surname = surnameOf(p.name);
+    const gp = createAgent(sim, { role: 'retired', household: p.household, age: 75, cell: p.at });
+    sim.agents.push(gp);
+    p.parents.push(gp.id);
+    gp.children.push(p.id);
+    // Both the late grandparent and the parent were namesakes themselves.
+    gp.name = `${gp.name.split(' ')[0]} ${surname} II`;
+    p.name = `${p.name.split(' ')[0]} ${surname} II`;
+    die(sim, gp, 'old age');
+    const babies = Array.from({ length: 12 }, () => createAgent(sim, { role: 'child', household: p.household, age: 0, parents: [p, q], cell: p.at }));
+    for (const b of babies) expect(surnameOf(b.name)).toBe(surname);
+    expect(babies.filter((b) => b.namedAfter !== gp.id).every((b) => b.name.split(' ').length === 2)).toBe(true);
+    const named = babies.filter((b) => b.namedAfter === gp.id);
+    expect(named.length).toBeGreaterThan(0);
+    for (const b of named) expect(b.name).toBe(`${gp.name.split(' ')[0]} ${surname} III`);
   });
 });
