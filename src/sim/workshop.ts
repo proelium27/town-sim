@@ -57,6 +57,23 @@ export function canMake(sim: Sim, r: Recipe): boolean {
   return billGoods(r.inputs).every((g) => sim.stock[g] >= r.inputs[g]!);
 }
 
+/** Whether the town can supply a refined bill: a workshop, and each refined good already in stock or someone whose trade makes it. */
+export function canSupply(sim: Sim, bill: Bill): boolean {
+  if (!hasWorkshop(sim)) return false;
+  return billGoods(bill).every((g) => {
+    const r = RECIPES.find((x) => x.good === g);
+    return !r || sim.stock[g] >= bill[g]! || sim.agents.some((a) => a.role === r.role);
+  });
+}
+
+/** The raw materials n of a good is made from, following the recipes all the way down. */
+export function rawOf(g: Good, n: number, into: Bill = {}): Bill {
+  const r = RECIPES.find((x) => x.good === g);
+  if (!r) into[g] = (into[g] ?? 0) + n;
+  else for (const i of billGoods(r.inputs)) rawOf(i, (r.inputs[i]! * n) / r.out, into);
+  return into;
+}
+
 export function stationProps(sim: Sim, st: Station): Prop[] {
   return sim.map.props.filter((p) => STATION_OF[p.key] === st && p.spot);
 }

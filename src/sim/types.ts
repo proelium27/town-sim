@@ -164,6 +164,8 @@ export interface Project {
   forAgents: number[];
   started: number;
   builders: Set<number>;
+  /** When the build began waiting on workshop goods that aren't coming (see unstick). */
+  stalled?: number;
 }
 
 export type ActivityKind = 'work' | 'social' | 'life' | 'event' | 'build' | 'family';

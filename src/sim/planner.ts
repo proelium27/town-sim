@@ -2,10 +2,10 @@ import type { GroundKey } from '../assets/manifest';
 import { BLUEPRINTS, type BlueprintKey } from '../world/blueprints';
 import type { Household } from '../world/town';
 import { ageOf, makeSchedule, newTask } from './agents';
-import { ADULT_AGE, billGoods, type Good, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
+import { ADULT_AGE, type Bill, billGoods, type Good, GOODS, MIN_PER_DAY, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
 import { foodBalance } from './economy';
 import { bury } from './life';
-import { CRAFT_ROLES, hasWorkshop, RECIPES, shortfall } from './workshop';
+import { canSupply, CRAFT_ROLES, hasWorkshop, rawOf, RECIPES, shortfall } from './workshop';
 import { addMemory, first, think } from './social';
 import type { Agent, Project } from './types';
 import type { Sim } from './sim';
@@ -316,6 +316,39 @@ export function findSite(sim: Sim, key: BlueprintKey): Site | null {
 
 // ------------------------------------------------------------------ project lifecycle
 
+/** What a new project will take: the refined bill if the workshop can keep it supplied, else plain wood and stone. */
+export function billFor(sim: Sim, key: BlueprintKey): Bill {
+  const bp = BLUEPRINTS[key];
+  return { ...(bp.refined && canSupply(sim, bp.refined) ? bp.refined : bp.cost) };
+}
+
+const RAW: Good[] = ['wood', 'stone'];
+
+/**
+ * A build that has sat a whole day waiting on workshop goods nobody is making gives up on them:
+ * whatever is still owed is swapped for the wood and stone it would have been made from.
+ */
+export function unstick(sim: Sim): void {
+  for (const pr of sim.projects) {
+    const owed = billGoods(pr.need).filter((g) => !RAW.includes(g) && shortOf(pr, g) > 0);
+    const waiting = owed.some((g) => sim.stock[g] < 1) && pr.progress >= buildCap(pr) - 0.5 && stageOf(sim, pr) !== 'clearing';
+    if (!waiting) {
+      pr.stalled = undefined;
+      continue;
+    }
+    pr.stalled ??= sim.time;
+    if (sim.time - pr.stalled < MIN_PER_DAY) continue;
+    const raw: Bill = {};
+    for (const g of owed) {
+      rawOf(g, shortOf(pr, g), raw);
+      pr.need[g] = pr.delivered[g] ?? 0;
+    }
+    for (const g of billGoods(raw)) pr.need[g] = (pr.need[g] ?? 0) + Math.ceil(raw[g]!);
+    pr.stalled = undefined;
+    sim.log(`Tired of waiting on ${owed.map((g) => GOODS[g].label.toLowerCase()).join(' and ')}, the builders will finish ${pr.name} with plain wood and stone`, 'build', 'neutral');
+  }
+}
+
 function startProject(sim: Sim, p: Proposal): Project | null {
   const site = findSite(sim, p.bp);
   if (!site) return null;
@@ -330,7 +363,7 @@ function startProject(sim: Sim, p: Proposal): Project | null {
     h: bp.h,
     doorTop: site.doorTop,
     path: site.path,
-    need: { ...(bp.refined && hasWorkshop(sim) ? bp.refined : bp.cost) },
+    need: billFor(sim, p.bp),
     delivered: {},
     work: bp.work,
     progress: 0,
@@ -489,6 +522,7 @@ export function tickPlanner(sim: Sim, dt: number): void {
   sim.timers.plan -= dt;
   if (sim.timers.plan > 0) return;
   sim.timers.plan = 120;
+  unstick(sim);
   const builders = sim.agents.filter((a) => a.role === 'builder' || a.role === 'laborer').length;
   const capacityProjects = Math.min(3, 1 + Math.floor(builders / 2));
   if (sim.projects.length >= capacityProjects) return;
