@@ -54,9 +54,23 @@ export class Camera {
     this.clampTarget();
   }
 
-  private clampTarget(): void {
-    this.tx = clamp(this.tx, 0, this.bounds.w);
-    this.ty = clamp(this.ty, 0, this.bounds.h);
+  /** Unobstructed viewport edges in screen px, so the map never scrolls past its own border. */
+  view = { left: 0, top: 0, right: 0, bottom: 0 };
+
+  clampTarget(): void {
+    const z = this.tz;
+    const minX = (this.cx - this.view.left) / z;
+    const maxX = this.bounds.w - (this.view.right - this.cx) / z;
+    const minY = (this.cy - this.view.top) / z;
+    const maxY = this.bounds.h - (this.view.bottom - this.cy) / z;
+    this.tx = minX > maxX ? this.bounds.w / 2 : clamp(this.tx, minX, maxX);
+    this.ty = minY > maxY ? this.bounds.h / 2 : clamp(this.ty, minY, maxY);
+  }
+
+  lookAtClamped(x: number, y: number): void {
+    this.tx = x;
+    this.ty = y;
+    this.clampTarget();
   }
 
   toScreen(wx: number, wy: number): [number, number] {

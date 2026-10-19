@@ -82,6 +82,20 @@ export class Art {
     return out;
   }
 
+  private portraits = new Map<string, string>();
+
+  /** Front-facing sprite as a data URL, for avatars in the DOM UI. */
+  portrait(o: Outfit): string {
+    const key = `${o.base}:${o.shirtHue}:${o.hairHue}:${o.hairLight}`;
+    let url = this.portraits.get(key);
+    if (!url) {
+      const cv = this.character(o).down[0].source.resource as HTMLCanvasElement;
+      url = cv.toDataURL();
+      this.portraits.set(key, url);
+    }
+    return url;
+  }
+
   private recolor(f: FrameRef, o: Outfit): Texture {
     const cv = document.createElement('canvas');
     cv.width = TILE;
