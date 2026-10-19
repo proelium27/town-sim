@@ -408,3 +408,12 @@ body.inspecting .activity { width: min(620px, calc(100vw - var(--roster-w) - var
 .chains .num { color: var(--text-2); }
 .chains .why { grid-column: 1 / -1; font-size: 11px; color: var(--text-3); }
 .chains .why.neg { color: var(--bad); }
+
+/* Town view: treasury */
+.purse { display: flex; align-items: baseline; gap: 10px; font-size: 12px; color: var(--text-2); }
+.purse > b { font-size: 20px; font-weight: 600; color: var(--text); }
+.prices { display: flex; gap: 6px; margin-top: 8px; }
+.price { flex: 1; display: grid; gap: 1px; padding: 6px 8px; border-radius: 6px; background: var(--panel-2); font-size: 11px; color: var(--text-3); }
+.price b { font-size: 13px; font-weight: 600; color: var(--text); }
+.price b.pos { color: var(--good); }
+.price b.neg { color: var(--bad); }

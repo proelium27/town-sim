@@ -6,6 +6,7 @@ import { FOOD_PER_CROP } from './economy';
 import { CARRY, laborPlan } from './labor';
 import { buildCap, completeProject, shortOf, supplied } from './planner';
 import { chill, HEARTH_FULL } from './seasons';
+import { askFamilyForHelp, payWage, price, spend } from './market';
 import { canMake, RECIPES, STATION_OF } from './workshop';
 import { clamp } from './rng';
 import {
@@ -396,10 +397,9 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
       if (office && !sim.weekend && loc !== 'home') {
         o.push(spotOption(sim, a, 'eat', s * (workTime ? 1 : 0.6) + (sim.events.pizza ? 0.4 : 0), sim.events.pizza ? 'Free pizza!' : reason, ['eat'], () => (sim.events.pizza ? 'Eating pizza in the kitchen' : 'Lunch in the kitchen'), 24, (p) => roomKind(sim, p) === 'kitchen'));
       }
-      if (a.money >= 9 && !evening && !little) {
-        o.push(spotOption(sim, a, 'eat', s * (a.traits.includes('foodie') ? 1.15 : 0.9) + (!homed ? 0.3 : 0), reason, ['eat'], (p) => `Eating at the ${roomName(sim, p)}`, 26, (p) => roomKind(sim, p) === 'cafe', () => {
-          a.money -= 9;
-        }));
+      const meal = Math.round(5 + price(sim, 'food') * 1.5);
+      if (a.money >= meal && !evening && !little) {
+        o.push(spotOption(sim, a, 'eat', s * (a.traits.includes('foodie') ? 1.15 : 0.9) + (!homed ? 0.3 : 0), reason, ['eat'], (p) => `Eating at the ${roomName(sim, p)}`, 26, (p) => roomKind(sim, p) === 'cafe', () => spend(sim, a, meal)));
       }
     }
     if (n.hunger < 55 && workTime && stage === 'adult') o.push(spotOption(sim, a, 'snack', s * 0.7, 'Quick snack', ['snack'], () => 'Grabbing a snack', 5));
@@ -560,7 +560,7 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
 
   // ---- errands
   const housemateShopping = sim.agents.some((p) => p.id !== a.id && p.household === a.household && p.action.kind === 'shop');
-  if (homed && pantry <= 1 && !housemateShopping && !workTime && !evening && a.money >= 18 && sim.stock.food >= 6 && !little) {
+  if (homed && pantry <= 1 && !housemateShopping && !workTime && !evening && sim.stock.food >= 6 && !little) {
     o.push(spotOption(sim, a, 'shop', 0.85, 'Fridge is empty', ['shop'], () => 'Shopping for groceries', 14));
   }
 
@@ -722,7 +722,7 @@ function arrive(sim: Sim, a: Agent): void {
         say(sim, a, '☹', 'bad');
         return finish(sim, a);
       }
-      if (sim.roomOf(a)?.kind === 'cafe') a.money -= 4;
+      if (sim.roomOf(a)?.kind === 'cafe') spend(sim, a, 3);
       break;
     case 'eat': {
       // Kitchens, the café and diners serve from the town's stores.
@@ -964,11 +964,22 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       return;
     case 'shop':
       if (tick()) {
-        const buy = Math.min(6, Math.floor(sim.stock.food));
-        sim.stock.food -= buy;
-        sim.pantry[a.household] += buy;
-        a.money -= buy * 3;
-        sim.log(buy ? `${first(a)} bought groceries` : `${first(a)} found the market shelves empty`, 'life', buy ? 'neutral' : 'bad', a);
+        // Groceries at today's price; short of money, family chips in, or the basket stays light.
+        const unit = price(sim, 'food');
+        if (a.money < unit * 3) askFamilyForHelp(sim, a, Math.ceil(unit * 5));
+        const buy = Math.min(6, Math.floor(sim.stock.food), Math.floor(a.money / unit));
+        if (buy > 0) {
+          spend(sim, a, buy * unit);
+          sim.stock.food -= buy;
+          sim.pantry[a.household] += buy;
+          sim.log(`${first(a)} bought groceries ($${(buy * unit).toFixed(0)})`, 'life', 'neutral', a);
+        } else if (sim.stock.food < 1) {
+          sim.log(`${first(a)} found the market shelves empty`, 'life', 'bad', a);
+        } else {
+          addMemory(sim, a, 'broke');
+          think(sim, a, "I can't afford groceries this week.", 'bad');
+          sim.log(`${first(a)} couldn't afford groceries`, 'life', 'bad', a);
+        }
         finish(sim, a);
       }
       return;
@@ -1028,7 +1039,7 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
     case 'split':
       gainXp(sim, a, 'craft', dt * 0.2);
       a.workedToday += dt;
-      a.money += 0.3 * dt;
+      payWage(sim, a, 0.3 * dt);
       a.needs.work = Math.min(100, a.needs.work + 0.4 * dt);
       if (Math.floor(sim.time * 2) % 4 === 0) say(sim, a, 'thwack', 'neutral', 1);
       act.timer -= dt * (laborRate(a) - 1);
@@ -1044,7 +1055,7 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       const r = RECIPES.find((x) => x.good === act.material && x.station === STATION_OF[sim.prop(act.propId)?.key ?? '']);
       if (!r) return finish(sim, a);
       a.workedToday += dt;
-      a.money += 0.35 * dt;
+      payWage(sim, a, 0.35 * dt);
       n.work = Math.min(100, n.work + 0.45 * dt);
       gainXp(sim, a, 'craft', dt * 0.3);
       act.timer -= dt * (laborRate(a) - 1);
@@ -1111,7 +1122,7 @@ function performGather(sim: Sim, a: Agent, dt: number, tick: () => boolean): voi
   const p = sim.prop(act.propId);
   if (!p) return finish(sim, a);
   a.workedToday += dt;
-  a.money += 0.3 * dt;
+  payWage(sim, a, 0.3 * dt);
   a.needs.work = Math.min(100, a.needs.work + 0.4 * dt);
   gainXp(sim, a, 'craft', dt * 0.3);
   if (Math.floor(sim.time * 3) % 5 === 0) say(sim, a, act.kind === 'chop' ? 'thunk' : 'clink', 'neutral', 1);
@@ -1143,7 +1154,7 @@ function performBuild(sim: Sim, a: Agent, dt: number, tick: () => boolean): void
   }
   pr.progress = Math.min(cap, pr.progress + laborRate(a) * dt);
   a.workedToday += dt;
-  a.money += 0.35 * dt;
+  payWage(sim, a, 0.35 * dt);
   a.needs.work = Math.min(100, a.needs.work + 0.45 * dt);
   gainXp(sim, a, 'craft', dt * 0.3);
   if (sim.rng.chance(0.02 * dt)) say(sim, a, sim.rng.pick(['tap tap', 'bonk', 'nearly!']), 'neutral', 1.5);
@@ -1163,7 +1174,7 @@ function performFarm(sim: Sim, a: Agent, dt: number, tick: () => boolean): void 
   const p = sim.prop(a.action.propId);
   if (!p) return finish(sim, a);
   a.workedToday += dt;
-  a.money += 0.3 * dt;
+  payWage(sim, a, 0.3 * dt);
   a.needs.work = Math.min(100, a.needs.work + 0.4 * dt);
   gainXp(sim, a, 'craft', dt * 0.3);
   if (!tick()) return;
@@ -1212,7 +1223,7 @@ function performWork(sim: Sim, a: Agent, dt: number, tick: () => boolean): void 
     }
   }
   a.workedToday += dt;
-  a.money += 0.4 * dt;
+  payWage(sim, a, 0.4 * dt);
   n.work = Math.min(100, n.work + 0.45 * dt);
   gainXp(sim, a, 'craft', dt * 0.3);
   if (a.role === 'teacher') for (const k of others(sim, a, ['learn'], 8)) gainXp(sim, k, sim.rng.pick(SKILL_KEYS), dt * 0.2);

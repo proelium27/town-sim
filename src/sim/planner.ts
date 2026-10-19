@@ -317,9 +317,14 @@ export function findSite(sim: Sim, key: BlueprintKey): Site | null {
 // ------------------------------------------------------------------ project lifecycle
 
 function startProject(sim: Sim, p: Proposal): Project | null {
+  const bp = BLUEPRINTS[p.bp];
+  // The treasury has to be able to pay for it; a home for the homeless gets built on credit.
+  const urgent = p.bp === 'house' && p.forAgents.some((a) => sim.town.households[a.household].building < 0);
+  if (sim.treasury < bp.coins && !urgent) return null;
   const site = findSite(sim, p.bp);
   if (!site) return null;
-  const bp = BLUEPRINTS[p.bp];
+  sim.treasury -= bp.coins;
+  sim.ledger.projects += bp.coins;
   const pr: Project = {
     id: sim.nextProjectId++,
     blueprint: p.bp,

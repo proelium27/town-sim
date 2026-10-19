@@ -56,6 +56,7 @@ export class Hud {
     // Town-wide numbers, most important first; narrow screens drop from the end.
     const stats: [string, number | string][] = [
       ['people', sim.agents.length],
+      ['treasury', `$${Math.round(sim.treasury)}`],
       ...GOOD_KEYS.filter((g) => GOODS[g].hud).map((g): [string, number] => [GOODS[g].label.toLowerCase(), Math.round(sim.stock[g])]),
       ['at work', working],
       ['asleep', asleep],

@@ -80,7 +80,7 @@ export class AgentsView {
   readonly sky = new Graphics();
   readonly rain = new Graphics();
   private sprites = new Map<number, AgentSprite>();
-  private cars = new Map<number, { body: Sprite; shadow: Graphics }>();
+  private cars = new Map<number, { body: Sprite; shadow: Graphics; load?: Graphics }>();
   private lastSync = 0;
   private ring = new Graphics();
   selected: number | null = null;
@@ -325,6 +325,15 @@ export class AgentsView {
         const shadow = new Graphics().roundRect(-body.width / 2 + 1, -3, body.width, horizontal ? 7 : 6, 3).fill({ color: 0x15110d, alpha: 0.28 });
         this.world.entities.addChild(shadow, body);
         s = { body, shadow };
+        if (c.trader) {
+          // Crates and sacks strapped on top, so the trader reads at a glance.
+          const load = new Graphics()
+            .rect(-11, -5, 8, 6).fill(0xa97a47).rect(-11, -5, 8, 1).fill(0xd4a56a).rect(-8, -5, 1, 6).fill(0x7a5531)
+            .rect(-2, -7, 7, 8).fill(0xe0cfa0).rect(-2, -7, 7, 2).fill(0xf0e2c0)
+            .rect(6, -4, 6, 5).fill(0x8a5f37).rect(6, -4, 6, 1).fill(0xb98a55);
+          this.world.entities.addChild(load);
+          s.load = load;
+        }
         this.cars.set(c.id, s);
       }
       const x = (c.px + (c.x - c.px) * alpha) * TILE;
@@ -333,11 +342,16 @@ export class AgentsView {
       s.body.zIndex = Math.round(y + 6);
       s.shadow.position.set(Math.round(x) + 2, Math.round(y) + s.body.height * 0.25);
       s.shadow.zIndex = s.body.zIndex - 1;
+      if (s.load) {
+        s.load.position.set(Math.round(x), Math.round(y) - 14);
+        s.load.zIndex = s.body.zIndex + 0.1;
+      }
     }
     for (const [id, s] of this.cars) {
       if (!seen.has(id)) {
         s.body.destroy();
         s.shadow.destroy();
+        s.load?.destroy();
         this.cars.delete(id);
       }
     }

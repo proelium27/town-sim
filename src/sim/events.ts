@@ -1,6 +1,8 @@
 import { ageOf } from './agents';
 import { MIN_PER_DAY, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
+import { TRADER_EVERY } from './market';
 import { FESTIVALS } from './seasons';
+import { spawnTrader } from './traffic';
 import { kinship } from './social';
 import { newcomers } from './life';
 import { addMemory, first, shiftOpinion, think } from './social';
@@ -24,7 +26,7 @@ export interface EventState {
   birthdays: Birthday[];
   /** Day the schedule below was planned for. */
   plannedDay: number;
-  plan: { at: number; kind: 'standup' | 'pizza' | 'party' | 'coffee' | 'rain' | 'birthday' | 'storm' | 'snowstorm'; length: number; host?: number }[];
+  plan: { at: number; kind: 'standup' | 'pizza' | 'party' | 'coffee' | 'rain' | 'birthday' | 'storm' | 'snowstorm' | 'trader'; length: number; host?: number }[];
 }
 
 export interface Birthday {
@@ -64,6 +66,8 @@ function planDay(sim: Sim): void {
     if (r.chance(0.25)) ev.plan.push({ at: base + r.range(9, 15) * 60, kind: 'coffee', length: 0 });
   }
   if (r.chance(sim.season === 3 ? 0.5 : 0.35)) ev.plan.push({ at: base + r.range(7, 19) * 60, kind: 'rain', length: r.range(60, 220) });
+  // A trader's cart every few days.
+  if (sim.day % TRADER_EVERY === 1) ev.plan.push({ at: base + 10 * 60, kind: 'trader', length: 0 });
   // Autumn brings storms; winter, the odd blizzard.
   if (sim.season === 2 && sim.seasonProgress > 0.2 && r.chance(0.18)) ev.plan.push({ at: base + r.range(10, 20) * 60, kind: 'storm', length: 0 });
   if (sim.season === 3 && r.chance(0.22)) ev.plan.push({ at: base + r.range(2, 16) * 60, kind: 'snowstorm', length: 0 });
@@ -110,6 +114,9 @@ export function tickEvents(sim: Sim, dt: number): void {
       case 'storm':
       case 'snowstorm':
         triggerWorldEvent(sim, e.kind);
+        break;
+      case 'trader':
+        spawnTrader(sim);
         break;
       case 'rain':
         if (!ev.rain) {
@@ -246,12 +253,13 @@ function endParty(sim: Sim): void {
   sim.log(people.length ? `The party wound down. ${people.length} people had a good time` : 'Nobody showed up to the party', 'event', people.length ? 'good' : 'bad');
 }
 
-export type WorldEventKey = 'festival' | 'harvest' | 'newcomers' | 'drought' | 'storm' | 'snowstorm';
+export type WorldEventKey = 'festival' | 'harvest' | 'newcomers' | 'trader' | 'drought' | 'storm' | 'snowstorm';
 
 export const WORLD_EVENTS: { key: WorldEventKey; label: string; hint: string; tone: 'good' | 'bad' }[] = [
   { key: 'festival', label: 'Hold a festival', hint: 'Everyone gathers in the park for a few hours', tone: 'good' },
   { key: 'harvest', label: 'Bumper harvest', hint: 'Every crop ripens at once', tone: 'good' },
   { key: 'newcomers', label: 'Send newcomers', hint: 'Three people arrive, housing or not', tone: 'good' },
+  { key: 'trader', label: 'Call a trader', hint: 'A cart comes to buy surplus and sell what is short', tone: 'good' },
   { key: 'drought', label: 'Drought', hint: 'Crops stop growing for two days', tone: 'bad' },
   { key: 'storm', label: 'Storm', hint: 'Rain, flattened crops and fallen trees', tone: 'bad' },
   { key: 'snowstorm', label: 'Blizzard', hint: 'Heavy snow and bitter cold for six hours', tone: 'bad' },
@@ -266,6 +274,9 @@ export function triggerWorldEvent(sim: Sim, key: WorldEventKey): void {
       ev.festival = { until: sim.time + 180, attendees: new Set(), name: FESTIVALS[sim.season] };
       lightBonfire(sim);
       sim.log(`${FESTIVALS[sim.season]} in the park, called early!`, 'event', 'good');
+      break;
+    case 'trader':
+      spawnTrader(sim);
       break;
     case 'snowstorm':
       if (ev.snowstorm) break;

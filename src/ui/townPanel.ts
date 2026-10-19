@@ -2,6 +2,7 @@ import { ageOf } from '../sim/agents';
 import { ADULT_AGE, billText, MIN_PER_DAY, SEASON_DAYS, SEASONS, YEAR_DAYS, GOOD_KEYS, GOODS, PRIORITY_KEYS, PRIORITY_LABEL, type PriorityKey } from '../sim/defs';
 import { foodBalance } from '../sim/economy';
 import { chill, winterReadiness } from '../sim/seasons';
+import { BASE_PRICE, price, TRADER_EVERY } from '../sim/market';
 import { chains, hasWorkshop } from '../sim/workshop';
 import { WORLD_EVENTS, type WorldEventKey, triggerWorldEvent } from '../sim/events';
 import { allocateRoles, buildCap, capacity, stageOf } from '../sim/planner';
@@ -79,6 +80,28 @@ export class TownPanel {
     });
   }
 
+  /** The town's purse: balance, yesterday's money in and out, today's prices, the next trader. */
+  private treasurySection(): string {
+    const sim = this.sim;
+    const L = sim.lastLedger;
+    const income = L.sales + L.taxes + Math.max(0, L.trade);
+    const spent = L.wages + L.projects + Math.max(0, -L.trade);
+    // Traders come on day 1, 4, 7... at 10:00.
+    let d = (1 - (sim.day % TRADER_EVERY) + TRADER_EVERY) % TRADER_EVERY;
+    if (d === 0 && sim.hour >= 10) d = TRADER_EVERY;
+    const when = sim.cars.some((c) => c.trader) ? 'in town now' : d === 0 ? 'due at 10:00' : `in ${d} day${d === 1 ? '' : 's'}`;
+    const priced = (['food', 'firewood', 'tools'] as const).map((g) => {
+      const p = price(sim, g);
+      const cls = p > BASE_PRICE[g] * 1.4 ? 'neg' : p < BASE_PRICE[g] * 0.8 ? 'pos' : '';
+      return `<span class="price"><span>${GOODS[g].label}</span><b class="num ${cls}">$${p.toFixed(p < 10 ? 2 : 0)}</b></span>`;
+    }).join('');
+    return `<section class="tp-sec">
+        <h3>Treasury <small>trader ${when}</small></h3>
+        <div class="purse"><b class="num">$${Math.round(sim.treasury)}</b><span>yesterday <span class="pos num">+$${Math.round(income)}</span> in, <span class="neg num">−$${Math.round(spent)}</span> out</span></div>
+        <div class="prices">${priced}</div>
+      </section>`;
+  }
+
   /** Production chains: what the workshop makes, how stocked each is, and what's holding it up. */
   private workshopSection(): string {
     const sim = this.sim;
@@ -121,7 +144,7 @@ export class TownPanel {
     const sig = JSON.stringify([
       pop.length, kids, elders, beds, homeless, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
       sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
-      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), chains(sim).map((c) => [c.have, c.target, c.stuck]), sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
+      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), Math.round(sim.treasury / 5), sim.lastLedger, (['food', 'firewood', 'tools'] as const).map((g) => price(sim, g)), chains(sim).map((c) => [c.have, c.target, c.stuck]), sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
     ]);
     if (sig === this.sig) return;
     this.sig = sig;
@@ -146,6 +169,7 @@ export class TownPanel {
         ${ev.drought ? '<p class="warn-line">Drought: nothing is growing.</p>' : ''}
         ${this.winterLine()}
       </section>
+      ${this.treasurySection()}
       ${this.workshopSection()}
       <section class="tp-sec">
         <h3>Priorities <small>what the town meetings lean toward</small></h3>
