@@ -109,15 +109,20 @@ async function boot(): Promise<void> {
   const cv = app.canvas;
   const keys = new Set<string>();
   let drag: { x: number; y: number; sx: number; sy: number; moved: boolean } | null = null;
+  /** Canvas-local CSS pixels (offsetX is unreliable for scaled canvases and synthetic events). */
+  const local = (e: MouseEvent): [number, number] => {
+    const r = cv.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top];
+  };
   cv.addEventListener('wheel', (e) => {
     e.preventDefault();
-    camera.zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)));
+    camera.zoomAt(...local(e), Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)));
   }, { passive: false });
   cv.addEventListener('pointerdown', (e) => {
     drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false };
   });
   window.addEventListener('pointermove', (e) => {
-    const hit = e.target === cv ? people.pick(e.offsetX, e.offsetY, camera) : null;
+    const hit = e.target === cv ? people.pick(...local(e), camera) : null;
     people.hovered = hit?.id ?? null;
     cv.style.cursor = hit ? 'pointer' : drag?.moved ? 'grabbing' : 'grab';
     if (!drag) return;
@@ -131,7 +136,7 @@ async function boot(): Promise<void> {
   });
   window.addEventListener('pointerup', (e) => {
     if (drag && !drag.moved && e.target === cv) {
-      const hit = people.pick(e.offsetX, e.offsetY, camera);
+      const hit = people.pick(...local(e), camera);
       select(hit?.id ?? null);
     }
     drag = null;
