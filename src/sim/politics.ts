@@ -1,5 +1,5 @@
 import { ageOf } from './agents';
-import { ADULT_AGE, MIN_PER_DAY, PRIORITY_LABEL, type PriorityKey, SEASON_DAYS, YEAR_DAYS } from './defs';
+import { ADULT_AGE, PRIORITY_LABEL, type PriorityKey, SEASON_DAYS, YEAR_DAYS } from './defs';
 import { foodBalance } from './economy';
 import { addMemory, first, kinship, say, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
@@ -7,7 +7,7 @@ import type { Agent } from './types';
 
 /** How much the mayor's agenda leans the town meetings, on top of the player's priorities. */
 export const AGENDA_WEIGHT = 1.25;
-/** Elections fall on the first day of summer: the campaign opens at 9, the rally is at 17, the vote at 20. */
+/** Elections fall on the first day of summer: the campaign opens at 9, the rally is at 17, the vote at 19. */
 const ELECTION_DAY = SEASON_DAYS;
 
 export interface Candidate {
@@ -67,12 +67,25 @@ export function tickPolitics(sim: Sim): void {
   if (dayOfYear === ELECTION_DAY && h >= 9 && (!e || e.year !== sim.year)) openCampaign(sim);
   const cur = sim.election;
   if (!cur || cur.year !== sim.year || cur.stage === 'done') return;
+  if (!dropAbsent(sim, cur)) return;
   if (cur.stage === 'campaign' && h >= 17) {
     cur.stage = 'rally';
     cur.rallyUntil = sim.time + 120;
     sim.log(`The election rally is on in the park: ${cur.candidates.map((c) => first(sim.agent(c.id)!)).join(', ')} make their case`, 'event', 'neutral');
   }
   if (cur.stage === 'rally' && sim.time >= cur.rallyUntil) vote(sim, cur);
+}
+
+/** Candidates who died or left town since morning drop out of the race; with nobody left it's called off. */
+function dropAbsent(sim: Sim, e: ElectionState): boolean {
+  const gone = e.candidates.filter((c) => !sim.agent(c.id));
+  if (!gone.length) return true;
+  e.candidates = e.candidates.filter((c) => sim.agent(c.id));
+  for (const id of gone.map((c) => c.id)) e.attendees.delete(id);
+  if (e.candidates.length) return true;
+  e.stage = 'done';
+  sim.log(`With no candidates left, this year's election is called off`, 'event', 'bad');
+  return false;
 }
 
 function openCampaign(sim: Sim): void {
@@ -107,7 +120,10 @@ function vote(sim: Sim, e: ElectionState): void {
   for (const id of e.attendees) {
     const a = sim.agent(id);
     if (!a) continue;
-    for (const c of e.candidates) if (c.id !== id) shiftOpinion(sim, a, sim.agent(c.id)!, sim.rng.range(-2, 4));
+    for (const c of e.candidates) {
+      const cand = sim.agent(c.id);
+      if (cand && c.id !== id) shiftOpinion(sim, a, cand, sim.rng.range(-2, 4));
+    }
   }
   for (const v of sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE)) {
     const want = concernOf(sim, v);
@@ -136,10 +152,13 @@ function vote(sim: Sim, e: ElectionState): void {
   sim.lastElection = { year: e.year, winner: winnerId, platform, votes };
   addMemory(sim, winner, 'wonElection');
   say(sim, winner, 'thank you, Northwind!', 'good', 8);
-  for (const c of e.candidates) if (c.id !== winnerId) addMemory(sim, sim.agent(c.id)!, 'lostElection');
+  for (const c of e.candidates) {
+    const loser = sim.agent(c.id);
+    if (loser && c.id !== winnerId) addMemory(sim, loser, 'lostElection');
+  }
   for (const [voter, cand] of backed) if (cand === winnerId && voter !== winnerId) addMemory(sim, sim.agent(voter)!, 'myCandidateWon');
   const others = votes.slice(1).map(([id, n]) => `${first(sim.agent(id)!)} ${n}`).join(', ');
-  sim.log(`${winner.name} ${was === winnerId ? 'was re-elected' : 'was elected'} mayor with ${votes[0][1]} votes (${others}), promising ${PITCH[platform]}`, 'event', 'good', winner);
+  sim.log(`${winner.name} ${was === winnerId ? 'was re-elected' : 'was elected'} mayor with ${votes[0][1]} votes${others ? ` (${others})` : ', unopposed'}, promising ${PITCH[platform]}`, 'event', 'good', winner);
   sim.milestone(`${winner.name} became mayor`);
 }
 
@@ -153,5 +172,3 @@ export function nextElection(sim: Sim): { day: number; year: number } {
   const passed = sim.day % YEAR_DAYS > ELECTION_DAY || (sim.day % YEAR_DAYS === ELECTION_DAY && sim.election?.year === sim.year && sim.election.stage === 'done');
   return { day: ELECTION_DAY, year: sim.year + (passed ? 1 : 0) };
 }
-
-export const ELECTION_TIME = { day: ELECTION_DAY, minutes: ELECTION_DAY * MIN_PER_DAY };

@@ -26,6 +26,30 @@ describe('elections', () => {
     expect(sim.agent(sim.mayor!)!.memories.some((m) => m.kind === 'wonElection')).toBe(true);
   }, 120_000);
 
+  it('a candidate dying on election day drops out instead of stopping the town', () => {
+    const sim = new Sim(7);
+    at(sim, 2, 10);
+    const [early, late] = sim.election!.candidates.map((c) => sim.agent(c.id)!);
+    die(sim, early, 'an accident');
+    at(sim, 2, 17.5);
+    expect(sim.election!.candidates.some((c) => c.id === early.id)).toBe(false);
+    die(sim, late, 'an accident');
+    at(sim, 2, 19.5);
+    const L = sim.lastElection!;
+    expect(L.votes.some(([id]) => id === early.id || id === late.id)).toBe(false);
+    expect(sim.agent(sim.mayor!)).toBeDefined();
+  }, 120_000);
+
+  it('the election is called off if every candidate is gone', () => {
+    const sim = new Sim(7);
+    at(sim, 2, 10);
+    for (const c of sim.election!.candidates) die(sim, sim.agent(c.id)!, 'an accident');
+    at(sim, 2, 19.5);
+    expect(sim.election!.stage).toBe('done');
+    expect(sim.lastElection).toBeNull();
+    expect(sim.activity.some((e) => /called off/.test(e.text))).toBe(true);
+  }, 120_000);
+
   it("the mayor's agenda leans town meetings, and the office empties if they die", () => {
     const sim = new Sim(7);
     const m = sim.agents[0];

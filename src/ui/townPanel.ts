@@ -94,7 +94,9 @@ export class TownPanel {
     };
     let body = mayor
       ? `<p class="mayor-line">Mayor ${who(mayor.id)}, elected on <b>${PRIORITY_LABEL[sim.agenda!].toLowerCase()}</b>.${sim.agenda && sim.priorities[sim.agenda] === 0 ? ` <span class="neg">You have ${PRIORITY_LABEL[sim.agenda].toLowerCase()} set to Low; the mayor disagrees.</span>` : ''}</p>`
-      : `<p class="mayor-line">No mayor yet.</p>`;
+      : sim.lastElection
+        ? `<p class="mayor-line">The mayor's office is empty until the next election.</p>`
+        : `<p class="mayor-line">No mayor yet.</p>`;
     if (race) {
       body += `<p class="mayor-line">Standing today: ${race.candidates.map((c) => `${who(c.id)} (${PRIORITY_LABEL[c.platform].toLowerCase()})`).join(', ')}. ${race.stage === 'rally' ? 'The rally is on; votes are counted at 19:00.' : 'Rally in the park at 17:00.'}</p>`;
     } else if (sim.lastElection) {

@@ -149,8 +149,11 @@ function leaveTown(sim: Sim, fam: Agent[], home: string): void {
   sim.agents = sim.agents.filter((a) => !ids.has(a.id));
   sim.departed.push(...fam);
   sim.populationVersion++;
-  if (fam.some((a) => a.id === sim.mayor)) sim.mayor = null;
   const names = fam.map(first).join(', ');
   sim.log(`Hard times: ${names} packed up and left the ${home}`, 'family', 'bad', fam[0]);
+  if (fam.some((a) => a.id === sim.mayor)) {
+    sim.mayor = null;
+    sim.log('Northwind is without a mayor until the next election', 'event', 'bad');
+  }
   sim.milestone(`${names} left Northwind`);
 }
