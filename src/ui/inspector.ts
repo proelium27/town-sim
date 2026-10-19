@@ -1,7 +1,7 @@
 import type { Art } from '../assets/loader';
 import { ageOf } from '../sim/agents';
 import { xpToNext } from '../sim/ai';
-import { billText, MIN_PER_DAY, NEED_KEYS, NEEDS, ROLES, SEASON_DAYS, SEASONS, SKILL_KEYS, SKILL_LABEL, TRAITS } from '../sim/defs';
+import { ADULT_AGE, billText, MIN_PER_DAY, NEED_KEYS, NEEDS, ROLES, SEASON_DAYS, SEASONS, SKILL_KEYS, SKILL_LABEL, TRAITS } from '../sim/defs';
 import { APT_LABEL, APTITUDES } from '../sim/careers';
 import { chill } from '../sim/seasons';
 import { kinship, moodParts, moodTarget, moodWord, relationLabel, type Kin } from '../sim/social';
@@ -14,13 +14,13 @@ import { dayTime, duration, esc, hhmm, hourLabel } from './util';
 type Tab = 'needs' | 'day' | 'people' | 'mind';
 const TABS: [Tab, string][] = [['needs', 'Needs'], ['day', 'Day'], ['people', 'People'], ['mind', 'Mind']];
 
-/** Right panel: everything about one person. Skeleton built per selection, values patched in place. */
 /** "Summer 1" for a game minute. */
 const dateLabel = (t: number) => {
   const day = Math.floor(t / MIN_PER_DAY);
   return `${SEASONS[Math.floor(day / SEASON_DAYS) % SEASONS.length]} ${(day % SEASON_DAYS) + 1}`;
 };
 
+/** Right panel: everything about one person. Skeleton built per selection, values patched in place. */
 export class Inspector {
   private agentId: number | null = null;
   private graph: RelationGraph;
@@ -223,13 +223,13 @@ export class Inspector {
 
     // Kids: what they're good at so far. New tradespeople: who they're learning from.
     const mentor = this.sim.agent(a.mentor);
-    const kidApt = ageOf(this.sim, a) < 18;
+    const kidApt = ageOf(this.sim, a) < ADULT_AGE;
     const until = a.apprenticeUntil !== undefined ? dateLabel(a.apprenticeUntil) : '';
     this.slot('career', JSON.stringify([kidApt, kidApt ? APTITUDES.map((k) => Math.round(a.aptitude[k])) : 0, a.mentor, a.career, a.role]), kidApt
       ? `<h3>Aptitudes <span class="h3-note">grown at school and play</span></h3><div class="skills">${APTITUDES.map((k) => `<div class="skill"><span class="nm">${APT_LABEL[k]}</span><span class="lv num">${Math.round(a.aptitude[k])}</span><span class="bar thin"><i style="width:${a.aptitude[k]}%"></i></span></div>`).join('')}</div>`
       : mentor && until
         ? `<p class="career-line">Apprenticing with <button class="linkish" data-act="person" data-id="${mentor.id}">${esc(mentor.name)}</button> until ${until}</p>`
-        : a.career && a.career !== a.role
+        : a.career && a.career !== a.role && ROLES[a.role].flexible
           ? `<p class="career-line">Trained as a ${esc(ROLES[a.career].title.toLowerCase())}, helping out as a ${esc(ROLES[a.role].title.toLowerCase())}</p>`
           : '');
     const th2 = [...a.thoughts].reverse().slice(0, 14);
