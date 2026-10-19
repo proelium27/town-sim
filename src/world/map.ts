@@ -196,6 +196,8 @@ export class TownMap {
     if (!wear(this.ground[i]) || !wear(g)) this.lawnVersion++;
     this.ground[i] = g;
     this.groundDirty.push(i);
+    // Neighbours too: a trail's grassy edges depend on what's next to it.
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) if (this.inBounds(x + dx, y + dy)) this.groundDirty.push(this.idx(x + dx, y + dy));
     this.groundVersion++;
     this.refreshCell(i);
   }
