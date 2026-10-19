@@ -24,6 +24,11 @@ export function chill(sim: Sim): number {
   return 0;
 }
 
+/** Whether what's falling is snow: any winter rain, and every blizzard (whatever the season). */
+export function snowing(sim: Sim): boolean {
+  return !!sim.events.snowstorm || (!!sim.events.rain && sim.season === 3);
+}
+
 /** Crop growth multiplier for the season: nothing grows in winter. */
 export function cropSeason(sim: Sim): number {
   return [1, 1.2, 0.8, 0][sim.season];
@@ -38,13 +43,16 @@ export function winterReadiness(sim: Sim): { food: number; firewood: number } {
   return { food: sim.stock.food / eat, firewood: fuel / (homes * BURN_PER_HOUR * 24) };
 }
 
-/** Hearths burn, the first frost kills unripe crops, and each season brings its weather and festival. */
+/** Hearths burn, the first frost kills the crops left in the fields, and each season brings its weather and festival. */
 export function tickSeasons(sim: Sim, dt: number): void {
   const c = chill(sim);
   if (c > 0) {
-    // A hearth burns while anyone is home.
+    // A hearth burns while anyone is home (the homeless have no hearth, and outdoors isn't home).
     const home = new Set<number>();
-    for (const a of sim.agents) if (sim.map.room[a.at] === sim.town.households[a.household].room) home.add(a.household);
+    for (const a of sim.agents) {
+      const room = sim.town.households[a.household].room;
+      if (room >= 0 && sim.map.room[a.at] === room) home.add(a.household);
+    }
     for (const hh of home) if (sim.fuel[hh] > 0) sim.fuel[hh] = Math.max(0, sim.fuel[hh] - (c * BURN_PER_HOUR * dt) / 60);
   }
   const season = sim.season;
@@ -55,13 +63,17 @@ export function tickSeasons(sim: Sim, dt: number): void {
   sim.log(`${SEASONS[season]} has come to Northwind`, 'event', 'neutral');
   sim.milestone(`${SEASONS[season]}, year ${sim.year}`);
   if (season === 3) {
-    let lost = 0;
+    // Whatever is still in the fields, ripe or not, is lost: the harvest has to be in before the frost.
+    let ripe = 0;
+    let green = 0;
     for (const p of sim.map.props) {
-      if (p.use !== 'farm' || (p.growth ?? 0) >= 1) continue;
-      if ((p.growth ?? 0) > 0.05) lost++;
+      if (p.use !== 'farm') continue;
+      if ((p.growth ?? 0) >= 1) ripe++;
+      else if ((p.growth ?? 0) > 0.05) green++;
       p.growth = 0;
     }
-    sim.log(lost ? `First frost: ${lost} unripe crops froze in the fields` : 'First frost. The fields are bare until spring', 'event', lost ? 'bad' : 'neutral');
+    const lost = [ripe && `${ripe} ripe`, green && `${green} unripe`].filter(Boolean).join(' and ');
+    sim.log(lost ? `First frost: ${lost} crops froze in the fields` : 'First frost. The fields are bare until spring', 'event', lost ? 'bad' : 'neutral');
     for (const a of sim.agents) {
       if (a.role === 'child') {
         addMemory(sim, a, 'snowDay');

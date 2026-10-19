@@ -118,9 +118,10 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
   let dep: ReturnType<typeof depositSpot> | undefined;
   const storehouse = () => (dep === undefined ? (dep = depositSpot(sim, a)) : dep);
 
-  // Anything in hand goes where it belongs first (unless it's already on its way somewhere).
+  // Anything in hand goes where it belongs first. A load already on its way somewhere isn't swapped for another job.
   const delivering = a.action.leg === 'deliver' && (a.action.kind === 'haul' || a.action.kind === 'stoke');
-  if (a.carry && !delivering) {
+  if (a.carry) {
+    if (delivering) return null;
     return (() => {
       const d = storehouse();
       if (!d) return null;
@@ -236,7 +237,7 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
 
   // Farming (nothing grows in winter; only ripe crops are worth a trip).
   const farmers = sim.agents.filter((o) => o.role === 'farmer').length;
-  if (role === 'farmer' || (role === 'laborer' && farmers < 2)) {
+  if (role === 'farmer' || (role === 'laborer' && farmers < 2 && sim.priorities.food > 0)) {
     const base = role === 'farmer' ? 1 : 0.55;
     add(base * 1.1, () => {
       const crops = m.props.filter((p) => p.use === 'farm' && free(sim, a, p) && (sim.season !== 3 || (p.growth ?? 0) >= 1));

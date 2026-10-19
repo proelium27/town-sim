@@ -1,7 +1,7 @@
 import type { GroundKey } from '../assets/manifest';
 import { BLUEPRINTS, type BlueprintKey } from '../world/blueprints';
 import type { Household } from '../world/town';
-import { ageOf, makeSchedule, newTask } from './agents';
+import { ageOf, makeSchedule, newTask, surnameOf } from './agents';
 import { ADULT_AGE, type Bill, billGoods, type Good, GOODS, MIN_PER_DAY, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
 import { foodBalance } from './economy';
 import { bury } from './life';
@@ -121,7 +121,7 @@ const HOME_SUFFIX = ['home', 'house', 'cottage', 'place', 'lodge'];
 
 /** "Reyes home", or "Reyes cottage" if that name is taken. */
 function homeName(sim: Sim, a: Agent | undefined): string {
-  const surname = a ? a.name.split(' ').slice(1).join(' ') : 'Hillside';
+  const surname = a ? surnameOf(a.name) : 'Hillside';
   const taken = new Set([...sim.town.households.map((h) => h.name), ...sim.projects.map((p) => p.name), ...sim.map.buildings.map((b) => b.name)]);
   for (const s of HOME_SUFFIX) if (!taken.has(`${surname} ${s}`)) return `${surname} ${s}`;
   return `${a ? first(a) : 'New'}'s place ${sim.nextProjectId}`;
@@ -173,7 +173,8 @@ function proposals(sim: Sim): Proposal[] {
   const fb = foodBalance(sim, true);
   const plannedFarms = sim.projects.filter((p) => p.blueprint === 'farm').length;
   const deficit = fb.eat - fb.produce - plannedFarms * 50;
-  if (deficit > 0 || sim.stock.food < sim.agents.length * 2) {
+  // Nobody breaks new fields in winter; nothing would grow before spring.
+  if (sim.season !== 3 && (deficit > 0 || sim.stock.food < sim.agents.length * 2)) {
     const farmer = sim.agents.find((a) => a.role === 'farmer');
     out.push({ bp: 'farm', score: (0.8 + Math.min(1, deficit / 40) + (sim.stock.food < sim.agents.length * 3 ? 0.6 : 0)) * fw, reason: sim.stock.food < sim.agents.length * 3 ? 'food stores are running low' : 'we will need more food as we grow', forAgents: [], proposer: farmer ?? charismatic(), name: `${['Sunny', 'River', 'Oak', 'Clover', 'Barley', 'Willow'][count('farm') % 6]} Farm` });
   }

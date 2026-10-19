@@ -4,19 +4,23 @@ import { triggerWorldEvent } from '../src/sim/events';
 import { gatherKind, laborPlan } from '../src/sim/labor';
 import type { Agent } from '../src/sim/types';
 import { loadSim, saveSim } from '../src/sim/save';
-import { chill, winterReadiness } from '../src/sim/seasons';
+import { chill, tickSeasons, winterReadiness } from '../src/sim/seasons';
 import { Sim } from '../src/sim/sim';
+import { winterLine } from '../src/ui/townPanel';
 
 const at = (sim: Sim, day: number, hour: number) => sim.run(day * 1440 + hour * 60 - sim.time);
 
 describe('seasons', () => {
-  // One town, simulated to the eve of winter once; each test gets its own copy.
+  // One town, simulated to the start of autumn and the eve of winter once; each test gets its own copy.
+  let autumn = '';
   let eve = '';
   beforeAll(() => {
     const sim = new Sim(7);
+    at(sim, 4, 0);
+    autumn = saveSim(sim);
     at(sim, 5, 23.9);
     eve = saveSim(sim);
-  }, 120_000);
+  }, 300_000);
   const winterTown = () => loadSim(eve);
 
   it('warm summers, a chilly late autumn, and a cold winter', () => {
@@ -29,16 +33,39 @@ describe('seasons', () => {
     expect(chill(sim)).toBe(1);
   });
 
-  it('the first frost clears unripe crops, and nothing grows until spring', () => {
+  it('a homeless family has no hearth to burn', () => {
+    const sim = new Sim(7);
+    sim.time = 6 * 1440 + 3 * 60;
+    const a = sim.agents[0];
+    const hh = sim.town.households[a.household];
+    hh.room = -1;
+    hh.building = -1;
+    sim.fuel[hh.id] = 5;
+    const m = sim.map;
+    a.at = m.room.findIndex((r, i) => r < 0 && m.walkable(m.cx(i), m.cy(i)));
+    tickSeasons(sim, 60);
+    expect(sim.fuel[hh.id]).toBe(5);
+  });
+
+  it('the Town view counts down to winter in autumn, and to spring in winter', () => {
+    const sim = new Sim(7, { agents: false });
+    sim.time = 0.2 * 1440;
+    expect(winterLine(sim)).toBe('');
+    sim.time = 5 * 1440;
+    expect(winterLine(sim)).toContain('Winter starts in 1.0 days');
+    sim.time = 7 * 1440;
+    expect(winterLine(sim)).toContain('Winter ends in 1.0 days');
+  });
+
+  it('the first frost clears the fields, and nothing grows until spring', () => {
     const sim = winterTown();
     sim.run(10);
     expect(sim.season).toBe(3);
     const crops = sim.map.props.filter((p) => p.use === 'farm');
-    expect(crops.every((p) => p.growth === 0 || p.growth === 1)).toBe(true);
+    expect(crops.every((p) => p.growth === 0)).toBe(true);
     expect(sim.activity.some((e) => e.text.startsWith('First frost'))).toBe(true);
     const before = crops.map((p) => p.growth);
     sim.run(600);
-    // Ripe crops can still be harvested (back to 0), but none grows.
     expect(crops.every((p, i) => (p.growth ?? 0) <= (before[i] ?? 0))).toBe(true);
   }, 120_000);
 
@@ -59,6 +86,66 @@ describe('seasons', () => {
     expect(homes.filter((h) => sim.fuel[h.id] > 0).length).toBeGreaterThanOrEqual(homes.length - 1);
     expect(sim.activity.some((e) => e.text === 'Winter lights in the park tonight!')).toBe(true);
     expect(winterReadiness(sim).food).toBeGreaterThan(1);
+  }, 120_000);
+
+  it('a Low food priority through autumn leaves the stores much lower in winter', () => {
+    const lowest = (sim: Sim) => {
+      let min = Infinity;
+      at(sim, 6, 0);
+      while (sim.time < 8 * 1440) {
+        sim.run(60);
+        min = Math.min(min, sim.stock.food);
+      }
+      return min;
+    };
+    const normal = lowest(winterTown());
+    const low = loadSim(autumn);
+    low.priorities.food = 0;
+    // Fewer hands bring in the autumn harvest, so more of it freezes in the fields.
+    expect(lowest(low)).toBeLessThan(normal * 0.75);
+  }, 300_000);
+
+  it('firewood carried to a hearth gets there', () => {
+    const sim = winterTown();
+    at(sim, 6, 6);
+    // Watch everyone walking firewood to a home: when that errand ends, the load must be by the hearth.
+    const out = new Map<number, { action: object; hh: number; fuel: number }>();
+    let delivered = 0;
+    let dropped = 0;
+    for (let k = 0; k < 14 * 60; k++) {
+      sim.run(1);
+      for (const a of sim.agents) {
+        const run = out.get(a.id);
+        if (run && a.action !== run.action) {
+          out.delete(a.id);
+          if (a.carry?.kind === 'firewood' || sim.fuel[run.hh] < run.fuel) dropped++;
+          else delivered++;
+        }
+        if (a.action.kind === 'stoke' && a.action.leg === 'deliver' && a.carry?.kind === 'firewood' && !out.has(a.id)) {
+          out.set(a.id, { action: a.action, hh: a.action.household!, fuel: sim.fuel[a.action.household!] + a.carry.amount - 0.5 });
+        }
+      }
+    }
+    // A full bladder used to cut deliveries short, with the load still in hand.
+    expect(delivered).toBeGreaterThan(0);
+    expect(dropped).toBe(0);
+  }, 120_000);
+
+  it('winter snow is not rain: nobody gets soaked and the ground stays dry', () => {
+    const sim = winterTown();
+    at(sim, 6, 10);
+    const wet = sim.events.wet;
+    const from = sim.time;
+    sim.events.rain = null;
+    sim.events.plan.push({ at: sim.time + 1, kind: 'rain', length: 150 });
+    sim.events.plan.sort((x, y) => x.at - y.at);
+    sim.run(180);
+    const feed = sim.activity.filter((e) => e.t >= from).map((e) => e.text);
+    expect(feed).toContain('It started snowing');
+    expect(feed).toContain('It stopped snowing');
+    expect(feed).not.toContain('It started raining');
+    expect(sim.events.wet).toBeLessThanOrEqual(wet);
+    expect(sim.agents.some((a) => a.memories.some((m) => m.kind === 'soaked'))).toBe(false);
   }, 120_000);
 
   it('a blizzard sends people indoors', () => {

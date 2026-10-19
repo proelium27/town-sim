@@ -1,7 +1,7 @@
 import { ageOf } from '../sim/agents';
 import { ADULT_AGE, billText, MIN_PER_DAY, SEASON_DAYS, SEASONS, YEAR_DAYS, GOOD_KEYS, GOODS, PRIORITY_KEYS, PRIORITY_LABEL, type PriorityKey } from '../sim/defs';
 import { foodBalance } from '../sim/economy';
-import { chill, winterReadiness } from '../sim/seasons';
+import { winterReadiness } from '../sim/seasons';
 import { chains, hasWorkshop } from '../sim/workshop';
 import { WORLD_EVENTS, type WorldEventKey, triggerWorldEvent } from '../sim/events';
 import { allocateRoles, buildCap, capacity, stageOf } from '../sim/planner';
@@ -18,9 +18,23 @@ const dateOf = (t: number) => {
   return `${SEASONS[Math.floor(day / SEASON_DAYS) % SEASONS.length].slice(0, 3)} ${(day % SEASON_DAYS) + 1}, Y${Math.floor(day / YEAR_DAYS) + 1}`;
 };
 
+/** Autumn and winter: how long the stores would last, and which hearths are cold. */
+export function winterLine(sim: Sim): string {
+  if (sim.season < 2) return '';
+  const r = winterReadiness(sim);
+  // Days until winter starts (autumn) or ends (winter); the stores have to last until spring.
+  const toGo = (1 - sim.seasonProgress) * SEASON_DAYS;
+  const need = sim.season === 2 ? toGo + SEASON_DAYS : toGo;
+  const cold = sim.town.households.filter((h) => h.building >= 0 && sim.fuel[h.id] < 1).length;
+  const ok = (d: number) => (d >= need ? 'pos' : 'neg');
+  return `<p class="winter-line">Winter ${sim.season === 3 ? 'ends' : 'starts'} in ${toGo.toFixed(1)} days. Stores last: <b class="${ok(r.food)}">${r.food.toFixed(1)} days of food</b>, <b class="${ok(r.firewood)}">${r.firewood.toFixed(1)} of firewood</b>${cold ? ` · <b class="neg">${cold} cold hearth${cold === 1 ? '' : 's'}</b>` : ''}</p>`;
+}
+
 /** Left-sidebar Town tab: stores, the player's priorities and world events, live projects, history. */
 export class TownPanel {
   private sig = '';
+  /** New town takes two clicks: the first arms it for a few seconds. */
+  private resetArmed = false;
 
   constructor(
     private root: HTMLElement,
@@ -36,7 +50,6 @@ export class TownPanel {
       if (f) this.saves.importFile(f).catch(() => {});
     });
     root.after(picker);
-    let confirmReset = false;
     root.addEventListener('click', (e) => {
       const el = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
       if (!el) return;
@@ -56,23 +69,24 @@ export class TownPanel {
         this.saves.save();
       } else if (act === 'export') {
         this.saves.exportFile();
+      } else if (act === 'export-backup') {
+        this.saves.exportBackup();
       } else if (act === 'import') {
         picker.click();
         return;
       } else if (act === 'reset') {
         // Two clicks: the first arms it, so a stray click can't wipe a town.
-        if (!confirmReset) {
-          confirmReset = true;
-          el.textContent = 'Click again to start over';
-          el.classList.add('armed');
+        // The armed look is rendered from this field, so a re-render can't show an armed button as safe.
+        if (!this.resetArmed) {
+          this.resetArmed = true;
           setTimeout(() => {
-            confirmReset = false;
-            this.sig = '';
+            this.resetArmed = false;
+            this.update();
           }, 4000);
+        } else {
+          this.saves.reset();
           return;
         }
-        this.saves.reset();
-        return;
       }
       this.sig = '';
       this.update();
@@ -97,18 +111,6 @@ export class TownPanel {
       </section>`;
   }
 
-  /** Autumn and winter: how long the stores would last, and which hearths are cold. */
-  private winterLine(): string {
-    const sim = this.sim;
-    if (sim.season < 2 && chill(sim) === 0) return '';
-    const r = winterReadiness(sim);
-    if (sim.season < 2) return `<p class="winter-line">Still chilly at night: <b class="${r.firewood >= 1 ? 'pos' : 'neg'}">${r.firewood.toFixed(1)} days of firewood</b> left.</p>`;
-    const left = sim.season === 2 ? 2 + (1 - sim.seasonProgress) * 2 : sim.season === 3 ? (1 - sim.seasonProgress) * 2 : 0;
-    const cold = sim.town.households.filter((h) => h.building >= 0 && sim.fuel[h.id] < 1).length;
-    const ok = (d: number) => (d >= left ? 'pos' : 'neg');
-    return `<p class="winter-line">Winter ${sim.season === 3 ? 'ends' : 'lasts'} in ${left.toFixed(1)} days. Stores last: <b class="${ok(r.food)}">${r.food.toFixed(1)} days of food</b>, <b class="${ok(r.firewood)}">${r.firewood.toFixed(1)} of firewood</b>${cold ? ` · <b class="neg">${cold} cold hearth${cold === 1 ? '' : 's'}</b>` : ''}</p>`;
-  }
-
   update(): void {
     const sim = this.sim;
     const pop = sim.agents;
@@ -123,7 +125,8 @@ export class TownPanel {
     const sig = JSON.stringify([
       pop.length, kids, elders, beds, homeless, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
       sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
-      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), chains(sim).map((c) => [c.have, c.target, c.stuck]), sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
+      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), this.resetArmed, chains(sim).map((c) => [c.have, c.target, c.stuck]), sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
+      sim.season >= 2 && Math.round((1 - sim.seasonProgress) * SEASON_DAYS * 10),
     ]);
     if (sig === this.sig) return;
     this.sig = sig;
@@ -146,7 +149,7 @@ export class TownPanel {
           }).join('')}
         </div>
         ${ev.drought ? '<p class="warn-line">Drought: nothing is growing.</p>' : ''}
-        ${this.winterLine()}
+        ${winterLine(sim)}
       </section>
       ${this.workshopSection()}
       <section class="tp-sec">
@@ -180,11 +183,13 @@ export class TownPanel {
       <section class="tp-sec">
         <h3>Saving <small>${esc(this.saves.status())}</small></h3>
         <div class="save-row">
-          <button class="btn" data-act="save" ${this.saves.enabled ? '' : 'disabled'}>Save now</button>
+          <button class="btn" data-act="save" ${this.saves.canSave ? '' : 'disabled'}>Save now</button>
           <button class="btn" data-act="export">Export</button>
-          <button class="btn" data-act="import">Import</button>
-          <button class="btn danger" data-act="reset">New town</button>
+          ${this.saves.hasBackup ? `<button class="btn" data-act="export-backup" title="Download the saved town that couldn't be read">Export backup</button>` : ''}
+          <button class="btn" data-act="import" ${this.saves.enabled ? '' : 'disabled title="Scratch towns from a ?seed= link never touch your saved town. Open the game without ?seed= to import."'}>Import</button>
+          <button class="btn danger${this.resetArmed ? ' armed' : ''}" data-act="reset" ${this.saves.enabled ? '' : 'title="Starts this scratch town over. Your saved town is untouched."'}>${this.resetArmed ? 'Click again to start over' : 'New town'}</button>
         </div>
+        ${this.saves.notice() ? `<p class="warn-line">${esc(this.saves.notice())}</p>` : ''}
       </section>
       <section class="tp-sec">
         <h3>History</h3>
