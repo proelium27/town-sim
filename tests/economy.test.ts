@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { SEASON_DAYS } from '../src/sim/defs';
-import { BASE_PRICE, price, tickMarket, trade } from '../src/sim/market';
+import { BASE_PRICE, BROKE_RETRY, canAffordGroceries, price, tickMarket, trade } from '../src/sim/market';
 import { Sim } from '../src/sim/sim';
-import { addMemory } from '../src/sim/social';
+import { addMemory, kinship } from '../src/sim/social';
+import type { Agent } from '../src/sim/types';
 
 describe('prices', () => {
   it('rise when the stores run low and fall in a glut', () => {
@@ -95,4 +96,44 @@ describe('hard times', () => {
     expect(sim.departed).toEqual(expect.arrayContaining(fam));
     expect(sim.activity.some((e) => e.text.startsWith('Hard times:'))).toBe(true);
   });
+});
+
+describe('the grocery run', () => {
+  /** A retiree whose fridge, family and housemates are all out of money and food. */
+  function squeeze(sim: Sim, old: Agent, money: number): void {
+    for (const o of sim.agents) if (o !== old && (o.household === old.household || kinship(sim, old, o))) o.money = 0;
+    old.money = money;
+    sim.pantry[old.household] = 0;
+  }
+
+  it("isn't attempted when nobody could pay for even a small basket", () => {
+    const sim = new Sim(7);
+    sim.run(60);
+    const old = sim.agents.find((a) => a.role === 'retired')!;
+    let shopped = 0;
+    for (let i = 0; i < 6 * 6; i++) {
+      squeeze(sim, old, 1);
+      expect(canAffordGroceries(sim, old)).toBe(false);
+      sim.run(10);
+      if (old.action.kind === 'shop') shopped++;
+    }
+    expect(shopped).toBe(0);
+    expect(sim.activity.some((e) => e.agentId === old.id && e.text.includes("couldn't afford"))).toBe(false);
+  }, 60_000);
+
+  it('waits a few hours after coming home empty-handed, then tries again', () => {
+    const sim = new Sim(7);
+    sim.run(60);
+    const old = sim.agents.find((a) => a.role === 'retired')!;
+    addMemory(sim, old, 'broke');
+    const since = sim.time;
+    let first = -1;
+    for (let i = 0; i < 7 * 6 && first < 0; i++) {
+      squeeze(sim, old, 100);
+      sim.run(10);
+      if (old.action.kind === 'shop') first = sim.time;
+    }
+    expect(first).toBeGreaterThan(0);
+    expect(first - since).toBeGreaterThanOrEqual(BROKE_RETRY);
+  }, 60_000);
 });

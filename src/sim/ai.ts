@@ -6,7 +6,7 @@ import { FOOD_PER_CROP } from './economy';
 import { CARRY, laborPlan } from './labor';
 import { buildCap, completeProject, shortOf, supplied } from './planner';
 import { chill, HEARTH_FULL } from './seasons';
-import { askFamilyForHelp, payWage, price, spend } from './market';
+import { askFamilyForHelp, BROKE_RETRY, canAffordGroceries, familyAsk, payWage, price, spend } from './market';
 import { canMake, RECIPES, STATION_OF } from './workshop';
 import { clamp } from './rng';
 import {
@@ -560,7 +560,9 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
 
   // ---- errands
   const housemateShopping = sim.agents.some((p) => p.id !== a.id && p.household === a.household && p.action.kind === 'shop');
-  if (homed && pantry <= 1 && !housemateShopping && !workTime && !evening && sim.stock.food >= 6 && !little) {
+  // Skip the trip if it can't buy anything, and for a few hours after coming home empty-handed.
+  const turnedAway = a.memories.some((m) => m.kind === 'broke' && sim.time - m.created < BROKE_RETRY);
+  if (homed && pantry <= 1 && !housemateShopping && !workTime && !evening && sim.stock.food >= 6 && !little && !turnedAway && canAffordGroceries(sim, a)) {
     o.push(spotOption(sim, a, 'shop', 0.85, 'Fridge is empty', ['shop'], () => 'Shopping for groceries', 14));
   }
 
@@ -966,7 +968,7 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       if (tick()) {
         // Groceries at today's price; short of money, family chips in, or the basket stays light.
         const unit = price(sim, 'food');
-        if (a.money < unit * 3) askFamilyForHelp(sim, a, Math.ceil(unit * 5));
+        if (a.money < unit * 3) askFamilyForHelp(sim, a, familyAsk(sim));
         const buy = Math.min(6, Math.floor(sim.stock.food), Math.floor(a.money / unit));
         if (buy > 0) {
           spend(sim, a, buy * unit);

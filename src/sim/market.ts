@@ -71,11 +71,28 @@ export function spend(sim: Sim, a: Agent, amount: number): boolean {
   return true;
 }
 
-/** Short of money for groceries: someone in the family with savings chips in. */
-export function askFamilyForHelp(sim: Sim, a: Agent, amount: number): boolean {
-  const giver = sim.agents
+/** The relative with the most savings who could spare this much, if any. */
+function familyHelper(sim: Sim, a: Agent, amount: number): Agent | undefined {
+  return sim.agents
     .filter((o) => o.id !== a.id && kinship(sim, a, o) && o.money > amount + 40)
     .sort((x, y) => y.money - x.money)[0];
+}
+
+/** The smallest grocery basket worth the trip, in units of food. */
+export const MIN_BASKET = 2;
+/** After coming home empty-handed, don't try the market again for this long. */
+export const BROKE_RETRY = 4 * 60;
+/** What someone short of grocery money asks the family for. */
+export const familyAsk = (sim: Sim): number => Math.ceil(price(sim, 'food') * 5);
+
+/** Whether a grocery trip would come home with at least a small basket, with family help if needed. */
+export function canAffordGroceries(sim: Sim, a: Agent): boolean {
+  return a.money >= price(sim, 'food') * MIN_BASKET || !!familyHelper(sim, a, familyAsk(sim));
+}
+
+/** Short of money for groceries: someone in the family with savings chips in. */
+export function askFamilyForHelp(sim: Sim, a: Agent, amount: number): boolean {
+  const giver = familyHelper(sim, a, amount);
   if (!giver) return false;
   giver.money -= amount;
   a.money += amount;
