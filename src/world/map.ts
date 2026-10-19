@@ -247,6 +247,17 @@ export class TownMap {
     return this.props.filter((p) => p.use === use);
   }
 
+  /** Rebuilds the prop lookups and per-cell costs from `props` (after loading a save). */
+  reindex(): void {
+    this.byId = new Map(this.props.map((p) => [p.id, p]));
+    this.propsAt = new Array(this.w * this.h);
+    for (const p of this.props) for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++) {
+      if (this.inBounds(x, y)) (this.propsAt[this.idx(x, y)] ??= []).push(p);
+    }
+    this.refreshAll();
+    this.groundDirty = [];
+  }
+
   /** Recompute every cell's cost and blocking (after bulk edits). */
   refreshAll(): void {
     for (let i = 0; i < this.cell.length; i++) this.refreshCell(i);

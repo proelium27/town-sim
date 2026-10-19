@@ -9,6 +9,7 @@ import { ActivityLog } from './ui/activity';
 import { Hud } from './ui/hud';
 import { Inspector } from './ui/inspector';
 import { TownPanel } from './ui/townPanel';
+import { readSave, Saves } from './ui/saves';
 import { Tracker } from './ui/tracker';
 
 /** Real milliseconds per sim step at 1x: 20 steps per second, so one game minute per real second. */
@@ -32,8 +33,11 @@ async function boot(): Promise<void> {
 
   const art = new Art();
   await art.load();
-  const seed = Number(new URLSearchParams(location.search).get('seed') ?? 7);
-  const sim = new Sim(seed);
+  // A ?seed= link is a scratch town: it never touches the saved one.
+  const params = new URLSearchParams(location.search);
+  const scratch = params.has('seed');
+  const sim = (!scratch && readSave()) || new Sim(Number(params.get('seed') ?? 7));
+  const saves = new Saves(sim, !scratch);
   const world = new WorldView(art, sim);
   const people = new AgentsView(art, sim, world);
   app.stage.addChild(world.root, people.sky, people.rain, people.overlay);
@@ -104,7 +108,7 @@ async function boot(): Promise<void> {
     document.body.classList.toggle('roster-collapsed', tracker.collapsed);
     layout();
   }, () => refreshUi());
-  const town = new TownPanel(tracker.townEl, sim, (x, y) => camera.lookAtClamped(x * TILE, y * TILE), (id) => select(id, true));
+  const town = new TownPanel(tracker.townEl, sim, (x, y) => camera.lookAtClamped(x * TILE, y * TILE), (id) => select(id, true), saves);
   if (window.innerWidth < 900) tracker.toggle(true);
   const hud = new Hud(sim);
   const activity = new ActivityLog(document.getElementById('activity')!, sim, (id) => select(id, true));
@@ -243,6 +247,7 @@ async function boot(): Promise<void> {
     if (uiTimer <= 0) {
       uiTimer = 0.25;
       refreshUi();
+      saves.tick();
     }
   });
   refreshUi();

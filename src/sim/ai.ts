@@ -1,10 +1,10 @@
 import type { Facing } from '../assets/manifest';
 import type { Prop, UseKind } from '../world/map';
 import { ageOf, newTask } from './agents';
-import { ADULT_AGE, MIN_PER_DAY, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
+import { ADULT_AGE, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
 import { FOOD_PER_CROP } from './economy';
 import { CARRY, laborPlan } from './labor';
-import { buildCap, completeProject } from './planner';
+import { buildCap, completeProject, shortOf, supplied } from './planner';
 import { clamp } from './rng';
 import {
   addMemory, bondNearby, converse, expireMemories, first, kinship, moodTarget, rel, RIVAL, say, shiftOpinion, socialGain, think,
@@ -144,7 +144,7 @@ function updateNeeds(sim: Sim, a: Agent, dt: number, stage: Stage): void {
   } else n.work += (60 - n.work) * 0.002 * dt;
   a.bladder -= 0.32 * dt * (asleep ? 0.3 : 1);
   if (k === 'coffee' && performing) a.bladder -= 0.4 * dt;
-  for (const key of ['energy', 'hunger', 'hygiene', 'social', 'fun', 'work'] as const) n[key] = clamp(n[key], 0, 100);
+  for (const key of NEED_KEYS) n[key] = clamp(n[key], 0, 100);
   a.bladder = clamp(a.bladder, 0, 100);
 
   if (n.hunger < 8) addMemory(sim, a, 'starving');
@@ -624,7 +624,7 @@ function arriveHaul(sim: Sim, a: Agent): void {
     return finish(sim, a);
   }
   if (act.leg === 'pickup') {
-    const take = Math.min(CARRY, Math.floor(sim.stock[mat]), Math.ceil(pr.need[mat] - pr.delivered[mat]));
+    const take = Math.min(CARRY, Math.floor(sim.stock[mat]), Math.ceil(shortOf(pr, mat)));
     if (take <= 0) return finish(sim, a);
     sim.stock[mat] -= take;
     a.carry = { kind: mat, amount: take };
@@ -653,7 +653,7 @@ function arriveHaul(sim: Sim, a: Agent): void {
     return;
   }
   if (a.carry) {
-    pr.delivered[mat] += a.carry.amount;
+    pr.delivered[mat] = (pr.delivered[mat] ?? 0) + a.carry.amount;
     a.carry = null;
   }
   finish(sim, a);
@@ -878,8 +878,8 @@ function performGather(sim: Sim, a: Agent, dt: number, tick: () => boolean): voi
   const pr = sim.projects.find((x) => x.id === act.projectId);
   if (pr) {
     // Cleared timber and stone go straight into the build; any surplus heads to the store.
-    const use = Math.min(amount, Math.max(0, pr.need[kind] - pr.delivered[kind]));
-    pr.delivered[kind] += use;
+    const use = Math.min(amount, shortOf(pr, kind));
+    pr.delivered[kind] = (pr.delivered[kind] ?? 0) + use;
     amount -= use;
   }
   if (amount > 0) a.carry = { kind, amount: (a.carry?.kind === kind ? a.carry.amount : 0) + amount };
@@ -905,7 +905,7 @@ function performBuild(sim: Sim, a: Agent, dt: number, tick: () => boolean): void
     const o = sim.agent(id);
     if (o && o.id !== a.id) bondNearby(sim, a, o, dt * 0.5);
   }
-  if (pr.progress >= pr.work - 0.01 && pr.delivered.wood >= pr.need.wood && pr.delivered.stone >= pr.need.stone) {
+  if (pr.progress >= pr.work - 0.01 && supplied(pr)) {
     completeProject(sim, pr);
     think(sim, a, `${pr.name} is done. I helped build that.`, 'good');
     return finish(sim, a);

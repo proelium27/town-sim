@@ -1,4 +1,4 @@
-import { DAY_NAMES } from '../sim/defs';
+import { DAY_NAMES, GOOD_KEYS, GOODS } from '../sim/defs';
 import type { Sim } from '../sim/sim';
 import { statusOf } from './tracker';
 import { esc } from './util';
@@ -34,8 +34,10 @@ export class Hud {
 
   update(): void {
     const sim = this.sim;
-    // "Tue · Day 2" over the time: the weekday drives routines, the day count shows how far the town has come.
-    const day = `${DAY_NAMES[sim.weekday]} · Day ${sim.day + 1}`;
+    // "Tue · Spring 2" over the time: the weekday drives routines, the season drives the year.
+    const day = `${DAY_NAMES[sim.weekday]} · ${sim.seasonName} ${sim.seasonDay}`;
+    const title = `${sim.date()} · day ${sim.day + 1} of the town`;
+    if (this.dayEl.title !== title) this.dayEl.title = title;
     const hm = sim.clock().split(' ').pop()!;
     if (this.dayEl.textContent !== day) this.dayEl.textContent = day;
     if (this.clockEl.textContent !== hm) this.clockEl.textContent = hm;
@@ -52,9 +54,7 @@ export class Hud {
     // Town-wide numbers, most important first; narrow screens drop from the end.
     const stats: [string, number | string][] = [
       ['people', sim.agents.length],
-      ['food', Math.round(sim.stock.food)],
-      ['wood', Math.round(sim.stock.wood)],
-      ['stone', Math.round(sim.stock.stone)],
+      ...GOOD_KEYS.filter((g) => GOODS[g].hud).map((g): [string, number] => [GOODS[g].label.toLowerCase(), Math.round(sim.stock[g])]),
       ['at work', working],
       ['asleep', asleep],
       ['mood', mood],

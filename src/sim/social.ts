@@ -1,4 +1,4 @@
-import { MEMORIES, type MemoryKind } from './defs';
+import { MEMORIES, type MemoryKind, NEED_KEYS, NEEDS, type NeedKey, type TraitKey } from './defs';
 import { clamp } from './rng';
 import type { Agent, Relation, Tone } from './types';
 import type { Sim } from './sim';
@@ -83,6 +83,13 @@ export function expireMemories(sim: Sim, a: Agent): void {
   if (a.memories.some((m) => m.expires <= sim.time)) a.memories = a.memories.filter((m) => m.expires > sim.time);
 }
 
+/** Traits that make a need weigh more on mood when it runs low. */
+const TRAIT_WEIGHT: Partial<Record<NeedKey, [TraitKey, number]>> = {
+  hygiene: ['neatFreak', 0.6],
+  social: ['extrovert', 0.45],
+  work: ['workaholic', 0.45],
+};
+
 export interface MoodPart {
   label: string;
   value: number;
@@ -94,12 +101,13 @@ export function moodParts(a: Agent): MoodPart[] {
   if (a.traits.includes('cheerful')) out.push({ label: 'Cheerful', value: 8 });
   if (a.traits.includes('grumpy')) out.push({ label: 'Grumpy', value: -8 });
   const n = a.needs;
-  const low: [keyof typeof n, string, number][] = [
-    ['energy', 'Exhausted', 0.4], ['hunger', 'Hungry', 0.45], ['hygiene', 'Grimy', a.traits.includes('neatFreak') ? 0.6 : 0.3],
-    ['social', 'Lonely', a.traits.includes('extrovert') ? 0.45 : 0.3], ['fun', 'Bored', 0.3], ['work', 'Unproductive', a.traits.includes('workaholic') ? 0.45 : 0.15],
-  ];
-  for (const [k, label, w] of low) if (n[k] < 30) out.push({ label, value: -Math.round((30 - n[k]) * w) });
-  const met = (['energy', 'hunger', 'hygiene', 'social', 'fun', 'work'] as const).filter((k) => n[k] > 75).length;
+  for (const k of NEED_KEYS) {
+    if (n[k] >= 30) continue;
+    const t = TRAIT_WEIGHT[k];
+    const w = t && a.traits.includes(t[0]) ? t[1] : NEEDS[k].weight;
+    out.push({ label: NEEDS[k].low, value: -Math.round((30 - n[k]) * w) });
+  }
+  const met = NEED_KEYS.filter((k) => n[k] > 75).length;
   if (met) out.push({ label: 'Needs met', value: met * 2 });
   for (const m of a.memories) out.push({ label: m.label, value: m.mood });
   return out;

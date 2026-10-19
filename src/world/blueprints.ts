@@ -1,3 +1,4 @@
+import type { Bill } from '../sim/defs';
 import type { Building, BuildingKind, TownMap } from './map';
 import { Stamper } from './stamp';
 
@@ -7,8 +8,8 @@ export interface Blueprint {
   noun: string;
   w: number;
   h: number;
-  wood: number;
-  stone: number;
+  /** Materials the build consumes. */
+  cost: Bill;
   /** Builder-minutes of construction. */
   work: number;
   /** Door column in local coordinates (door sits on the top wall, or bottom when flipped). */
@@ -148,14 +149,14 @@ function stampPark(m: TownMap, x: number, y: number, doorTop: boolean, name: str
 
 export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park', Blueprint> = {
   house: {
-    kind: 'house', noun: 'a new home', w: 11, h: 8, wood: 40, stone: 20, work: 360, doorX: 4, outdoor: false,
+    kind: 'house', noun: 'a new home', w: 11, h: 8, cost: { wood: 40, stone: 20 }, work: 360, doorX: 4, outdoor: false,
     stamp: (m, x, y, top, name, hh) => stampHouse(m, x, y, top, name, hh ?? 0, true),
   },
-  farm: { kind: 'farm', noun: 'a farm', w: 10, h: 7, wood: 10, stone: 0, work: 140, doorX: 4, outdoor: true, stamp: (m, x, y, top, name) => stampFarm(m, x, y, top, name) },
-  storehouse: { kind: 'storehouse', noun: 'a storehouse', w: 7, h: 6, wood: 25, stone: 10, work: 200, doorX: 3, outdoor: false, stamp: (m, x, y, top, name) => stampStorehouse(m, x, y, top, name) },
-  school: { kind: 'school', noun: 'a schoolhouse', w: 11, h: 8, wood: 40, stone: 30, work: 420, doorX: 1, outdoor: false, stamp: (m, x, y, top, name) => stampSchool(m, x, y, top, name) },
-  diner: { kind: 'cafe', noun: 'a diner', w: 11, h: 8, wood: 35, stone: 25, work: 380, doorX: 9, outdoor: false, stamp: (m, x, y, top, name) => stampDiner(m, x, y, top, name) },
-  park: { kind: 'park', noun: 'a little park', w: 8, h: 8, wood: 6, stone: 8, work: 100, doorX: 3, outdoor: true, stamp: (m, x, y, top, name) => stampPark(m, x, y, top, name) },
+  farm: { kind: 'farm', noun: 'a farm', w: 10, h: 7, cost: { wood: 10, stone: 0 }, work: 140, doorX: 4, outdoor: true, stamp: (m, x, y, top, name) => stampFarm(m, x, y, top, name) },
+  storehouse: { kind: 'storehouse', noun: 'a storehouse', w: 7, h: 6, cost: { wood: 25, stone: 10 }, work: 200, doorX: 3, outdoor: false, stamp: (m, x, y, top, name) => stampStorehouse(m, x, y, top, name) },
+  school: { kind: 'school', noun: 'a schoolhouse', w: 11, h: 8, cost: { wood: 40, stone: 30 }, work: 420, doorX: 1, outdoor: false, stamp: (m, x, y, top, name) => stampSchool(m, x, y, top, name) },
+  diner: { kind: 'cafe', noun: 'a diner', w: 11, h: 8, cost: { wood: 35, stone: 25 }, work: 380, doorX: 9, outdoor: false, stamp: (m, x, y, top, name) => stampDiner(m, x, y, top, name) },
+  park: { kind: 'park', noun: 'a little park', w: 8, h: 8, cost: { wood: 6, stone: 8 }, work: 100, doorX: 3, outdoor: true, stamp: (m, x, y, top, name) => stampPark(m, x, y, top, name) },
 };
 
 export type BlueprintKey = keyof typeof BLUEPRINTS;

@@ -2,7 +2,7 @@ import type { Building, Prop, Room } from '../world/map';
 import { type Town, buildTown } from '../world/town';
 import { tickAgents } from './ai';
 import { createAgents } from './agents';
-import { DAY_NAMES, MIN_PER_DAY, type PriorityKey } from './defs';
+import { DAY_NAMES, emptyStock, MIN_PER_DAY, type PriorityKey, SEASON_DAYS, SEASONS, type Season, type Stock, YEAR_DAYS } from './defs';
 import { tickEconomy } from './economy';
 import { tickEvents, type EventState, initialEvents } from './events';
 import { tickLife } from './life';
@@ -15,11 +15,7 @@ import type { Activity, ActivityKind, Agent, Project, Tone } from './types';
 /** Game minutes per simulation step. At 1x the sim runs 20 steps per real second (1 game minute/s). */
 export const STEP = 0.05;
 
-export interface Stock {
-  wood: number;
-  stone: number;
-  food: number;
-}
+export type { Stock } from './defs';
 
 export interface Milestone {
   t: number;
@@ -28,8 +24,10 @@ export interface Milestone {
 
 export class Sim {
   readonly town: Town;
-  readonly nav: Nav;
+  /** Rebuilt after loading a save. */
+  nav: Nav;
   readonly rng: Rng;
+  readonly seed: number;
   /** Game minutes since Monday 00:00 of week one. */
   time = 6 * 60 + 30;
   /** The living. */
@@ -46,7 +44,7 @@ export class Sim {
   /** Meals in each household's fridge, indexed by household id. */
   pantry: number[] = [];
   /** The town's shared stockpile, kept in storehouses. */
-  stock: Stock = { wood: 45, stone: 30, food: 160 };
+  stock: Stock = { ...emptyStock(), wood: 45, stone: 30, food: 160 };
   projects: Project[] = [];
   nextProjectId = 1;
   /** Player-set emphasis for the town planner: 0 low, 1 normal, 2 high. */
@@ -55,10 +53,12 @@ export class Sim {
   events: EventState = initialEvents();
   cars: Car[] = [];
   tasksCompleted = 0;
+  nextCarId = 1;
   /** Countdown timers (game minutes) for periodic systems. */
   timers = { plan: 30, roles: 0, regrow: 0, life: 60, arrival: 1.5 * 1440 };
 
   constructor(seed = 7, opts: { agents?: boolean } = {}) {
+    this.seed = seed;
     this.rng = new Rng(seed);
     this.town = buildTown(seed);
     this.nav = new Nav(this.town.map);
@@ -85,6 +85,35 @@ export class Sim {
 
   get hour(): number {
     return (this.time % MIN_PER_DAY) / 60;
+  }
+
+  /** 0 spring, 1 summer, 2 autumn, 3 winter. The town is founded on the first day of spring. */
+  get season(): number {
+    return Math.floor(this.day / SEASON_DAYS) % SEASONS.length;
+  }
+
+  get seasonName(): Season {
+    return SEASONS[this.season];
+  }
+
+  /** 1-based day within the season. */
+  get seasonDay(): number {
+    return (this.day % SEASON_DAYS) + 1;
+  }
+
+  /** How far through the season we are, 0..1, including the time of day. */
+  get seasonProgress(): number {
+    return ((this.time / MIN_PER_DAY) % SEASON_DAYS) / SEASON_DAYS;
+  }
+
+  /** 1-based year since the town was founded. */
+  get year(): number {
+    return Math.floor(this.day / YEAR_DAYS) + 1;
+  }
+
+  /** "Spring 2 · Year 1" */
+  date(): string {
+    return `${this.seasonName} ${this.seasonDay} · Year ${this.year}`;
   }
 
   clock(): string {

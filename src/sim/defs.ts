@@ -5,15 +5,66 @@ export const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 // ------------------------------------------------------------------ needs
 
 export type NeedKey = 'energy' | 'hunger' | 'hygiene' | 'social' | 'fun' | 'work';
-export const NEED_KEYS: NeedKey[] = ['energy', 'hunger', 'hygiene', 'social', 'fun', 'work'];
-export const NEED_LABEL: Record<NeedKey, string> = {
-  energy: 'Energy',
-  hunger: 'Hunger',
-  hygiene: 'Hygiene',
-  social: 'Social',
-  fun: 'Fun',
-  work: 'Productivity',
+
+export interface NeedDef {
+  label: string;
+  /** CSS color for meters (a --n-* token). */
+  color: string;
+  /** Mood line shown when the need runs low ("Hungry"). */
+  low: string;
+  /** Mood points lost per point below 30. */
+  weight: number;
+}
+
+/** Every need, in display order. UI and mood read from here, so adding a need is one entry. */
+export const NEEDS: Record<NeedKey, NeedDef> = {
+  energy: { label: 'Energy', color: 'var(--n-energy)', low: 'Exhausted', weight: 0.4 },
+  hunger: { label: 'Hunger', color: 'var(--n-hunger)', low: 'Hungry', weight: 0.45 },
+  hygiene: { label: 'Hygiene', color: 'var(--n-hygiene)', low: 'Grimy', weight: 0.3 },
+  social: { label: 'Social', color: 'var(--n-social)', low: 'Lonely', weight: 0.3 },
+  fun: { label: 'Fun', color: 'var(--n-fun)', low: 'Bored', weight: 0.3 },
+  work: { label: 'Productivity', color: 'var(--n-work)', low: 'Unproductive', weight: 0.15 },
 };
+export const NEED_KEYS = Object.keys(NEEDS) as NeedKey[];
+export const NEED_LABEL = Object.fromEntries(NEED_KEYS.map((k) => [k, NEEDS[k].label])) as Record<NeedKey, string>;
+
+// ------------------------------------------------------------------ calendar
+
+/** A season lasts two days and a year eight. Ages run on their own, faster clock (YEARS_PER_DAY). */
+export const SEASON_DAYS = 2;
+export const SEASONS = ['Spring', 'Summer', 'Autumn', 'Winter'] as const;
+export type Season = (typeof SEASONS)[number];
+export const YEAR_DAYS = SEASON_DAYS * SEASONS.length;
+
+// ------------------------------------------------------------------ goods
+
+export type Good = 'food' | 'wood' | 'stone';
+
+export interface GoodDef {
+  label: string;
+  /** CSS color for store bars. */
+  color: string;
+  /** Store bar fills at this amount. */
+  cap: number;
+  /** Shown in the top bar. */
+  hud: boolean;
+}
+
+/** Everything the town stores, carries and builds with, in display order. */
+export const GOODS: Record<Good, GoodDef> = {
+  food: { label: 'Food', color: 'var(--n-hunger)', cap: 300, hud: true },
+  wood: { label: 'Wood', color: 'oklch(0.55 0.09 60)', cap: 200, hud: true },
+  stone: { label: 'Stone', color: 'oklch(0.6 0.01 80)', cap: 200, hud: true },
+};
+export const GOOD_KEYS = Object.keys(GOODS) as Good[];
+export type Stock = Record<Good, number>;
+/** A list of goods and amounts: a building's materials, a delivery so far. */
+export type Bill = Partial<Record<Good, number>>;
+export const emptyStock = (): Stock => Object.fromEntries(GOOD_KEYS.map((k) => [k, 0])) as Stock;
+export const billGoods = (b: Bill): Good[] => GOOD_KEYS.filter((g) => (b[g] ?? 0) > 0);
+/** "wood 12/40 · stone 0/20" */
+export const billText = (need: Bill, have: Bill): string =>
+  billGoods(need).map((g) => `${GOODS[g].label.toLowerCase()} ${Math.floor(Math.min(have[g] ?? 0, need[g]!))}/${need[g]}`).join(' · ');
 
 // ------------------------------------------------------------------ skills
 

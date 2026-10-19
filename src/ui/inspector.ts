@@ -1,17 +1,13 @@
 import type { Art } from '../assets/loader';
 import { ageOf } from '../sim/agents';
 import { xpToNext } from '../sim/ai';
-import { NEED_KEYS, NEED_LABEL, ROLES, SKILL_KEYS, SKILL_LABEL, TRAITS } from '../sim/defs';
+import { billText, NEED_KEYS, NEEDS, ROLES, SKILL_KEYS, SKILL_LABEL, TRAITS } from '../sim/defs';
 import { kinship, moodParts, moodTarget, moodWord, relationLabel, type Kin } from '../sim/social';
 import type { Agent } from '../sim/types';
 import type { Sim } from '../sim/sim';
 import { RelationGraph } from './relgraph';
 import { dayTime, duration, esc, hhmm, hourLabel } from './util';
 
-const NEED_COLOR: Record<string, string> = {
-  energy: 'var(--n-energy)', hunger: 'var(--n-hunger)', hygiene: 'var(--n-hygiene)',
-  social: 'var(--n-social)', fun: 'var(--n-fun)', work: 'var(--n-work)',
-};
 
 type Tab = 'needs' | 'day' | 'people' | 'mind';
 const TABS: [Tab, string][] = [['needs', 'Needs'], ['day', 'Day'], ['people', 'People'], ['mind', 'Mind']];
@@ -85,7 +81,7 @@ export class Inspector {
         <div class="meter mood" data-m="mood"><span class="lbl">Mood</span><span class="bar" style="--c:var(--n-mood)"><i></i><b></b></span><span class="val num">0</span></div>
         <p class="moodword" data-f="moodword"></p>
         <div class="meters">
-          ${NEED_KEYS.map((k) => `<div class="meter" data-m="${k}"><span class="lbl">${NEED_LABEL[k]}</span><span class="bar" style="--c:${NEED_COLOR[k]}"><i></i></span><span class="val num">0</span></div>`).join('')}
+          ${NEED_KEYS.map((k) => `<div class="meter" data-m="${k}"><span class="lbl">${NEEDS[k].label}</span><span class="bar" style="--c:${NEEDS[k].color}"><i></i></span><span class="val num">0</span></div>`).join('')}
         </div>
         <h3>What's moving their mood</h3>
         <ul class="list" data-slot="mood"></ul>
@@ -177,7 +173,7 @@ export class Inspector {
     const pct = t ? Math.min(100, (t.progress / t.total) * 100) : pr ? Math.min(100, (pr.progress / pr.work) * 100) : 0;
     set('taskpct', t || pr ? `${Math.floor(pct)}%` : '');
     (r.querySelector('[data-f="taskbar"]') as HTMLElement).style.width = `${pct}%`;
-    if (!t) set('taskmeta', pr ? `Wood ${Math.floor(Math.min(pr.delivered.wood, pr.need.wood))}/${pr.need.wood} · stone ${Math.floor(Math.min(pr.delivered.stone, pr.need.stone))}/${pr.need.stone} · proposed because ${esc(pr.reason)}` : '', true);
+    if (!t) set('taskmeta', pr ? `${billText(pr.need, pr.delivered)} · proposed because ${esc(pr.reason)}` : '', true);
     if (t) {
       const left = t.due !== undefined ? t.due - this.sim.time : undefined;
       set('taskmeta', left === undefined ? `Started ${dayTime(t.started)}` : left > 0 ? `Due ${dayTime(t.due!)} (in ${duration(left)})` : 'Overdue', false);

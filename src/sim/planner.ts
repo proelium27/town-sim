@@ -2,7 +2,7 @@ import type { GroundKey } from '../assets/manifest';
 import { BLUEPRINTS, type BlueprintKey } from '../world/blueprints';
 import type { Household } from '../world/town';
 import { ageOf, makeSchedule, newTask } from './agents';
-import { ADULT_AGE, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
+import { ADULT_AGE, billGoods, type Good, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
 import { foodBalance } from './economy';
 import { addMemory, first, think } from './social';
 import type { Agent, Project } from './types';
@@ -78,15 +78,29 @@ export type Stage = 'clearing' | 'supplying' | 'building';
 
 export function stageOf(sim: Sim, pr: Project): Stage {
   if (clutter(sim, pr).length) return 'clearing';
-  if (pr.delivered.wood < pr.need.wood || pr.delivered.stone < pr.need.stone) return pr.progress > 0 ? 'building' : 'supplying';
+  if (!supplied(pr)) return pr.progress > 0 ? 'building' : 'supplying';
   return 'building';
 }
 
 /** How much of the work the delivered materials allow so far. */
 export function buildCap(pr: Project): number {
-  const total = pr.need.wood + pr.need.stone;
-  const have = Math.min(pr.delivered.wood, pr.need.wood) + Math.min(pr.delivered.stone, pr.need.stone);
+  let total = 0;
+  let have = 0;
+  for (const g of billGoods(pr.need)) {
+    total += pr.need[g]!;
+    have += Math.min(pr.delivered[g] ?? 0, pr.need[g]!);
+  }
   return total ? (have / total) * pr.work : pr.work;
+}
+
+/** Every material the project needs has arrived. */
+export function supplied(pr: Project): boolean {
+  return billGoods(pr.need).every((g) => (pr.delivered[g] ?? 0) >= pr.need[g]!);
+}
+
+/** How much more of a material the project still needs. */
+export function shortOf(pr: Project, g: Good): number {
+  return Math.max(0, (pr.need[g] ?? 0) - (pr.delivered[g] ?? 0));
 }
 
 // ------------------------------------------------------------------ deciding what to build
@@ -299,8 +313,8 @@ function startProject(sim: Sim, p: Proposal): Project | null {
     h: bp.h,
     doorTop: site.doorTop,
     path: site.path,
-    need: { wood: bp.wood, stone: bp.stone },
-    delivered: { wood: 0, stone: 0 },
+    need: { ...bp.cost },
+    delivered: {},
     work: bp.work,
     progress: 0,
     reason: p.reason,

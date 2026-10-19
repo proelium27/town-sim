@@ -214,8 +214,9 @@ export class WorldView {
           for (let x = X + 12; x < X + W - 4; x += 24) g.rect(x, Y + 2, 2, H - 4).fill({ color: 0x7a5531, alpha: 0.7 });
         }
         // Material piles next to the site.
-        const logs = Math.min(5, Math.floor(Math.max(0, pr.delivered.wood - (pr.progress / pr.work) * pr.need.wood) / 6));
-        const stones = Math.min(5, Math.floor(Math.max(0, pr.delivered.stone - (pr.progress / pr.work) * pr.need.stone) / 6));
+        const pile = (g: 'wood' | 'stone') => Math.min(5, Math.floor(Math.max(0, (pr.delivered[g] ?? 0) - (pr.progress / pr.work) * (pr.need[g] ?? 0)) / 6));
+        const logs = pile('wood');
+        const stones = pile('stone');
         for (let k = 0; k < logs; k++) g.rect(X + 4 + k * 5, Y + H - 9, 4, 6).fill(0x9b6a3c).rect(X + 4 + k * 5, Y + H - 9, 4, 1).fill(0xd4a56a);
         for (let k = 0; k < stones; k++) g.rect(X + W - 9 - k * 5, Y + H - 8, 4, 4).fill(0x8d877f);
       }
