@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SEASON_DAYS } from '../src/sim/defs';
 import { BASE_PRICE, price, tickMarket, trade } from '../src/sim/market';
 import { Sim } from '../src/sim/sim';
 import { addMemory } from '../src/sim/social';
@@ -10,6 +11,25 @@ describe('prices', () => {
     expect(price(sim, 'food')).toBeGreaterThan(BASE_PRICE.food * 2);
     sim.stock.food = 2000;
     expect(price(sim, 'food')).toBeLessThan(BASE_PRICE.food * 0.6);
+  });
+
+  it('climb through summer toward winter instead of jumping overnight when autumn starts', () => {
+    const sim = new Sim(7);
+    sim.stock.food = 100;
+    sim.stock.firewood = 40;
+    const at = (day: number) => {
+      sim.time = day * 1440;
+      return { food: price(sim, 'food'), firewood: price(sim, 'firewood') };
+    };
+    const spring = at(SEASON_DAYS - 0.01);
+    const midSummer = at(SEASON_DAYS * 1.5);
+    const lateSummer = at(2 * SEASON_DAYS - 0.01);
+    const autumn = at(2 * SEASON_DAYS + 0.01);
+    for (const g of ['food', 'firewood'] as const) {
+      expect(midSummer[g]).toBeGreaterThan(spring[g]);
+      expect(midSummer[g]).toBeLessThan(autumn[g]);
+      expect(Math.abs(autumn[g] - lateSummer[g])).toBeLessThan(lateSummer[g] * 0.05);
+    }
   });
 });
 

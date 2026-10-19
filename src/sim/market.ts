@@ -1,4 +1,4 @@
-import { type Good, GOOD_KEYS, GOODS, MIN_PER_DAY, ROLES } from './defs';
+import { type Good, GOOD_KEYS, GOODS, MIN_PER_DAY, ROLES, SEASON_DAYS } from './defs';
 import { addMemory, first, kinship, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
 import type { Agent } from './types';
@@ -13,19 +13,24 @@ export const TOWN_WAGE = 0.45;
 /** A trader's cart visits every few days. */
 export const TRADER_EVERY = 3;
 
+/** How far the town is into stocking up for winter: none in spring, ramping up through summer, full from autumn on. */
+export function winterPrep(sim: Sim): number {
+  return sim.season >= 2 ? 1 : sim.season === 1 ? sim.seasonProgress : 0;
+}
+
 /** How much of a good the town is comfortable holding; prices rise below it and fall above it. */
 export function wantOf(sim: Sim, g: Good): number {
   const people = sim.agents.length;
   const homes = sim.town.households.filter((h) => h.building >= 0).length;
   switch (g) {
     case 'food': {
-      // Through autumn and winter, keep enough to eat until the spring crops come in.
-      const toSpring = sim.season >= 2 ? (4 - sim.season) * 2 - sim.seasonProgress * 2 : 0;
+      // Through autumn and winter, keep enough to eat until the spring crops come in; summer builds up to it.
+      const toSpring = sim.season >= 2 ? (4 - sim.season - sim.seasonProgress) * SEASON_DAYS : winterPrep(sim) * 2 * SEASON_DAYS;
       return people * (6 + 2.6 * toSpring);
     }
     case 'wood': return 90;
     case 'stone': return 60;
-    case 'firewood': return homes * (sim.season >= 2 ? 12 : 4);
+    case 'firewood': return homes * (4 + 8 * winterPrep(sim));
     default: return Math.max(2, targetOf(sim, g));
   }
 }
