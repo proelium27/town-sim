@@ -128,8 +128,11 @@ export function paveFrontier(sim: Sim): number[] {
   let c = paveCache.get(m);
   if (!c || c.version !== m.groundVersion) {
     const cells: number[] = [];
+    // Farm plots, park walks and cemetery paths are part of their lots, not the street.
+    const lot = new Uint8Array(m.ground.length);
+    for (const b of m.buildings) for (let y = b.y; y < b.y + b.h; y++) for (let x = b.x; x < b.x + b.w; x++) if (m.inBounds(x, y)) lot[m.idx(x, y)] = 1;
     for (let i = 0; i < m.ground.length; i++) {
-      if ((m.ground[i] !== 'dirt' && m.ground[i] !== 'trail') || m.room[i] >= 0 || m.cell[i] !== Cell.Open) continue;
+      if ((m.ground[i] !== 'dirt' && m.ground[i] !== 'trail') || m.room[i] >= 0 || m.cell[i] !== Cell.Open || lot[i]) continue;
       const x = m.cx(i);
       const y = m.cy(i);
       if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => m.inBounds(x + dx, y + dy) && STREETS.has(m.ground[m.idx(x + dx, y + dy)]))) cells.push(i);

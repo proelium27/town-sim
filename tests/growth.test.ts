@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createAgent } from '../src/sim/agents';
-import { checkTier, extensionSite, stampExtension, TIER_AT } from '../src/sim/growth';
+import { checkTier, extensionSite, paveFrontier, stampExtension, TIER_AT } from '../src/sim/growth';
 import { capacity, completeProject, findSite, members, newHousehold, tickPlanner } from '../src/sim/planner';
 import { BLUEPRINTS } from '../src/world/blueprints';
 import { Cell } from '../src/world/map';
@@ -172,6 +172,19 @@ describe('town tiers', () => {
     expect(sim.tier).toBe(1);
     expect(sim.events.festival?.name).toBe('Charter day');
     expect(sim.agents.every((a) => a.memories.some((m) => m.kind === 'proudTown'))).toBe(true);
+  });
+
+  it('paving stays out of farm plots', () => {
+    const sim = new Sim(7);
+    const m = sim.map;
+    // A new farm, its door opening onto a plaza tile as when the builders finish one.
+    const site = findSite(sim, 'farm')!;
+    const farm = BLUEPRINTS.farm.stamp(m, site.x, site.y, site.doorTop, 'Test Farm');
+    m.setGround(farm.door.x, farm.door.y, 'plaza');
+    const frontier = paveFrontier(sim);
+    expect(frontier.length).toBeGreaterThan(0);
+    const inLot = (i: number) => m.buildings.some((b) => m.cx(i) >= b.x && m.cx(i) < b.x + b.w && m.cy(i) >= b.y && m.cy(i) < b.y + b.h);
+    expect(frontier.filter(inLot)).toEqual([]);
   });
 
   it('a town paves its dirt paths', () => {
