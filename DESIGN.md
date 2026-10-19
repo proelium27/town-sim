@@ -9,6 +9,7 @@ Scene: a player keeps the town open on a laptop through the day and into the eve
 - **Roster** (top left): compact people list, collapsible (`P`). One 52px row per person. A People | Town switch (`T`) at the top swaps the list for the **Town view**: stat tiles, stores with daily food balance, the player's priorities (Low / Normal / High, marigold only on High), world-event buttons (green square = good, red = bad), projects being built, and town history.
 - **Feed** (bottom left): latest events, collapsible (`L`); expands to a taller scroll.
 - **Inspector** (right): the selected person, tabbed (Now · Needs · Social · Mind) so it never needs a long scroll.
+- **Relationship levels**: Nemesis, Rival, Tense, Acquaintance, Friendly, Friend, Close friend, then **Family** above them all: partners, parents, children, siblings, step-family, grandparents and in-laws. Family is listed first with its kinship and opinion, and sits at the top of the graph in rose (the social need hue, `#ea80a6`). Family that fall out below Rival show as estranged. In the sim, family fights cost half the opinion, people lean toward kin when looking for company, and new babies start with a bond to their siblings and grandparents.
 - The camera centers on the unobstructed middle (CSS vars `--obstruct-left/right/top/bottom`), but the map may scroll beneath panels.
 
 ## Color (OKLCH, warm-tinted neutrals; hue ~60)

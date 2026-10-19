@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { ageOf } from '../src/sim/agents';
+import { ageOf, createAgent } from '../src/sim/agents';
 import { triggerWorldEvent } from '../src/sim/events';
 import { die } from '../src/sim/life';
 import { allocateRoles } from '../src/sim/planner';
 import { Sim } from '../src/sim/sim';
+import { kinship, rel, relationLabel, shiftOpinion } from '../src/sim/social';
 
 describe('a self-building town', () => {
   const sim = new Sim(7);
@@ -98,5 +99,41 @@ describe('life and death', () => {
     expect(sim.deceased.includes(parent)).toBe(true);
     const kid = sim.agent(parent.children[0])!;
     expect(kid.memories.some((m) => m.kind === 'grief')).toBe(true);
+  });
+});
+
+describe('family bonds', () => {
+  const sim = new Sim(11);
+  const parent = sim.agents.find((a) => a.children.length > 0 && a.partner !== null)!;
+  const partner = sim.agent(parent.partner!)!;
+  const kid = sim.agent(parent.children[0])!;
+
+  it('recognizes partners, parents, children and new siblings', () => {
+    expect(kinship(sim, parent, partner)).toBe('partner');
+    expect(kinship(sim, kid, parent)).toBe('parent');
+    expect(kinship(sim, parent, kid)).toBe('child');
+    const baby = createAgent(sim, { role: 'child', household: parent.household, age: 0, parents: [parent, partner], cell: parent.at });
+    sim.agents.push(baby);
+    expect(kinship(sim, kid, baby)).toBe('sibling');
+    expect(kid.relations.has(baby.id)).toBe(true);
+    const outsider = sim.agents.find((o) => o.household !== parent.household)!;
+    expect(kinship(sim, parent, outsider)).toBeNull();
+  });
+
+  it('ranks family above close friends, unless they have fallen out', () => {
+    expect(relationLabel(90)).toBe('Close friend');
+    expect(relationLabel(90, 'parent')).toBe('Family');
+    expect(relationLabel(10, 'sibling')).toBe('Family');
+    expect(relationLabel(-50, 'sibling')).toBe('Estranged family');
+  });
+
+  it('family fights sting half as much', () => {
+    const outsider = sim.agents.find((o) => o.household !== parent.household)!;
+    parent.relations.get(partner.id)!.opinion = 50;
+    rel(parent, outsider).opinion = 50;
+    shiftOpinion(sim, parent, partner, -10);
+    shiftOpinion(sim, parent, outsider, -10);
+    expect(parent.relations.get(partner.id)!.opinion).toBe(45);
+    expect(parent.relations.get(outsider.id)!.opinion).toBe(40);
   });
 });

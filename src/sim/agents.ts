@@ -148,6 +148,14 @@ export function createAgent(sim: Sim, o: NewAgentOpts): Agent {
     p.children.push(a.id);
     a.relations.set(p.id, { opinion: 60, familiarity: 90, lastTalk: -Infinity });
     p.relations.set(a.id, { opinion: 75, familiarity: 90, lastTalk: -Infinity });
+    // The rest of the family meets the baby too.
+    const tie = (o: Agent | undefined, mine: number, theirs: number, fam: number) => {
+      if (!o || o.id === a.id || a.relations.has(o.id)) return;
+      a.relations.set(o.id, { opinion: mine, familiarity: fam, lastTalk: -Infinity });
+      o.relations.set(a.id, { opinion: theirs, familiarity: fam, lastTalk: -Infinity });
+    };
+    for (const id of p.children) tie(sim.agent(id), 40, 45, 75);
+    for (const id of p.parents) tie(sim.agent(id), 45, 70, 60);
   }
   return a;
 }

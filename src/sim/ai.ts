@@ -7,7 +7,7 @@ import { CARRY, laborPlan } from './labor';
 import { buildCap, completeProject } from './planner';
 import { clamp } from './rng';
 import {
-  addMemory, bondNearby, converse, expireMemories, first, moodTarget, rel, RIVAL, say, shiftOpinion, socialGain, think,
+  addMemory, bondNearby, converse, expireMemories, first, kinship, moodTarget, rel, RIVAL, say, shiftOpinion, socialGain, think,
 } from './social';
 import type { Action, ActionKind, Agent } from './types';
 import type { Sim } from './sim';
@@ -377,7 +377,8 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
       if (d > 22) continue;
       const r = rel(a, p);
       const peers = little === (stageOf(sim, p) === 'child') ? 0.08 : 0;
-      const pull = r.opinion <= RIVAL ? -0.35 : r.opinion / 220 + r.familiarity / 500 + peers;
+      const kin = kinship(sim, a, p) ? 0.12 : 0;
+      const pull = r.opinion <= RIVAL ? -0.35 : r.opinion / 220 + r.familiarity / 500 + peers + kin;
       const sc = base + pull - d * 0.012 + sim.rng.range(0, 0.06);
       if (!best || sc > best.score) best = { p, score: sc };
     }

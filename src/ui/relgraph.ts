@@ -1,4 +1,4 @@
-import { FRIEND, RIVAL, first } from '../sim/social';
+import { FRIEND, RIVAL, first, kinship } from '../sim/social';
 import type { Agent } from '../sim/types';
 import type { Sim } from '../sim/sim';
 
@@ -10,7 +10,7 @@ interface Node {
 
 /**
  * Radial relationship graph: the inspected person in the middle, everyone they know on a ring.
- * Friends float to the top, rivals sink to the bottom; line weight is strength of feeling.
+ * Family sits at the top in rose, then friends; rivals sink to the bottom. Line weight is strength of feeling.
  */
 export class RelationGraph {
   readonly canvas = document.createElement('canvas');
@@ -39,7 +39,9 @@ export class RelationGraph {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     const others = sim.agents.filter((a) => a.id !== center.id && center.relations.has(a.id));
-    others.sort((a, b) => (center.relations.get(b.id)!.opinion) - (center.relations.get(a.id)!.opinion));
+    const kin = new Set(others.filter((o) => kinship(sim, center, o)).map((o) => o.id));
+    const rank = (o: Agent) => center.relations.get(o.id)!.opinion + (kin.has(o.id) ? 1000 : 0);
+    others.sort((a, b) => rank(b) - rank(a));
     const cx = w / 2;
     const cy = h / 2;
     const R = Math.min(w, h) / 2 - 28;
@@ -66,7 +68,9 @@ export class RelationGraph {
     for (const nd of this.nodes) {
       const r = center.relations.get(nd.a.id)!;
       const s = Math.min(1, Math.abs(r.opinion) / 70);
-      ctx.strokeStyle = r.opinion >= 0 ? `rgba(120,200,120,${0.25 + s * 0.7})` : `rgba(235,100,85,${0.3 + s * 0.7})`;
+      ctx.strokeStyle = kin.has(nd.a.id) && r.opinion > RIVAL
+        ? `rgba(234,128,166,${0.45 + s * 0.5})`
+        : r.opinion >= 0 ? `rgba(120,200,120,${0.25 + s * 0.7})` : `rgba(235,100,85,${0.3 + s * 0.7})`;
       ctx.lineWidth = 1 + s * 3.5;
       ctx.setLineDash(Math.abs(r.opinion) < 5 ? [2, 4] : []);
       ctx.beginPath();
@@ -75,13 +79,13 @@ export class RelationGraph {
       ctx.stroke();
       ctx.setLineDash([]);
     }
-    const node = (a: Agent, x: number, y: number, big: boolean, op?: number) => {
+    const node = (a: Agent, x: number, y: number, big: boolean, op?: number, family = false) => {
       ctx.fillStyle = '#2a241e';
       ctx.beginPath();
       ctx.arc(x, y, big ? 13 : 9, 0, Math.PI * 2);
       ctx.fill();
       ctx.lineWidth = big ? 2 : 1.5;
-      ctx.strokeStyle = big ? '#f2c14e' : op === undefined ? '#8a8072' : op >= FRIEND ? '#7cc47c' : op <= RIVAL ? '#eb6455' : '#8a8072';
+      ctx.strokeStyle = big ? '#f2c14e' : op === undefined ? '#8a8072' : family && op > RIVAL ? '#ea80a6' : op >= FRIEND ? '#7cc47c' : op <= RIVAL ? '#eb6455' : '#8a8072';
       ctx.stroke();
       ctx.fillStyle = `hsl(${a.outfit.shirtHue} 45% 55%)`;
       ctx.beginPath();
@@ -93,7 +97,7 @@ export class RelationGraph {
       ctx.fillStyle = big ? '#f6efe0' : '#c9bfae';
       ctx.fillText(first(a), x, y + (big ? 16 : 11));
     };
-    for (const nd of this.nodes) node(nd.a, nd.x, nd.y, false, center.relations.get(nd.a.id)!.opinion);
+    for (const nd of this.nodes) node(nd.a, nd.x, nd.y, false, center.relations.get(nd.a.id)!.opinion, kin.has(nd.a.id));
     node(center, cx, cy, true);
   }
 }

@@ -9,7 +9,28 @@ export const RIVAL = -30;
 
 export const first = (a: Agent): string => a.name.split(' ')[0];
 
-export function relationLabel(op: number): string {
+/** How someone is related to a person by blood or marriage. */
+export type Kin = 'partner' | 'parent' | 'child' | 'sibling' | 'grandparent' | 'grandchild' | 'in-law' | 'stepparent' | 'stepchild';
+
+/** How b is related to a, or null if they aren't family. */
+export function kinship(sim: Sim, a: Agent, b: Agent): Kin | null {
+  if (a.id === b.id) return null;
+  if (a.partner === b.id) return 'partner';
+  if (a.parents.includes(b.id)) return 'parent';
+  if (a.children.includes(b.id)) return 'child';
+  if (a.parents.some((p) => b.parents.includes(p))) return 'sibling';
+  if (b.children.some((c) => a.parents.includes(c))) return 'grandparent';
+  if (a.children.some((c) => b.parents.includes(c))) return 'grandchild';
+  if (b.partner !== null && a.parents.includes(b.partner)) return 'stepparent';
+  const mate = a.partner !== null ? sim.agent(a.partner) : undefined;
+  if (mate?.children.includes(b.id)) return 'stepchild';
+  if (mate?.parents.includes(b.id) || (b.partner !== null && a.children.includes(b.partner))) return 'in-law';
+  return null;
+}
+
+/** The bond level, from opinion and (for family) kinship. Family ranks above close friends. */
+export function relationLabel(op: number, kin: Kin | null = null): string {
+  if (kin) return op <= RIVAL ? 'Estranged family' : 'Family';
   if (op >= CLOSE_FRIEND) return 'Close friend';
   if (op >= FRIEND) return 'Friend';
   if (op <= -65) return 'Nemesis';
@@ -118,9 +139,21 @@ function compatibility(a: Agent, b: Agent): number {
 export function shiftOpinion(sim: Sim, a: Agent, b: Agent, delta: number): void {
   const r = rel(a, b);
   const before = r.opinion;
+  const kin = kinship(sim, a, b);
+  // Family fights blow over: a falling-out with kin stings half as much.
+  if (kin && delta < 0) delta *= 0.5;
   r.opinion = clamp(r.opinion + delta, -100, 100);
   const other = rel(b, a).opinion;
-  if (before < FRIEND && r.opinion >= FRIEND && other >= FRIEND) {
+  if (kin) {
+    if (before > RIVAL && r.opinion <= RIVAL) {
+      sim.log(`${first(a)} has fallen out with their ${kin} ${first(b)}`, 'family', 'bad', a, b);
+      addMemory(sim, a, 'newRival', b);
+      think(sim, a, `Family or not, ${first(b)} and I aren't speaking.`, 'bad');
+    } else if (before <= RIVAL && r.opinion > RIVAL) {
+      sim.log(`${first(a)} made up with their ${kin} ${first(b)}`, 'family', 'good', a, b);
+      think(sim, a, `Things are better with ${first(b)} again. Family is family.`, 'good');
+    }
+  } else if (before < FRIEND && r.opinion >= FRIEND && other >= FRIEND) {
     sim.log(`${first(a)} and ${first(b)} are friends now`, 'social', 'good', a, b);
     addMemory(sim, a, 'newFriend', b);
     think(sim, a, `${first(b)} is actually great. Glad we clicked.`, 'good');
