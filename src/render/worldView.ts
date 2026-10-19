@@ -5,6 +5,8 @@ import { buildCap, stageOf } from '../sim/planner';
 import type { Sim } from '../sim/sim';
 import type { DrawnKey, Prop, TownMap } from '../world/map';
 import { Cell } from '../world/map';
+import { Lighting } from './lighting';
+import { Shading } from './shading';
 
 const WALL_TOP = 0xddd0b8;
 const WALL_TOP_HI = 0xf1e8d6;
@@ -31,6 +33,10 @@ export class WorldView {
   /** Props, agents and vehicles, sorted by their feet. */
   readonly entities = new Container({ sortableChildren: true });
   readonly overlay = new Container();
+  /** Baked lawn detail, cast shadows and ambient occlusion (between ground and walls). */
+  readonly shading: Shading;
+  /** Time-of-day grade and night lights (above entities). */
+  readonly lighting: Lighting;
   private sprites = new Map<number, Sprite>();
   private keys = new Map<number, string>();
   private propVersion = -1;
@@ -49,7 +55,9 @@ export class WorldView {
     for (let i = 0; i < m.w * m.h; i++) this.paintGround(i);
     this.groundTex = Texture.from(this.groundCanvas);
     this.groundTex.source.scaleMode = 'nearest';
-    this.root.addChild(new Sprite(this.groundTex), this.walls, this.flat, this.sites, this.entities, this.overlay);
+    this.shading = new Shading(m);
+    this.lighting = new Lighting(m);
+    this.root.addChild(new Sprite(this.groundTex), this.shading.layer, this.walls, this.flat, this.sites, this.entities, this.lighting.layer, this.overlay);
     this.parkCars();
     this.sync();
   }
@@ -200,9 +208,9 @@ export class WorldView {
       }
       // Progress bar above the plot.
       const cap = buildCap(pr) / pr.work;
-      g.rect(X, Y - 6, W, 3).fill({ color: 0x1f2433, alpha: 0.25 });
-      g.rect(X, Y - 6, W * cap, 3).fill({ color: 0xc9b98f, alpha: 0.8 });
-      g.rect(X, Y - 6, W * p, 3).fill(0x3b5bd9);
+      g.rect(X - 1, Y - 7, W + 2, 5).fill({ color: 0x15110d, alpha: 0.7 });
+      g.rect(X, Y - 6, W * cap, 3).fill({ color: 0xf2c14e, alpha: 0.3 });
+      g.rect(X, Y - 6, W * p, 3).fill(0xf2c14e);
     }
   }
 

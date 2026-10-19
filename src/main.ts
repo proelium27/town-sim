@@ -6,9 +6,10 @@ import { AgentsView } from './render/agentsView';
 import { WorldView } from './render/worldView';
 import { Sim, STEP } from './sim/sim';
 import { ActivityLog } from './ui/activity';
+import { Hud } from './ui/hud';
 import { Inspector } from './ui/inspector';
 import { TownPanel } from './ui/townPanel';
-import { Tracker, statusOf } from './ui/tracker';
+import { Tracker } from './ui/tracker';
 
 /** Real milliseconds per sim step at 1x: 20 steps per second, so one game minute per real second. */
 const STEP_MS = 1000 * STEP;
@@ -18,13 +19,16 @@ async function boot(): Promise<void> {
   const app = new Application();
   await app.init({
     resizeTo: window,
-    background: '#e9e4d8',
+    background: '#1f2a1d',
     antialias: false,
     roundPixels: true,
     resolution: Math.min(2, window.devicePixelRatio || 1),
     autoDensity: true,
   });
   document.getElementById('stage')!.appendChild(app.canvas);
+
+  // Name tags are Pixi text; give the UI font a moment so they don't render in the fallback.
+  await Promise.race([document.fonts.load('600 11px Rubik'), new Promise((r) => setTimeout(r, 1500))]).catch(() => {});
 
   const art = new Art();
   await art.load();
@@ -36,19 +40,37 @@ async function boot(): Promise<void> {
 
   const camera = new Camera();
   camera.bounds = { w: sim.map.w * TILE, h: sim.map.h * TILE };
+  /** Panels float over the map: the map may scroll under them, but the camera centers on the clear middle. */
   const layout = () => {
-    const css = getComputedStyle(document.body);
-    const left = parseFloat(css.getPropertyValue('--left-w')) || 0;
-    const right = parseFloat(css.getPropertyValue('--right-w')) || 0;
-    const top = parseFloat(css.getPropertyValue('--top-h')) || 0;
-    const bottom = parseFloat(css.getPropertyValue('--log-h')) || 0;
-    camera.cx = left + (window.innerWidth - left - right) / 2;
-    camera.cy = top + (window.innerHeight - top - bottom) / 2;
-    camera.view = { left, top, right: window.innerWidth - right, bottom: window.innerHeight - bottom };
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    // Layout boxes (offset*), not getBoundingClientRect: the inspector's slide-in transform would skew it.
+    const edge = (id: string) => {
+      const el = document.getElementById(id)!;
+      return el.hidden ? null : { left: el.offsetLeft, right: el.offsetLeft + el.offsetWidth, bottom: el.offsetTop + el.offsetHeight };
+    };
+    const roster = edge('tracker');
+    const ins = edge('inspector');
+    const hud = edge('hud');
+    const left = roster ? roster.right : 0;
+    const right = ins ? ins.left : W;
+    const top = hud ? hud.bottom : 0;
+    // Opening or closing a panel moves the clear middle; shift the camera with it so the world stays put on screen.
+    const cx = (left + right) / 2;
+    const cy = (top + H) / 2;
+    camera.x += (cx - camera.cx) / camera.zoom;
+    camera.tx += (cx - camera.cx) / camera.tz;
+    camera.y += (cy - camera.cy) / camera.zoom;
+    camera.ty += (cy - camera.cy) / camera.tz;
+    camera.cx = cx;
+    camera.cy = cy;
+    // Clamp to the clear area so the map's own edges (and anyone standing there) can always be brought into view.
+    camera.view = { left, top, right, bottom: H };
     camera.clampTarget();
   };
   window.addEventListener('resize', layout);
   layout();
+  // Start on the edge of the old town, where the new neighborhoods will grow.
   camera.jumpTo(62 * TILE, 30 * TILE);
   camera.clampTarget();
   camera.x = camera.tx;
@@ -65,25 +87,23 @@ async function boot(): Promise<void> {
     if (id === null) following = false;
     inspector.show(id);
     layout();
-    if (focus && id !== null) {
+    if (id !== null) {
       const a = sim.agent(id)!;
-      camera.lookAtClamped((a.x + 0.5) * TILE, (a.y + 0.5) * TILE);
+      const [sx, sy] = camera.toScreen((a.x + 0.5) * TILE, (a.y + 0.5) * TILE);
+      const v = camera.view;
+      const hidden = sx < v.left + 48 || sx > v.right - 48 || sy < v.top + 48 || sy > v.bottom - 48;
+      // Picked from a list: bring them to the middle. Clicked on the map: only pan if a panel now covers them.
+      if (focus || hidden) camera.lookAtClamped((a.x + 0.5) * TILE, (a.y + 0.5) * TILE);
     }
     refreshUi();
   };
-  const tracker = new Tracker(document.getElementById('tracker')!, sim, art, (id) => select(id, true));
-  const town = new TownPanel(document.getElementById('town')!, sim, (x, y) => camera.lookAtClamped(x * TILE, y * TILE), (id) => select(id, true));
-  let side: 'people' | 'town' = 'people';
-  const sideTabs = document.getElementById('side-tabs')!;
-  sideTabs.addEventListener('click', (e) => {
-    const b = (e.target as HTMLElement).closest('[data-side]') as HTMLElement | null;
-    if (!b) return;
-    side = b.dataset.side as typeof side;
-    for (const x of sideTabs.querySelectorAll('button')) x.setAttribute('aria-selected', String(x === b));
-    document.getElementById('tracker')!.hidden = side !== 'people';
-    document.getElementById('town')!.hidden = side !== 'town';
-    refreshUi();
-  });
+  const tracker = new Tracker(document.getElementById('tracker')!, sim, art, (id) => select(id, true), () => {
+    document.body.classList.toggle('roster-collapsed', tracker.collapsed);
+    layout();
+  }, () => refreshUi());
+  const town = new TownPanel(tracker.townEl, sim, (x, y) => camera.lookAtClamped(x * TILE, y * TILE), (id) => select(id, true));
+  if (window.innerWidth < 900) tracker.toggle(true);
+  const hud = new Hud(sim);
   const activity = new ActivityLog(document.getElementById('activity')!, sim, (id) => select(id, true));
   const inspector = new Inspector(document.getElementById('inspector')!, sim, art, {
     select: (id) => select(id, true),
@@ -103,19 +123,11 @@ async function boot(): Promise<void> {
   });
   setSpeed(1);
 
-  const clockEl = document.getElementById('clock')!;
-  const statsEl = document.getElementById('stats')!;
   const refreshUi = () => {
-    clockEl.textContent = sim.clock();
-    const working = sim.agents.filter((a) => statusOf(a) === 'working').length;
-    const asleep = sim.agents.filter((a) => statusOf(a) === 'asleep').length;
-    const mood = Math.round(sim.agents.reduce((s, a) => s + a.mood, 0) / sim.agents.length);
-    const ev = sim.events;
-    const happening = [ev.festival && 'Festival in the park', ev.drought && 'Drought', ev.standup && 'Standup', ev.pizza && 'Pizza in the kitchen', ev.party && 'Party in the lounge', ev.coffeeBroken && 'Coffee machine broken'].filter(Boolean).join(' · ');
-    statsEl.innerHTML = `<span><b>${sim.agents.length}</b> people</span><span><b>${working}</b> working</span><span><b>${asleep}</b> asleep</span><span>Mood <b>${mood}</b></span><span>Food <b>${Math.round(sim.stock.food)}</b></span><span>Wood <b>${Math.round(sim.stock.wood)}</b></span><span>Stone <b>${Math.round(sim.stock.stone)}</b></span><span>${ev.rain ? 'Raining' : sim.hour > 6 && sim.hour < 20 ? 'Clear' : 'Night'}</span>${happening ? `<span class="happening">${happening}</span>` : ''}`;
-    if (side === 'people') tracker.update(selected);
-    else town.update();
-    if (selected !== null && !sim.agent(selected)) select(null);
+    hud.update();
+    // The roster keeps its header count fresh even while the Town view is showing.
+    tracker.update(selected);
+    if (tracker.view === 'town' && !tracker.collapsed) town.update();
     activity.update(selected);
     inspector.update();
   };
@@ -157,7 +169,7 @@ async function boot(): Promise<void> {
     drag = null;
   });
   window.addEventListener('keydown', (e) => {
-    const typing = (e.target as HTMLElement).closest('input, textarea');
+    const typing = (e.target as HTMLElement | null)?.closest?.('input, textarea');
     if (typing) {
       if (e.code === 'Escape') (e.target as HTMLElement).blur();
       return;
@@ -169,6 +181,9 @@ async function boot(): Promise<void> {
     } else if (e.key >= '1' && e.key <= '3') setSpeed(Number(e.key));
     else if (e.code === 'Escape') select(null);
     else if (e.code === 'KeyF' && selected !== null) following = !following;
+    else if (e.code === 'KeyP') tracker.toggle();
+    else if (e.code === 'KeyT') tracker.setView(tracker.view === 'town' ? 'people' : 'town');
+    else if (e.code === 'KeyL') activity.toggle();
     else if (e.key === '/') {
       e.preventDefault();
       tracker.focusSearch();
@@ -209,10 +224,10 @@ async function boot(): Promise<void> {
       camera.lookAtClamped((a.x + 0.5) * TILE, (a.y + 0.5) * TILE);
     }
     camera.update(dt);
+    world.sync();
     world.root.scale.set(camera.zoom);
     world.root.position.set(Math.round(camera.cx - camera.x * camera.zoom), Math.round(camera.cy - camera.y * camera.zoom));
     const alpha = speed > 0 ? acc / STEP_MS : 1;
-    world.sync();
     people.update(Math.min(1, alpha), dt, speed, camera, app.screen.width, app.screen.height);
     people.updateWeather(sim.hour, !!sim.events.rain, performance.now(), app.screen.width, app.screen.height);
     uiTimer -= dt;

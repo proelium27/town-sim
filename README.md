@@ -27,6 +27,9 @@ npm run build      # typecheck + production bundle
 | Space | Pause / resume |
 | 1 2 3 | Speed (1× is one game minute per real second) |
 | / | Search the people list |
+| T | Switch the left panel between People and Town |
+| P | Collapse / expand the left panel |
+| L | Expand / shrink the activity log |
 | Esc | Close the inspector |
 
 ## How the town builds itself
@@ -40,8 +43,8 @@ npm run build      # typecheck + production bundle
 
 ## What you control
 
-- **Priorities** (Town tab): Housing, Food, Wood & stone, Community, each Low / Normal / High. They weight what town meetings choose and how many people work each job.
-- **World events** (Town tab): hold a festival, a bumper harvest, send newcomers (even if there's no room, which forces a housing push), a drought, a storm.
+- **Priorities** (Town view, `T`): Housing, Food, Wood & stone, Community, each Low / Normal / High. They weight what town meetings choose and how many people work each job.
+- **World events** (Town view): hold a festival, a bumper harvest, send newcomers (even if there's no room, which forces a housing push), a drought, a storm.
 
 ## What's simulated
 
@@ -62,9 +65,11 @@ src/world/              map.ts: mutable tile grid, rooms, buildings, props; town
                         blueprints.ts / stamp.ts: building templates the townsfolk construct
 src/sim/                sim.ts (clock, step), ai.ts, planner.ts, labor.ts, life.ts, economy.ts, agents.ts,
                         social.ts, events.ts, traffic.ts, nav.ts, defs.ts
-src/render/             worldView.ts (baked ground/walls, y-sorted props), agentsView.ts (people, cars, badges, weather)
+src/render/             worldView.ts (live ground/walls/props, construction sites), agentsView.ts (people, cars, badges, rain),
+                        shading.ts (lawn detail, cast shadows, ambient occlusion), lighting.ts (time-of-day grade, night lights)
 src/engine/camera.ts    smoothed camera with viewport-aware clamping
-src/ui/                 tracker + town panel (left), activity (bottom), inspector (right), relationship graph
+src/ui/                 hud (top), tracker + town panel (left), activity (bottom), inspector (right, tabbed), relationship graph
+PRODUCT.md, DESIGN.md   design context: who it's for, tokens, layout and rendering rules for new UI
 tests/                  nav + town connectivity, daily routine and event tests
 ```
 

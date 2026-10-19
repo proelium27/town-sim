@@ -235,6 +235,11 @@ function roomName(sim: Sim, p: Prop): string {
   return p.room >= 0 ? sim.map.rooms[p.room].name : 'park';
 }
 
+/** "at home", "in the lounge", "in the park": where an activity is happening, for labels. */
+function where_(sim: Sim, p: Prop): string {
+  return roomKind(sim, p) === 'home' ? 'at home' : `in the ${roomName(sim, p).toLowerCase()}`;
+}
+
 /** Walk somewhere in an area and hang out there. */
 function areaOption(sim: Sim, a: Agent, kind: ActionKind, score: number, reason: string, label: string, area: { x: number; y: number; w: number; h: number }, timer: number): Option {
   return {
@@ -412,8 +417,8 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
       o.push(spotOption(sim, a, 'music', (x * 0.6 + a.skills.music.level * 0.04 + (a.traits.includes('creative') ? 0.15 : 0)) * breakMult, `Bored (${Math.round(n.fun)})`, ['music'], () => 'Playing the piano', 22));
     }
     if (stage !== 'toddler') {
-      o.push(spotOption(sim, a, 'read', (x * 0.55 + (a.traits.includes('introvert') ? 0.15 : 0) + (a.traits.includes('creative') ? 0.1 : 0) + (stage === 'elder' ? 0.15 : 0)) * breakMult, `Bored (${Math.round(n.fun)})`, ['read'], (p) => `Reading in the ${roomName(sim, p).toLowerCase()}`, sim.rng.range(30, 50)));
-      o.push(spotOption(sim, a, 'relax', (x * 0.5 + (1 - n.energy / 100) * 0.3 + (evening ? 0.15 : 0)) * breakMult, n.energy < 45 ? 'Needs a sit-down' : 'Unwinding', ['sit'], (p) => `Relaxing in the ${roomName(sim, p).toLowerCase()}`, sim.rng.range(20, 40), (p) => (evening ? homeOnly(p) : true)));
+      o.push(spotOption(sim, a, 'read', (x * 0.55 + (a.traits.includes('introvert') ? 0.15 : 0) + (a.traits.includes('creative') ? 0.1 : 0) + (stage === 'elder' ? 0.15 : 0)) * breakMult, `Bored (${Math.round(n.fun)})`, ['read'], (p) => `Reading ${where_(sim, p)}`, sim.rng.range(30, 50)));
+      o.push(spotOption(sim, a, 'relax', (x * 0.5 + (1 - n.energy / 100) * 0.3 + (evening ? 0.15 : 0)) * breakMult, n.energy < 45 ? 'Needs a sit-down' : 'Unwinding', ['sit'], (p) => `Relaxing ${where_(sim, p)}`, sim.rng.range(20, 40), (p) => (evening ? homeOnly(p) : true)));
     }
     if (free && !evening && !sim.events.rain && !little) {
       o.push(areaOption(sim, a, 'stroll', x * 0.6 + (stage === 'elder' ? 0.2 : 0.1), 'Fresh air', 'Walking in the park', PARK, sim.rng.range(15, 30)));

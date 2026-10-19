@@ -112,6 +112,8 @@ export class TownMap {
   wallVersion = 0;
   /** Cells whose ground changed since the renderer last looked. */
   groundDirty: number[] = [];
+  /** Bumped on any ground change (paths, fields), for baked layers. */
+  groundVersion = 0;
 
   constructor(
     readonly w: number,
@@ -172,6 +174,7 @@ export class TownMap {
     if (this.ground[i] === g) return;
     this.ground[i] = g;
     this.groundDirty.push(i);
+    this.groundVersion++;
     this.refreshCell(i);
   }
 
