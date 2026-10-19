@@ -3,6 +3,7 @@ import { triggerWorldEvent } from '../src/sim/events';
 import { loadSim, saveSim } from '../src/sim/save';
 import { chill, tickSeasons, winterReadiness } from '../src/sim/seasons';
 import { Sim } from '../src/sim/sim';
+import { winterLine } from '../src/ui/townPanel';
 
 const at = (sim: Sim, day: number, hour: number) => sim.run(day * 1440 + hour * 60 - sim.time);
 
@@ -38,6 +39,16 @@ describe('seasons', () => {
     a.at = m.room.findIndex((r, i) => r < 0 && m.walkable(m.cx(i), m.cy(i)));
     tickSeasons(sim, 60);
     expect(sim.fuel[hh.id]).toBe(5);
+  });
+
+  it('the Town view counts down to winter in autumn, and to spring in winter', () => {
+    const sim = new Sim(7, { agents: false });
+    sim.time = 0.2 * 1440;
+    expect(winterLine(sim)).toBe('');
+    sim.time = 5 * 1440;
+    expect(winterLine(sim)).toContain('Winter starts in 1.0 days');
+    sim.time = 7 * 1440;
+    expect(winterLine(sim)).toContain('Winter ends in 1.0 days');
   });
 
   it('the first frost clears unripe crops, and nothing grows until spring', () => {
