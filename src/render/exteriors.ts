@@ -99,6 +99,8 @@ interface Exterior {
   windows: { x: number; y: number; w: number; h: number; rooms: number[] }[];
   /** Top of the chimney in world px, for smoke. */
   chimney?: { x: number; y: number };
+  /** Winter snow over the roof, a sibling of the view so the cached roof stays untouched. */
+  snow: Graphics;
 }
 
 /**
@@ -110,6 +112,7 @@ interface Exterior {
 export class Exteriors {
   private list: Exterior[] = [];
   private count = -1;
+  private snowing = false;
 
   constructor(
     readonly art: Art,
@@ -130,6 +133,26 @@ export class Exteriors {
       if (!look) continue;
       this.list.push(this.build(b, look));
     }
+  }
+
+  setSnow(on: boolean): void {
+    this.snowing = on;
+    for (const e of this.list) e.snow.visible = on && e.alpha > 0.01;
+  }
+
+  /** Snow lying on a roof: thick on top, thinning to a ragged edge at the eave. */
+  private snowCap(X: number, Y: number, W: number, H: number, seed: number, pitched: boolean): Graphics {
+    const g = new Graphics();
+    const depth = Math.round(H * (pitched ? 0.78 : 0.9));
+    g.rect(X - 1, Y - 1, W + 2, depth).fill({ color: 0xf2f5f9, alpha: 0.94 });
+    for (let x = X; x < X + W; x += 3) {
+      const d = 2 + Math.floor(hash(seed * 31 + x, 7) * 5);
+      g.rect(x, Y - 1 + depth, 3, d).fill({ color: 0xf2f5f9, alpha: 0.9 });
+    }
+    g.rect(X - 1, Y - 1, W + 2, 2).fill(0xffffff);
+    if (pitched) g.rect(X, Y + Math.max(6, Math.round(H * 0.3)) - 2, W, 2).fill({ color: 0xc9d4e0, alpha: 0.8 });
+    for (let k = 0; k < W / 6; k++) g.rect(X + Math.floor(hash(seed, 50 + k) * W), Y + 2 + Math.floor(hash(seed, 90 + k) * (depth - 4)), 2, 1).fill({ color: 0xc9d4e0, alpha: 0.6 });
+    return g;
   }
 
   /** Roof opacity covering tile (x, y): 0 when open or outdoors. */
@@ -174,6 +197,8 @@ export class Exteriors {
       if (Math.abs(target - e.alpha) < 0.01) e.alpha = target;
       e.view.alpha = e.alpha;
       e.view.visible = e.alpha > 0.01;
+      e.snow.alpha = e.alpha;
+      e.snow.visible = this.snowing && e.view.visible;
     }
   }
 
@@ -302,7 +327,16 @@ export class Exteriors {
       const r = this.map.roomAt(col, b.y + b.h - 2) ?? this.map.roomAt(col, b.y + b.h - 3);
       return { ...w, rooms: r ? [r.id] : b.rooms };
     });
-    return { b, view, alpha: 1, windows: behind, chimney: chimney && { x: chimney.x + 4, y: chimney.y - 1 } };
+    const snow = this.snowCap(X, Y, W, roofH, b.id, look.roof === 'pitched');
+    // Chimneys poke up through the snow, with a little cap of their own.
+    if (chimney) {
+      snow.rect(chimney.x, chimney.y, 8, 11).fill(0x9a5a44).rect(chimney.x, chimney.y - 1, 8, 3).fill(0xf6f8fb);
+      snow.rect(chimney.x - 1, chimney.y - 1, 10, 12).stroke({ color: EDGE, width: 1, alignment: 0 });
+    }
+    snow.zIndex = view.zIndex + 0.01;
+    snow.visible = this.snowing;
+    this.parent.addChild(snow);
+    return { b, view, alpha: 1, windows: behind, chimney: chimney && { x: chimney.x + 4, y: chimney.y - 1 }, snow };
   }
 
   /** Shingled gable roof seen from the south: lit upper slope, shaded lower slope, ridge, eave. */

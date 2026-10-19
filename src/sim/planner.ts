@@ -27,6 +27,7 @@ export function newHousehold(sim: Sim, name: string): Household {
   const h: Household = { id: sim.town.households.length, name, room: -1, door: { x: 0, y: 0 }, building: -1 };
   sim.town.households.push(h);
   sim.pantry.push(0);
+  sim.fuel.push(4);
   return h;
 }
 
@@ -168,7 +169,7 @@ function proposals(sim: Sim): Proposal[] {
 
   // ---- food
   const fw = weight(sim, 'food');
-  const fb = foodBalance(sim);
+  const fb = foodBalance(sim, true);
   const plannedFarms = sim.projects.filter((p) => p.blueprint === 'farm').length;
   const deficit = fb.eat - fb.produce - plannedFarms * 50;
   if (deficit > 0 || sim.stock.food < sim.agents.length * 2) {
@@ -421,7 +422,9 @@ export function allocateRoles(sim: Sim): void {
   const fw = PRIORITY_WEIGHT[sim.priorities.food];
   demand.push(['farmer', Math.max(1, Math.round(farms * 1.5 * fw)), null]);
   demand.push(['builder', Math.max(1, Math.round((1 + sim.projects.length * 0.8) * hw)), null]);
-  demand.push(['woodcutter', Math.max(1, Math.round((sim.stock.wood < 60 || sim.stock.stone < 40 ? 2 : 1) * mw)), null]);
+  // Autumn and winter need firewood split and carried to every hearth.
+  const cold = sim.season >= 2 ? 1 : 0;
+  demand.push(['woodcutter', Math.max(1, Math.round((sim.stock.wood < 60 || sim.stock.stone < 40 ? 2 : 1) * mw) + cold), null]);
 
   const assigned = new Set<number>();
   const changes: string[] = [];

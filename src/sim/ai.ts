@@ -5,6 +5,7 @@ import { ADULT_AGE, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_LABEL, type
 import { FOOD_PER_CROP } from './economy';
 import { CARRY, laborPlan } from './labor';
 import { buildCap, completeProject, shortOf, supplied } from './planner';
+import { chill, HEARTH_FULL } from './seasons';
 import { clamp } from './rng';
 import {
   addMemory, bondNearby, converse, expireMemories, first, FRIEND, kinship, moodTarget, rel, RIVAL, say, shiftOpinion, socialGain, think,
@@ -131,7 +132,7 @@ function updateNeeds(sim: Sim, a: Agent, dt: number, stage: Stage): void {
   const k = a.action.kind;
   const performing = a.action.stage === 'perform';
   const asleep = k === 'sleep' && performing;
-  const working = (k === 'work' || k === 'build' || k === 'chop' || k === 'mine' || k === 'farm' || k === 'haul' || k === 'teach') && performing;
+  const working = (k === 'work' || k === 'build' || k === 'chop' || k === 'mine' || k === 'farm' || k === 'haul' || k === 'teach' || k === 'split' || k === 'stoke') && performing;
   const tired = stage === 'elder' ? 1.25 : stage === 'toddler' ? 1.3 : 1;
   if (!asleep) n.energy -= (working ? 0.075 : 0.06) * dt * tired * (a.traits.includes('earlyBird') && sim.hour > 19 ? 1.4 : 1);
   n.hunger -= (a.traits.includes('foodie') ? 0.13 : 0.105) * dt * (asleep ? 0.4 : 1) * (working && k !== 'work' ? 1.2 : 1);
@@ -142,6 +143,19 @@ function updateNeeds(sim: Sim, a: Agent, dt: number, stage: Stage): void {
   if (isWorkTime(sim, a)) {
     if (!working && k !== 'meet' && k !== 'deposit') n.work -= (a.traits.includes('workaholic') ? 0.16 : a.traits.includes('slacker') ? 0.05 : 0.1) * dt;
   } else n.work += (60 - n.work) * 0.002 * dt;
+  // Warmth only drops in the cold, and only away from a warm room.
+  const c = chill(sim);
+  if (c > 0) {
+    const room = sim.roomOf(a);
+    const own = room && room.id === sim.town.households[a.household].room;
+    const fire = sim.fuel[a.household] > 0;
+    if (!room && k === 'party' && sim.events.festival) n.warmth += 0.5 * dt;
+    else if (!room) n.warmth -= c * (sim.events.snowstorm ? 0.7 : 0.35) * dt;
+    else if (own) n.warmth += fire ? 1.2 * dt : -c * 0.12 * dt;
+    else n.warmth += 0.8 * dt;
+    if (own && !fire && c > 0.3 && !asleep) addMemory(sim, a, 'coldHome');
+    if (own && fire && c > 0.3 && n.warmth > 85 && (k === 'relax' || k === 'read' || k === 'eat')) addMemory(sim, a, 'cozyFire');
+  } else n.warmth += 0.6 * dt;
   a.bladder -= 0.32 * dt * (asleep ? 0.3 : 1);
   if (k === 'coffee' && performing) a.bladder -= 0.4 * dt;
   for (const key of NEED_KEYS) n[key] = clamp(n[key], 0, 100);
@@ -407,7 +421,7 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
     o.push(spotOption(sim, a, 'party', 1.0 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.35 : 0), 'Office party', ['sit', 'play', 'music'], () => 'At the office party', 9999, (p) => roomKind(sim, p) === 'lounge' || roomKind(sim, p) === 'kitchen'));
   }
   if (sim.events.festival && !sleepTime && stage !== 'toddler') {
-    o.push(areaOption(sim, a, 'party', 1.15 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.25 : 0), 'Town festival', 'At the town festival', PARK, 9999));
+    o.push(areaOption(sim, a, 'party', 1.15 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.25 : 0), 'Town festival', `At the ${(sim.events.festival.name ?? 'town festival').toLowerCase()}`, PARK, 9999));
   }
   for (const b of sim.events.birthdays) {
     const host = sim.agent(b.host);
@@ -454,8 +468,13 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
       break;
     }
   }
+  // Cold: back home to the fire, or into the café or library if there's no firewood.
+  if (n.warmth < 60 && chill(sim) > 0 && !sim.roomOf(a) && stage !== 'toddler') {
+    const fire = homed && sim.fuel[a.household] > 0;
+    o.push(spotOption(sim, a, 'relax', (1 - n.warmth / 100) * 1.5, `Cold (${Math.round(n.warmth)})`, ['sit'], (p) => (p.household === a.household ? 'Warming up by the fire' : `Warming up ${where_(sim, p)}`), 30, (p) => (fire ? homeOnly(p) : ['cafe', 'library', 'lobby'].includes(roomKind(sim, p) ?? ''))));
+  }
   // After dinner, a couple at home together goes out for a walk, side by side.
-  if (loc === 'home' && inWindow(h, 19.25, 21) && n.hunger > 50 && !sleepTime && n.energy > 40 && stage !== 'toddler' && !sim.events.rain && !a.memories.some((x) => x.kind === 'eveningWalk')) {
+  if (chill(sim) < 0.5 && loc === 'home' && inWindow(h, 19.25, 21) && n.hunger > 50 && !sleepTime && n.energy > 40 && stage !== 'toddler' && !sim.events.rain && !a.memories.some((x) => x.kind === 'eveningWalk')) {
     const p = sim.agent(a.partner ?? undefined);
     if (p && sim.roomOf(p) === sim.roomOf(a) && ['idle', 'wander', 'relax', 'read'].includes(p.action.kind) && p.needs.energy > 40) {
       o.push(areaOption(sim, a, 'stroll', 0.75 + (n.fun < 60 ? 0.15 : 0), 'Evening walk', `Evening walk with ${first(p)}`, PARK, sim.rng.range(25, 40)));
@@ -524,7 +543,7 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
       o.push(spotOption(sim, a, 'read', (x * 0.55 + (a.traits.includes('introvert') ? 0.15 : 0) + (a.traits.includes('creative') ? 0.1 : 0) + (stage === 'elder' ? 0.15 : 0)) * breakMult, `Bored (${Math.round(n.fun)})`, ['read'], (p) => `Reading ${where_(sim, p)}`, sim.rng.range(30, 50)));
       o.push(spotOption(sim, a, 'relax', (x * 0.5 + (1 - n.energy / 100) * 0.3 + (evening ? 0.15 : 0)) * breakMult, n.energy < 45 ? 'Needs a sit-down' : 'Unwinding', ['sit'], (p) => `Relaxing ${where_(sim, p)}`, sim.rng.range(20, 40), (p) => (evening ? homeOnly(p) : true)));
     }
-    if (free && !evening && !sim.events.rain && !little) {
+    if (free && !evening && !sim.events.rain && !little && chill(sim) < 0.6) {
       o.push(areaOption(sim, a, 'stroll', x * 0.6 + (stage === 'elder' ? 0.2 : 0.1), 'Fresh air', 'Walking in the park', PARK, sim.rng.range(15, 30)));
     }
   }
@@ -574,7 +593,7 @@ function workOptions(sim: Sim, a: Agent, o: Option[], workTime: boolean, h: numb
         const target: Target = { cell: plan.dest, path: plan.path, cost: plan.path.length };
         const prop = sim.prop(plan.propId);
         if (prop && sim.reserved.has(prop.id) && sim.reserved.get(prop.id) !== a.id && plan.kind !== 'deposit') return false;
-        const ok = start(sim, a, plan.kind, plan.label, plan.reason, target, plan.timer, s, { propId: plan.propId, projectId: plan.projectId, leg: plan.leg, material: plan.material });
+        const ok = start(sim, a, plan.kind, plan.label, plan.reason, target, plan.timer, s, { propId: plan.propId, projectId: plan.projectId, leg: plan.leg, material: plan.material, household: plan.household });
         if (plan.projectId !== undefined) sim.projects.find((p) => p.id === plan.projectId)?.builders.add(a.id);
         return ok;
       },
@@ -651,6 +670,8 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
     case 'chop': return a.action.projectId !== undefined ? 'Clearing trees for the new build.' : 'The town needs timber. Off to the woods.';
     case 'mine': return a.action.projectId !== undefined ? 'These rocks have to go before we can build.' : 'Time to break some stone.';
     case 'haul': return `${o.reason}. I'll fetch it from the storehouse.`;
+    case 'split': return 'Logs to split before the cold sets in.';
+    case 'stoke': return `${o.reason}. I'll bring them some firewood.`;
     case 'build': return `${a.action.label}. Let's get this up.`;
     case 'farm': return o.reason === 'The crop is ripe' ? 'The crop looks ready. Harvest time.' : 'Watering and weeding.';
     case 'deposit': return 'Dropping this off at the storehouse.';
@@ -722,6 +743,8 @@ function arrive(sim: Sim, a: Agent): void {
       return finish(sim, a);
     case 'haul':
       return arriveHaul(sim, a);
+    case 'stoke':
+      return arriveStoke(sim, a);
   }
 }
 
@@ -985,10 +1008,60 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       return performBuild(sim, a, dt, tick);
     case 'farm':
       return performFarm(sim, a, dt, tick);
+    case 'split':
+      gainXp(sim, a, 'craft', dt * 0.2);
+      a.workedToday += dt;
+      a.money += 0.3 * dt;
+      a.needs.work = Math.min(100, a.needs.work + 0.4 * dt);
+      if (Math.floor(sim.time * 2) % 4 === 0) say(sim, a, 'thwack', 'neutral', 1);
+      act.timer -= dt * (laborRate(a) - 1);
+      if (tick()) {
+        if (sim.stock.wood >= 4) {
+          sim.stock.wood -= 4;
+          sim.stock.firewood += 6;
+        }
+        finish(sim, a);
+      }
+      return;
     case 'deposit':
     case 'haul':
+    case 'stoke':
       return finish(sim, a);
   }
+}
+
+/** Firewood run: load up at the storehouse, then stack it by a home's hearth. */
+function arriveStoke(sim: Sim, a: Agent): void {
+  const act = a.action;
+  const hh = act.household !== undefined ? sim.town.households[act.household] : undefined;
+  if (!hh || hh.building < 0) return finish(sim, a);
+  if (act.leg === 'pickup') {
+    const take = Math.min(6, Math.floor(sim.stock.firewood), Math.ceil(HEARTH_FULL - sim.fuel[hh.id]));
+    if (take <= 0) return finish(sim, a);
+    sim.stock.firewood -= take;
+    a.carry = { kind: 'firewood', amount: take };
+    const dest = sim.map.idx(hh.door.x, hh.door.y);
+    const path = sim.nav.findPath(a.at, dest, 40000);
+    if (!path) {
+      sim.stock.firewood += take;
+      a.carry = null;
+      return finish(sim, a);
+    }
+    act.leg = 'deliver';
+    act.label = `Carrying firewood to the ${hh.name}`;
+    act.dest = dest;
+    act.stage = 'travel';
+    a.path = path;
+    a.pathPos = 0;
+    a.edgeT = 0;
+    return;
+  }
+  if (a.carry?.kind === 'firewood') {
+    sim.fuel[hh.id] += a.carry.amount;
+    a.carry = null;
+    for (const o of sim.agents) if (o.household === hh.id && o.id !== a.id && o.relations.has(a.id)) shiftOpinion(sim, o, a, 0.5);
+  }
+  finish(sim, a);
 }
 
 function laborRate(a: Agent): number {

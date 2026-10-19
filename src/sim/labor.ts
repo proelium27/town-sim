@@ -1,6 +1,7 @@
 import type { Prop } from '../world/map';
 import { billGoods, type Good, PRIORITY_WEIGHT } from './defs';
 import { buildCap, clutter, shortOf, stageOf } from './planner';
+import { chill, HEARTH_FULL } from './seasons';
 import type { ActionKind, Agent, Project } from './types';
 import type { Sim } from './sim';
 
@@ -15,6 +16,7 @@ export interface LaborPlan {
   projectId?: number;
   leg?: 'pickup' | 'deliver';
   material?: Good;
+  household?: number;
   timer: number;
   score: number;
 }
@@ -85,14 +87,23 @@ function inFlight(sim: Sim, pr: Project, mat: Good): number {
   return sim.agents.filter((o) => o.action.kind === 'haul' && o.action.projectId === pr.id && o.action.material === mat).length * CARRY;
 }
 
+/** Firewood still to be split to see every home through the cold: stored plus by the hearths, against a season's target. */
+export function firewoodShort(sim: Sim): number {
+  const homes = sim.town.households.filter((h) => h.building >= 0);
+  const want = homes.length * HEARTH_FULL * [0.4, 0.15, 1.2, 1][sim.season];
+  const have = sim.stock.firewood + homes.reduce((s, h) => s + sim.fuel[h.id], 0);
+  return Math.max(0, want - have);
+}
+
 /** Best outdoor job for this worker right now, or null if there's nothing useful to do. */
 export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
   const role = a.role;
   const plans: (() => LaborPlan | null)[] = [];
   const m = sim.map;
 
-  // Anything in hand goes where it belongs first.
-  if (a.carry) {
+  // Anything in hand goes where it belongs first (unless it's already on its way somewhere).
+  const delivering = a.action.leg === 'deliver' && (a.action.kind === 'haul' || a.action.kind === 'stoke');
+  if (a.carry && !delivering) {
     return (() => {
       const d = depositSpot(sim, a);
       if (!d) return null;
@@ -139,9 +150,9 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
     }
   }
 
-  // Gathering for the stockpile.
+  // Gathering for the stockpile, plus the logs still to be split for winter.
   const mw = PRIORITY_WEIGHT[sim.priorities.materials];
-  const woodWant = 90 * mw - sim.stock.wood;
+  const woodWant = 90 * mw - sim.stock.wood + firewoodShort(sim) * 0.7;
   const stoneWant = 60 * mw - sim.stock.stone;
   if ((role === 'woodcutter' || builderish) && (woodWant > 0 || stoneWant > 0)) {
     const kind = woodWant / 90 >= stoneWant / 60 ? 'wood' : 'stone';
@@ -158,12 +169,39 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
     });
   }
 
-  // Farming.
+  // Firewood: split logs at the storehouse and carry it to hearths that are running low.
+  const winterHands = role === 'woodcutter' || builderish || (role === 'farmer' && sim.season === 3);
+  if (winterHands) {
+    const homes = sim.town.households.filter((h) => h.building >= 0);
+    const short = firewoodShort(sim);
+    if (short > 0 && sim.stock.wood >= 4) {
+      const base = role === 'woodcutter' ? 1 : role === 'farmer' ? 0.85 : role === 'laborer' ? 0.75 : 0.5;
+      plans.push(() => {
+        const d = depositSpot(sim, a);
+        if (!d) return null;
+        return { kind: 'split', label: 'Splitting firewood', reason: `The town needs ${Math.ceil(short)} more firewood`, dest: d.cell, path: d.path, timer: 20, score: base * (sim.season === 3 ? 1.15 : 1) };
+      });
+    }
+    const coming = new Set(sim.agents.filter((o) => o.action.kind === 'stoke').map((o) => o.action.household));
+    const low = homes.filter((h) => sim.fuel[h.id] < HEARTH_FULL * 0.5 && !coming.has(h.id)).sort((x, y) => sim.fuel[x.id] - sim.fuel[y.id])[0];
+    if (low && sim.stock.firewood >= 1 && (sim.season >= 2 || chill(sim) > 0)) {
+      plans.push(() => {
+        const d = depositSpot(sim, a);
+        if (!d) return null;
+        return {
+          kind: 'stoke', label: `Fetching firewood for the ${low.name}`, reason: `The ${low.name} is low on firewood`,
+          dest: d.cell, path: d.path, household: low.id, leg: 'pickup', timer: 2, score: (role === 'builder' ? 0.9 : 1.15) * (sim.fuel[low.id] < 2 ? 1.3 : 1),
+        };
+      });
+    }
+  }
+
+  // Farming (nothing grows in winter; only ripe crops are worth a trip).
   const farmers = sim.agents.filter((o) => o.role === 'farmer').length;
   if (role === 'farmer' || (role === 'laborer' && farmers < 2)) {
     const base = role === 'farmer' ? 1 : 0.55;
     plans.push(() => {
-      const crops = m.props.filter((p) => p.use === 'farm' && free(sim, a, p));
+      const crops = m.props.filter((p) => p.use === 'farm' && free(sim, a, p) && (sim.season !== 3 || (p.growth ?? 0) >= 1));
       const ripe = crops.filter((p) => (p.growth ?? 0) >= 1);
       const pick = ripe.length ? nearestTo(a, ripe, 2) : nearestTo(a, crops.sort((p, q) => (p.growth ?? 0) - (q.growth ?? 0)).slice(0, 12), 2);
       for (const p of pick) {

@@ -4,7 +4,7 @@ export const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 // ------------------------------------------------------------------ needs
 
-export type NeedKey = 'energy' | 'hunger' | 'hygiene' | 'social' | 'fun' | 'work';
+export type NeedKey = 'energy' | 'hunger' | 'hygiene' | 'social' | 'fun' | 'work' | 'warmth';
 
 export interface NeedDef {
   label: string;
@@ -14,6 +14,8 @@ export interface NeedDef {
   low: string;
   /** Mood points lost per point below 30. */
   weight: number;
+  /** Only shown while it matters (Warmth outside the cold months). */
+  seasonal?: boolean;
 }
 
 /** Every need, in display order. UI and mood read from here, so adding a need is one entry. */
@@ -24,6 +26,7 @@ export const NEEDS: Record<NeedKey, NeedDef> = {
   social: { label: 'Social', color: 'var(--n-social)', low: 'Lonely', weight: 0.3 },
   fun: { label: 'Fun', color: 'var(--n-fun)', low: 'Bored', weight: 0.3 },
   work: { label: 'Productivity', color: 'var(--n-work)', low: 'Unproductive', weight: 0.15 },
+  warmth: { label: 'Warmth', color: 'var(--n-warmth)', low: 'Freezing', weight: 0.45, seasonal: true },
 };
 export const NEED_KEYS = Object.keys(NEEDS) as NeedKey[];
 export const NEED_LABEL = Object.fromEntries(NEED_KEYS.map((k) => [k, NEEDS[k].label])) as Record<NeedKey, string>;
@@ -38,7 +41,7 @@ export const YEAR_DAYS = SEASON_DAYS * SEASONS.length;
 
 // ------------------------------------------------------------------ goods
 
-export type Good = 'food' | 'wood' | 'stone';
+export type Good = 'food' | 'wood' | 'stone' | 'firewood';
 
 export interface GoodDef {
   label: string;
@@ -55,6 +58,7 @@ export const GOODS: Record<Good, GoodDef> = {
   food: { label: 'Food', color: 'var(--n-hunger)', cap: 300, hud: true },
   wood: { label: 'Wood', color: 'oklch(0.55 0.09 60)', cap: 200, hud: true },
   stone: { label: 'Stone', color: 'oklch(0.6 0.01 80)', cap: 200, hud: true },
+  firewood: { label: 'Firewood', color: 'oklch(0.66 0.13 45)', cap: 150, hud: true },
 };
 export const GOOD_KEYS = Object.keys(GOODS) as Good[];
 export type Stock = Record<Good, number>;
@@ -196,7 +200,8 @@ export type MemoryKind =
   | 'meeting' | 'skillUp' | 'playedMusic' | 'goodRead' | 'commuteScare'
   | 'newPartner' | 'newBaby' | 'grief' | 'movedIn' | 'builtSomething' | 'townGrowing' | 'sleptRough' | 'proposed'
   | 'grewUp' | 'harvest' | 'school' | 'festival' | 'drought' | 'storm'
-  | 'birthday' | 'myBirthday' | 'familyDinner' | 'paidRespects' | 'eveningWalk';
+  | 'birthday' | 'myBirthday' | 'familyDinner' | 'paidRespects' | 'eveningWalk'
+  | 'snowDay' | 'cozyFire' | 'coldHome' | 'blizzard';
 
 export interface MemoryDef {
   label: string;
@@ -256,4 +261,8 @@ export const MEMORIES: Record<MemoryKind, MemoryDef> = {
   familyDinner: { label: 'Dinner with the family', mood: 6, duration: 10 * H, major: false, maxStack: 1 },
   paidRespects: { label: 'Visited a grave', mood: 3, duration: 2 * D, major: false, maxStack: 2 },
   eveningWalk: { label: 'Evening walk together', mood: 5, duration: D, major: false, maxStack: 1 },
+  snowDay: { label: 'First snow!', mood: 8, duration: D, major: true, maxStack: 1 },
+  cozyFire: { label: 'Warm by the fire', mood: 4, duration: 8 * H, major: false, maxStack: 1 },
+  coldHome: { label: 'No firewood at home', mood: -8, duration: 8 * H, major: true, maxStack: 1 },
+  blizzard: { label: 'Snowed in by a blizzard', mood: -3, duration: D, major: true, maxStack: 1 },
 };

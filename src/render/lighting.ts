@@ -19,6 +19,8 @@ const GRADE: [number, RGB][] = [
   [24, [0.36, 0.42, 0.7]],
 ];
 const RAIN: RGB = [0.82, 0.86, 0.92];
+/** Spring as-is, summer a touch warmer, autumn golden, winter cool and pale. */
+const SEASON_TINT: RGB[] = [[1, 1, 1], [1, 0.985, 0.94], [1, 0.93, 0.84], [0.9, 0.94, 1]];
 
 const WARM = 0xffb25a;
 const LAMP = 0xffd38a;
@@ -103,9 +105,16 @@ export class Lighting {
     vehicles: VehicleLight[],
     roofed: Set<number> = new Set(),
     windows: { x: number; y: number; w: number; h: number; rooms: number[] }[] = [],
+    season = 0,
+    seasonProgress = 0,
   ): void {
     const m = this.map;
     let c = gradeAt(((hour % 24) + 24) % 24);
+    // Ease into the next season's light over the last quarter of this one.
+    const t0 = SEASON_TINT[season];
+    const t1 = SEASON_TINT[(season + 1) % 4];
+    const f = Math.max(0, (seasonProgress - 0.75) / 0.25);
+    c = [c[0] * (t0[0] + (t1[0] - t0[0]) * f), c[1] * (t0[1] + (t1[1] - t0[1]) * f), c[2] * (t0[2] + (t1[2] - t0[2]) * f)];
     if (raining) c = [c[0] * RAIN[0], c[1] * RAIN[1], c[2] * RAIN[2]];
     const lum = 0.3 * c[0] + 0.55 * c[1] + 0.15 * c[2];
     this.darkness = Math.max(0, Math.min(1, (0.97 - lum) / 0.5));
@@ -167,6 +176,11 @@ export class Lighting {
       }
     }
     for (const p of m.props) {
+      if (p.key === 'bonfire') {
+        this.pool(this.statics, (p.x + 0.5) * TILE, (p.y + 0.6) * TILE, 52, 34, WARM, 0.6);
+        this.pool(this.statics, (p.x + 0.5) * TILE, (p.y + 0.4) * TILE, 9, 9, 0xfff0c0, 0.9);
+        continue;
+      }
       if (p.key !== 'lamp') continue;
       const cx = (p.x + p.w / 2) * TILE;
       this.pool(this.statics, cx + 1, (p.y + p.h) * TILE - 6, 38, 22, LAMP, 0.42);

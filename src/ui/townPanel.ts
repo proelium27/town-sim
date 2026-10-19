@@ -1,6 +1,7 @@
 import { ageOf } from '../sim/agents';
 import { ADULT_AGE, billText, MIN_PER_DAY, SEASON_DAYS, SEASONS, YEAR_DAYS, GOOD_KEYS, GOODS, PRIORITY_KEYS, PRIORITY_LABEL, type PriorityKey } from '../sim/defs';
 import { foodBalance } from '../sim/economy';
+import { chill, winterReadiness } from '../sim/seasons';
 import { WORLD_EVENTS, type WorldEventKey, triggerWorldEvent } from '../sim/events';
 import { allocateRoles, buildCap, capacity, stageOf } from '../sim/planner';
 import { first } from '../sim/social';
@@ -77,6 +78,17 @@ export class TownPanel {
     });
   }
 
+  /** Autumn and winter: how long the stores would last, and which hearths are cold. */
+  private winterLine(): string {
+    const sim = this.sim;
+    if (sim.season < 2 && chill(sim) === 0) return '';
+    const r = winterReadiness(sim);
+    const left = sim.season === 2 ? 2 + (1 - sim.seasonProgress) * 2 : sim.season === 3 ? (1 - sim.seasonProgress) * 2 : 0;
+    const cold = sim.town.households.filter((h) => h.building >= 0 && sim.fuel[h.id] < 1).length;
+    const ok = (d: number) => (d >= left ? 'pos' : 'neg');
+    return `<p class="winter-line">Winter ${sim.season === 3 ? 'ends' : 'lasts'} in ${left.toFixed(1)} days. Stores last: <b class="${ok(r.food)}">${r.food.toFixed(1)} days of food</b>, <b class="${ok(r.firewood)}">${r.firewood.toFixed(1)} of firewood</b>${cold ? ` · <b class="neg">${cold} cold hearth${cold === 1 ? '' : 's'}</b>` : ''}</p>`;
+  }
+
   update(): void {
     const sim = this.sim;
     const pop = sim.agents;
@@ -91,7 +103,7 @@ export class TownPanel {
     const sig = JSON.stringify([
       pop.length, kids, elders, beds, homeless, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
       sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
-      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(),
+      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
     ]);
     if (sig === this.sig) return;
     this.sig = sig;
@@ -114,6 +126,7 @@ export class TownPanel {
           }).join('')}
         </div>
         ${ev.drought ? '<p class="warn-line">Drought: nothing is growing.</p>' : ''}
+        ${this.winterLine()}
       </section>
       <section class="tp-sec">
         <h3>Priorities <small>what the town meetings lean toward</small></h3>

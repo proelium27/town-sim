@@ -155,6 +155,7 @@ export function createAgent(sim: Sim, o: NewAgentOpts): Agent {
   };
   if (namesake) a.namedAfter = namesake.id;
   a.needs.energy = rng.range(70, 95);
+  a.needs.warmth = 100;
   for (const p of parents) {
     p.children.push(a.id);
     a.relations.set(p.id, { opinion: 60, familiarity: 90, lastTalk: -Infinity });

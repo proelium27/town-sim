@@ -8,6 +8,7 @@ import { Cell } from '../world/map';
 import { Exteriors, wallTone } from './exteriors';
 import { Lighting } from './lighting';
 import { Smoke } from './particles';
+import { chill } from '../sim/seasons';
 import { Shading } from './shading';
 
 const WALL_TOP = 0xddd0b8;
@@ -46,6 +47,8 @@ export class WorldView {
   /** Rain puddles on paths and pavement; faded in by how wet the ground is. */
   readonly puddles = new Graphics();
   private puddleVersion = -1;
+  /** Season the ground and trees were last painted for. */
+  private season = -1;
   private sprites = new Map<number, Sprite>();
   private keys = new Map<number, string>();
   private propVersion = -1;
@@ -87,11 +90,52 @@ export class WorldView {
     const g = this.groundCtx;
     g.drawImage(img, f.col * step, f.row * step, TILE, TILE, x * TILE, y * TILE, TILE, TILE);
     const kind = m.ground[i];
+    const X = x * TILE;
+    const Y = y * TILE;
+    const spot = (n: number, salt: number) => vhash(x * 7 + n, y * 13 + salt);
+    this.paintWear(g, x, y, kind, spot);
+    this.paintSeason(g, kind, X, Y, spot, m.room[i] >= 0);
+  }
+
+  /** Seasonal cast over open ground: fresh spring green, autumn gold, winter snow. */
+  private paintSeason(g: CanvasRenderingContext2D, kind: string, X: number, Y: number, spot: (n: number, salt: number) => number, indoors: boolean): void {
+    if (indoors) return;
+    const season = Math.max(0, this.season);
+    const grassy = kind === 'grass' || kind === 'worn';
+    if (season === 0 && grassy) {
+      g.fillStyle = 'rgba(150, 225, 95, 0.08)';
+      g.fillRect(X, Y, TILE, TILE);
+    } else if (season === 2 && grassy) {
+      g.fillStyle = 'rgba(214, 156, 58, 0.24)';
+      g.fillRect(X, Y, TILE, TILE);
+      g.fillStyle = 'rgba(190, 96, 40, 0.5)';
+      for (let n = 0; n < 2; n++) g.fillRect(X + (spot(n, 21) % 15), Y + (spot(n, 22) % 15), 1, 1);
+    } else if (season === 3 && kind === 'water') {
+      // Frozen over: pale ice with a few scratches.
+      g.fillStyle = 'rgba(222, 236, 246, 0.72)';
+      g.fillRect(X, Y, TILE, TILE);
+      g.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      g.fillRect(X + (spot(1, 41) % 10), Y + (spot(2, 42) % 14), 5, 1);
+    } else if (season === 3) {
+      const cover = grassy ? 0.9 : kind === 'trail' || kind === 'dirt' || kind === 'field' || kind === 'sand' ? 0.6 : kind === 'sidewalk' || kind === 'plaza' ? 0.22 : 0;
+      if (!cover) return;
+      g.fillStyle = `rgba(238, 243, 248, ${cover})`;
+      g.fillRect(X, Y, TILE, TILE);
+      g.fillStyle = 'rgba(200, 212, 226, 0.7)';
+      for (let n = 0; n < 4; n++) g.fillRect(X + (spot(n, 31) % 15), Y + (spot(n, 32) % 15), 2, 1);
+      if (cover > 0.8) {
+        g.fillStyle = '#ffffff';
+        for (let n = 0; n < 3; n++) g.fillRect(X + (spot(n, 33) % 15), Y + (spot(n, 34) % 15), 1, 1);
+      }
+    }
+  }
+
+  private paintWear(g: CanvasRenderingContext2D, x: number, y: number, kind: string, spot: (n: number, salt: number) => number): void {
+    const m = this.map;
     if (kind !== 'worn' && kind !== 'trail') return;
     // Bare patches on trampled grass; grass creeping back in at a trail's edges.
     const X = x * TILE;
     const Y = y * TILE;
-    const spot = (n: number, salt: number) => vhash(x * 7 + n, y * 13 + salt);
     if (kind === 'worn') {
       g.fillStyle = 'rgba(150, 112, 70, 0.55)';
       for (let n = 0; n < 9; n++) g.fillRect(X + 2 + (spot(n, 1) % 12), Y + 2 + (spot(n, 2) % 12), 2 + (spot(n, 3) % 2), 1 + (spot(n, 4) % 2));
@@ -160,9 +204,16 @@ export class WorldView {
     return p.drawn ? this.art.drawn(p.key as DrawnKey) : this.art.frame(PROPS[p.key as PropKey]);
   }
 
+  /** Trees and bushes turn with the seasons: autumn copper, winter frost. */
+  private tintFoliage(s: Sprite, key: string): void {
+    if (!/^(tree|bush)/.test(key)) return;
+    s.tint = this.season === 2 ? 0xffc489 : this.season === 3 ? 0xc6d3df : 0xffffff;
+  }
+
   private addProp(p: Prop): void {
     if (p.w === 0) return; // spot-only markers
     const s = new Sprite(this.propTexture(p));
+    this.tintFoliage(s, p.key);
     // Anchor at the bottom of the footprint so tall sprites (trees, lamps) rise above it.
     const footX = p.x * TILE + (p.w * TILE) / 2;
     const footY = (p.y + p.h) * TILE;
@@ -179,8 +230,7 @@ export class WorldView {
     this.entities.addChild(s);
   }
 
-  /** Bring the scene in line with the map. Cheap when nothing changed. */
-  /** Per-frame effects: smoke from homes where someone is cooking, puddles after rain. dt in real seconds. */
+  /** Per-frame effects: smoke from homes cooking or keeping warm, puddles after rain. dt in real seconds. */
   updateFx(dt: number): void {
     const sim = this.sim;
     const fires = new Set<number>();
@@ -188,6 +238,13 @@ export class WorldView {
       if (a.action.kind !== 'cook' || a.action.stage !== 'perform') continue;
       const hh = sim.town.households[a.household];
       if (hh.building >= 0) fires.add(hh.building);
+    }
+    // In the cold every burning hearth smokes while someone's home.
+    if (chill(sim) > 0.3) {
+      for (const a of sim.agents) {
+        const hh = sim.town.households[a.household];
+        if (hh.building >= 0 && sim.fuel[hh.id] > 0 && sim.map.room[a.at] === hh.room) fires.add(hh.building);
+      }
     }
     this.smoke.update(dt, this.exteriors.chimneys().filter((c) => fires.has(c.id)));
     const wet = sim.events.wet ?? 0;
@@ -215,8 +272,19 @@ export class WorldView {
     }
   }
 
+  /** Bring the scene in line with the map. Cheap when nothing changed. */
   sync(): void {
     const m = this.map;
+    if (this.sim.season !== this.season) {
+      // A new season repaints the whole ground and recolors the trees.
+      this.season = this.sim.season;
+      for (let i = 0; i < m.w * m.h; i++) this.paintGround(i);
+      m.groundDirty.length = 0;
+      this.groundTex.source.update();
+      this.shading.season = this.season;
+      this.exteriors.setSnow(this.season === 3);
+      for (const [id, s] of this.sprites) this.tintFoliage(s, this.keys.get(id) ?? '');
+    }
     if (m.groundDirty.length) {
       for (const i of m.groundDirty) this.paintGround(i);
       m.groundDirty.length = 0;

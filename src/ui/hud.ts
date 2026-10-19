@@ -12,6 +12,7 @@ const DAWN = HORIZON('#ffb27a');
 const DUSK = HORIZON('#f08a6a');
 const RAIN = px('<rect x="4" y="3" width="8" height="2" fill="#c9d3e0"/><rect x="2" y="5" width="12" height="4" fill="#c9d3e0"/><rect x="3" y="11" width="1" height="2" fill="#8fb6e8"/><rect x="7" y="11" width="1" height="3" fill="#8fb6e8"/><rect x="11" y="11" width="1" height="2" fill="#8fb6e8"/>');
 const CLEAR = px('<rect x="5" y="5" width="6" height="6" fill="#ffd977"/><rect x="7" y="2" width="2" height="2" fill="#f2c14e"/><rect x="7" y="12" width="2" height="2" fill="#f2c14e"/><rect x="2" y="7" width="2" height="2" fill="#f2c14e"/><rect x="12" y="7" width="2" height="2" fill="#f2c14e"/>');
+const SNOW = px('<rect x="4" y="3" width="8" height="2" fill="#c9d3e0"/><rect x="2" y="5" width="12" height="4" fill="#c9d3e0"/><rect x="3" y="11" width="2" height="2" fill="#ffffff"/><rect x="7" y="12" width="2" height="2" fill="#ffffff"/><rect x="11" y="11" width="2" height="2" fill="#ffffff"/>');
 const NIGHT = px('<rect x="3" y="4" width="1" height="1" fill="#e8e2f5"/><rect x="11" y="3" width="1" height="1" fill="#e8e2f5"/><rect x="7" y="8" width="2" height="2" fill="#e8e2f5"/><rect x="12" y="11" width="1" height="1" fill="#e8e2f5"/><rect x="4" y="12" width="1" height="1" fill="#e8e2f5"/>');
 
 /** Top bar: clock with day phase, weather, town stats and whatever is happening right now. */
@@ -46,7 +47,8 @@ export class Hud {
     const night = h < 5.5 || h >= 20.5;
     this.put(this.phaseEl, 'phase', night ? MOON : h < 8 ? DAWN : h >= 17.5 ? DUSK : SUN);
     const ev = sim.events;
-    this.put(this.weatherEl, 'weather', ev.rain ? `${RAIN}<span>Rain</span>` : night ? `${NIGHT}<span>Clear night</span>` : `${CLEAR}<span>Clear</span>`);
+    const snowing = ev.rain && sim.season === 3;
+    this.put(this.weatherEl, 'weather', ev.snowstorm ? `${SNOW}<span>Blizzard</span>` : snowing ? `${SNOW}<span>Snow</span>` : ev.rain ? `${RAIN}<span>Rain</span>` : night ? `${NIGHT}<span>Clear night</span>` : `${CLEAR}<span>${sim.season === 3 ? 'Cold' : 'Clear'}</span>`);
 
     const working = sim.agents.filter((a) => statusOf(a) === 'working').length;
     const asleep = sim.agents.filter((a) => statusOf(a) === 'asleep').length;
@@ -61,7 +63,7 @@ export class Hud {
     ];
     const building = sim.projects.length ? `Building ${sim.projects.length === 1 ? sim.projects[0].name : `${sim.projects.length} things`}` : '';
     const bday = ev.birthdays[0] && sim.agent(ev.birthdays[0].host);
-    const happening = [ev.festival && 'Festival in the park', ev.drought && 'Drought', bday && `${bday.name.split(' ')[0]}'s birthday`, building, ev.standup && 'Standup', ev.pizza && 'Pizza in the kitchen', ev.party && 'Party in the lounge', ev.coffeeBroken && 'Coffee machine broken'].filter(Boolean).slice(0, 2) as string[];
+    const happening = [ev.festival && (ev.festival.name ?? 'Festival in the park'), ev.snowstorm && 'Blizzard', ev.drought && 'Drought', bday && `${bday.name.split(' ')[0]}'s birthday`, building, ev.standup && 'Standup', ev.pizza && 'Pizza in the kitchen', ev.party && 'Party in the lounge', ev.coffeeBroken && 'Coffee machine broken'].filter(Boolean).slice(0, 2) as string[];
     this.put(
       this.statsEl,
       'stats',

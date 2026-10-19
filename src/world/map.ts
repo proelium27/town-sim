@@ -3,7 +3,7 @@ import type { Facing, GroundKey, PropKey } from '../assets/manifest';
 export type DrawnKey =
   | 'monitor' | 'toilet' | 'basin' | 'whiteboard' | 'coffee' | 'shower' | 'net'
   | 'rock' | 'stump' | 'crop0' | 'crop1' | 'crop2' | 'crop3' | 'crate' | 'logs' | 'stones' | 'chalkboard' | 'deskKid'
-  | 'cake' | 'grave';
+  | 'cake' | 'grave' | 'bonfire';
 
 export type RoomKind =
   | 'office' | 'meeting' | 'kitchen' | 'lounge' | 'lobby' | 'restroom'
@@ -129,6 +129,8 @@ export class TownMap {
   groundDirty: number[] = [];
   /** Bumped on any ground change (paths, fields), for baked layers. */
   groundVersion = 0;
+  /** Like groundVersion, but ignores grass wearing to a trail and back (which happens constantly). */
+  lawnVersion = 0;
 
   constructor(
     readonly w: number,
@@ -188,6 +190,8 @@ export class TownMap {
     if (!this.inBounds(x, y)) return;
     const i = this.idx(x, y);
     if (this.ground[i] === g) return;
+    const wear = (k: GroundKey) => k === 'grass' || k === 'worn' || k === 'trail';
+    if (!wear(this.ground[i]) || !wear(g)) this.lawnVersion++;
     this.ground[i] = g;
     this.groundDirty.push(i);
     this.groundVersion++;

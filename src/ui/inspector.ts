@@ -2,6 +2,7 @@ import type { Art } from '../assets/loader';
 import { ageOf } from '../sim/agents';
 import { xpToNext } from '../sim/ai';
 import { billText, NEED_KEYS, NEEDS, ROLES, SKILL_KEYS, SKILL_LABEL, TRAITS } from '../sim/defs';
+import { chill } from '../sim/seasons';
 import { kinship, moodParts, moodTarget, moodWord, relationLabel, type Kin } from '../sim/social';
 import type { Agent } from '../sim/types';
 import type { Sim } from '../sim/sim';
@@ -189,6 +190,7 @@ export class Inspector {
       (m.querySelector('i') as HTMLElement).style.width = `${v}%`;
       (m.querySelector('.val') as HTMLElement).textContent = String(Math.round(v));
       m.classList.toggle('low', v < 25);
+      m.hidden = !!NEEDS[k as keyof typeof NEEDS]?.seasonal && v >= 99.5 && chill(this.sim) === 0;
       if (k === 'mood') (m.querySelector('b') as HTMLElement).style.left = `${moodTarget(a)}%`;
     }
     set('moodword', `${moodWord(a.mood)}, heading toward ${Math.round(moodTarget(a))}`);

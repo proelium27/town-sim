@@ -8,6 +8,7 @@ import { tickEvents, type EventState, initialEvents } from './events';
 import { tickLife } from './life';
 import { Nav } from './nav';
 import { tickPlanner } from './planner';
+import { tickSeasons } from './seasons';
 import { Rng } from './rng';
 import { type Car, tickTraffic } from './traffic';
 import type { Activity, ActivityKind, Agent, Project, Tone } from './types';
@@ -45,8 +46,12 @@ export class Sim {
   reserved = new Map<number, number>();
   /** Meals in each household's fridge, indexed by household id. */
   pantry: number[] = [];
+  /** Firewood by each household's hearth, indexed by household id. */
+  fuel: number[] = [];
+  /** Last season the sim noticed, to fire season-change events once. */
+  seasonSeen = -1;
   /** The town's shared stockpile, kept in storehouses. */
-  stock: Stock = { ...emptyStock(), wood: 45, stone: 30, food: 160 };
+  stock: Stock = { ...emptyStock(), wood: 45, stone: 30, food: 160, firewood: 30 };
   projects: Project[] = [];
   nextProjectId = 1;
   /** Player-set emphasis for the town planner: 0 low, 1 normal, 2 high. */
@@ -65,6 +70,7 @@ export class Sim {
     this.town = buildTown(seed);
     this.nav = new Nav(this.town.map);
     this.pantry = this.town.households.map(() => 5);
+    this.fuel = this.town.households.map(() => 8);
     if (opts.agents !== false) createAgents(this);
     this.milestone(`${this.agents.length} townsfolk call Northwind home`);
   }
@@ -161,6 +167,7 @@ export class Sim {
     this.time += STEP;
     if (this.day !== dayBefore) for (const a of this.agents) a.workedToday = 0;
     tickEvents(this, STEP);
+    tickSeasons(this, STEP);
     tickLife(this, STEP);
     tickPlanner(this, STEP);
     tickEconomy(this, STEP);

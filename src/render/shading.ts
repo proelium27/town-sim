@@ -47,6 +47,8 @@ export class Shading {
   private wallG = new Graphics();
   private propG = new Graphics();
   private keys = { lawn: '', walls: '', props: '' };
+  /** Grass tufts and flowers are buried under winter snow. */
+  season = 0;
 
   constructor(readonly map: TownMap) {
     this.layer.addChild(this.lawnG, this.wallG, this.propG);
@@ -55,11 +57,12 @@ export class Shading {
 
   sync(): void {
     const m = this.map;
-    const lawn = `${m.groundVersion}:${m.wallVersion}`;
+    const lawn = `${m.lawnVersion}:${m.wallVersion}`;
     if (lawn !== this.keys.lawn) {
       this.keys.lawn = lawn;
       this.lawn(this.lawnG.clear());
     }
+    this.lawnG.visible = this.season !== 3;
     const walls = `${m.wallVersion}`;
     if (walls !== this.keys.walls) {
       this.keys.walls = walls;

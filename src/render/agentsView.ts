@@ -215,6 +215,7 @@ export class AgentsView {
         if (a.carry?.kind === 'wood') g.rect(-5, -2, 10, 3).fill(0x8a5f37).rect(-5, 1, 10, 3).fill(0x9b6a3c).rect(4, -2, 2, 6).fill(0xd4a56a);
         else if (a.carry?.kind === 'stone') g.rect(-4, -1, 5, 4).fill(0x8d877f).rect(0, -3, 5, 5).fill(0xa8a29a);
         else if (a.carry?.kind === 'food') g.rect(-5, 0, 10, 4).fill(0xa97a47).rect(-4, -2, 3, 2).fill(0xe9c74c).rect(0, -3, 3, 3).fill(0x7fbf4f);
+        else if (a.carry?.kind === 'firewood') g.rect(-6, -1, 4, 4).fill(0x8a5f37).rect(-2, -2, 4, 5).fill(0xc08a50).rect(2, -1, 4, 4).fill(0xa97a47).rect(-1, -2, 2, 1).fill(0xe0b679);
       }
       s.carry.visible = !!a.carry;
       s.carry.position.set(Math.round(x), Math.round(y - 17 * scale));
@@ -372,17 +373,29 @@ export class AgentsView {
   }
 
   /** World lighting (grade, lamps, windows, headlights) plus screen-space rain streaks over everything. */
-  updateWeather(hour: number, raining: boolean, realMs: number, w: number, h: number): void {
+  updateWeather(hour: number, raining: boolean, realMs: number, w: number, h: number, season = 0, seasonProgress = 0, blizzard = false): void {
     if (realMs - this.lastSync > 1000) {
       this.lastSync = realMs;
       this.world.shading.sync();
     }
     const ext = this.world.exteriors;
-    this.world.lighting.update(hour, raining, this.occupiedRooms(), this.vehicleLights(), ext.roofedRooms(), ext.litWindows());
+    this.world.lighting.update(hour, raining, this.occupiedRooms(), this.vehicleLights(), ext.roofedRooms(), ext.litWindows(), season, seasonProgress);
     this.sky.clear();
     this.rain.clear();
     if (!raining) return;
     const t = realMs / 1000;
+    if (season === 3) {
+      // Snow: soft flakes drifting down and sideways; a blizzard is thicker and faster.
+      const n = blizzard ? 320 : 150;
+      const fall = blizzard ? 160 : 60;
+      for (let i = 0; i < n; i++) {
+        const sx = ((i * 97.3 + t * (blizzard ? 120 : 18) + Math.sin(t * 1.3 + i) * 8) % (w + 40)) - 20;
+        const sy = ((i * 53.7 + t * fall * (0.7 + (i % 5) * 0.12)) % (h + 40)) - 20;
+        this.rain.rect(Math.round(sx), Math.round(sy), i % 3 ? 2 : 3, i % 3 ? 2 : 3);
+      }
+      this.rain.fill({ color: 0xffffff, alpha: 0.85 });
+      return;
+    }
     for (let i = 0; i < 160; i++) {
       const rx = ((i * 97.3 + t * 80) % (w + 40)) - 20;
       const ry = ((i * 53.7 + t * 520 + (i % 7) * 40) % (h + 40)) - 20;
