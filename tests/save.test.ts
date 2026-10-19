@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { billText, GOOD_KEYS, NEEDS } from '../src/sim/defs';
 import { loadSim, SAVE_VERSION, saveSim, snapshot } from '../src/sim/save';
 import { Sim } from '../src/sim/sim';
+import { BACKUP_KEY, readSave, Saves } from '../src/ui/saves';
 
 describe('saving and loading', () => {
   it('a reloaded town carries on exactly as if it never stopped', () => {
@@ -77,5 +78,55 @@ describe('goods registry', () => {
     const sim = new Sim(7, { agents: false });
     for (const g of GOOD_KEYS) expect(typeof sim.stock[g]).toBe('number');
     expect(billText({ wood: 40, stone: 20 }, { wood: 12 })).toBe('wood 12/40 · stone 0/20');
+  });
+});
+
+describe('an unreadable autosave', () => {
+  const store = new Map<string, string>();
+  const storage = (failBackup = false) => ({
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => {
+      if (failBackup && k === BACKUP_KEY) throw new Error('QuotaExceededError');
+      store.set(k, String(v));
+    },
+    removeItem: (k: string) => void store.delete(k),
+  });
+  const tooNew = () => saveSim(new Sim(3, { agents: false })).replace(/^\{"v":\d+/, `{"v":${SAVE_VERSION + 1}`);
+  beforeEach(() => {
+    store.clear();
+    vi.stubGlobal('addEventListener', () => {});
+    vi.stubGlobal('document', { addEventListener: () => {} });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('from a newer version is kept as a backup, not overwritten by the fresh town', () => {
+    vi.stubGlobal('localStorage', storage());
+    const text = tooNew();
+    store.set('townsfolk.save', text);
+    const got = readSave();
+    expect(got.sim).toBeNull();
+    expect(got.unreadable?.reason).toMatch(/newer version/);
+    expect(store.get(BACKUP_KEY)).toBe(text);
+    const saves = new Saves(new Sim(7, { agents: false }), true, got.unreadable);
+    saves.save();
+    expect(store.get(BACKUP_KEY)).toBe(text);
+    expect(store.get('townsfolk.save')).not.toBe(text);
+    expect(saves.notice()).toMatch(/kept as a backup/);
+    expect(saves.hasBackup).toBe(true);
+  });
+
+  it('stays in place with autosave off if there is no room to back it up', () => {
+    vi.stubGlobal('localStorage', storage(true));
+    const text = tooNew();
+    store.set('townsfolk.save', text);
+    const saves = new Saves(new Sim(7, { agents: false }), true, readSave().unreadable);
+    saves.save();
+    expect(store.get('townsfolk.save')).toBe(text);
+    expect(saves.canSave).toBe(false);
+    expect(saves.notice()).toMatch(/autosave is off/);
   });
 });

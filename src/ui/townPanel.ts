@@ -54,6 +54,8 @@ export class TownPanel {
         this.saves.save();
       } else if (act === 'export') {
         this.saves.exportFile();
+      } else if (act === 'export-backup') {
+        this.saves.exportBackup();
       } else if (act === 'import') {
         picker.click();
         return;
@@ -146,11 +148,13 @@ export class TownPanel {
       <section class="tp-sec">
         <h3>Saving <small>${esc(this.saves.status())}</small></h3>
         <div class="save-row">
-          <button class="btn" data-act="save" ${this.saves.enabled ? '' : 'disabled'}>Save now</button>
+          <button class="btn" data-act="save" ${this.saves.canSave ? '' : 'disabled'}>Save now</button>
           <button class="btn" data-act="export">Export</button>
-          <button class="btn" data-act="import">Import</button>
-          <button class="btn danger" data-act="reset">New town</button>
+          ${this.saves.hasBackup ? `<button class="btn" data-act="export-backup" title="Download the saved town that couldn't be read">Export backup</button>` : ''}
+          <button class="btn" data-act="import" ${this.saves.enabled ? '' : 'disabled title="Scratch towns from a ?seed= link never touch your saved town. Open the game without ?seed= to import."'}>Import</button>
+          <button class="btn danger" data-act="reset" ${this.saves.enabled ? '' : 'title="Starts this scratch town over. Your saved town is untouched."'}>New town</button>
         </div>
+        ${this.saves.notice() ? `<p class="warn-line">${esc(this.saves.notice())}</p>` : ''}
       </section>
       <section class="tp-sec">
         <h3>History</h3>
