@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createAgent } from '../src/sim/agents';
-import { checkTier, extensionSite, TIER_AT } from '../src/sim/growth';
-import { capacity, completeProject, findSite, members, tickPlanner } from '../src/sim/planner';
+import { checkTier, extensionSite, stampExtension, TIER_AT } from '../src/sim/growth';
+import { capacity, completeProject, findSite, members, newHousehold, tickPlanner } from '../src/sim/planner';
+import { BLUEPRINTS } from '../src/world/blueprints';
+import { Cell } from '../src/world/map';
 import { Sim } from '../src/sim/sim';
 
 describe('homes that grow', () => {
@@ -31,6 +33,35 @@ describe('homes that grow', () => {
     const wingCell = sim.map.idx(pr!.extends!.side === 'east' ? room.x + room.w - 2 : room.x + 1, room.y + 2);
     expect(sim.nav.findPath(sim.map.idx(b.door.x, b.door.y), wingCell, 40000)).not.toBeNull();
     expect(sim.map.room[wingCell]).toBe(room.id);
+  });
+
+  it('an east wing leaves the bathroom walled off', () => {
+    for (const doorTop of [true, false]) {
+      const sim = new Sim(7);
+      const m = sim.map;
+      // A fresh house out on open ground, with room on both sides.
+      const site = findSite(sim, 'house')!;
+      const hh = newHousehold(sim, 'Test home');
+      const b = BLUEPRINTS.house.stamp(m, site.x, site.y, doorTop, 'Test home', hh.id);
+      Object.assign(hh, { building: b.id, room: b.rooms[0], door: b.door });
+      const wing = extensionSite(sim, b)!;
+      expect(wing.side).toBe('east');
+      const oldWall = b.x + b.w - 1;
+      const bath: number[] = [];
+      for (let y = b.y; y < b.y + b.h; y++) for (let x = b.x; x < b.x + b.w; x++) if (m.ground[m.idx(x, y)] === 'floorTile' && m.cell[m.idx(x, y)] === Cell.Open) bath.push(m.idx(x, y));
+      expect(bath.length).toBeGreaterThan(0);
+      stampExtension(sim, wing, hh.id);
+      // No bathroom tile opens straight into the knocked-through wall or the wing beyond it.
+      for (const i of bath) {
+        const [x, y] = [m.cx(i), m.cy(i)];
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (x + dx >= oldWall) expect(m.walkable(x + dx, y + dy)).toBe(false);
+      }
+      // But the wing is still open to the rest of the home.
+      const openings = [];
+      for (let y = b.y + 1; y < b.y + b.h - 1; y++) if (m.walkable(oldWall, y)) openings.push(y);
+      expect(openings.length).toBeGreaterThanOrEqual(2);
+      expect(sim.nav.findPath(m.idx(b.door.x, b.door.y), m.idx(wing.x + 1, wing.y + 3), 40000)).not.toBeNull();
+    }
   });
 
   it('grown kids settle near their parents', () => {

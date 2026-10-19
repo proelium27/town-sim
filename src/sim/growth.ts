@@ -69,7 +69,11 @@ export function stampExtension(sim: Sim, site: ExtensionSite, household: number)
     }
   }
   const oldWall = east ? b.x + b.w - 1 : b.x;
+  const inner = east ? oldWall - 1 : oldWall + 1;
   for (let y = y0 + 1; y < y0 + h - 1; y++) {
+    // The bathroom sits in an east corner: keep its walls (and any inside wall) standing.
+    const i = m.idx(inner, y);
+    if (m.cell[i] !== Cell.Open || m.ground[i] === 'floorTile') continue;
     m.setCell(oldWall, y, Cell.Open);
     m.setGround(oldWall, y, 'floorWood');
     m.room[m.idx(oldWall, y)] = home.id;
