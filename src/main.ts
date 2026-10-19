@@ -7,6 +7,7 @@ import { WorldView } from './render/worldView';
 import { Sim, STEP } from './sim/sim';
 import { ActivityLog } from './ui/activity';
 import { Inspector } from './ui/inspector';
+import { TownPanel } from './ui/townPanel';
 import { Tracker, statusOf } from './ui/tracker';
 
 /** Real milliseconds per sim step at 1x: 20 steps per second, so one game minute per real second. */
@@ -29,7 +30,7 @@ async function boot(): Promise<void> {
   await art.load();
   const seed = Number(new URLSearchParams(location.search).get('seed') ?? 7);
   const sim = new Sim(seed);
-  const world = new WorldView(art, sim.map);
+  const world = new WorldView(art, sim);
   const people = new AgentsView(art, sim, world);
   app.stage.addChild(world.root, people.sky, people.rain, people.overlay);
 
@@ -48,7 +49,7 @@ async function boot(): Promise<void> {
   };
   window.addEventListener('resize', layout);
   layout();
-  camera.jumpTo(30 * TILE, 22 * TILE);
+  camera.jumpTo(62 * TILE, 30 * TILE);
   camera.clampTarget();
   camera.x = camera.tx;
   camera.y = camera.ty;
@@ -71,6 +72,18 @@ async function boot(): Promise<void> {
     refreshUi();
   };
   const tracker = new Tracker(document.getElementById('tracker')!, sim, art, (id) => select(id, true));
+  const town = new TownPanel(document.getElementById('town')!, sim, (x, y) => camera.lookAtClamped(x * TILE, y * TILE), (id) => select(id, true));
+  let side: 'people' | 'town' = 'people';
+  const sideTabs = document.getElementById('side-tabs')!;
+  sideTabs.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest('[data-side]') as HTMLElement | null;
+    if (!b) return;
+    side = b.dataset.side as typeof side;
+    for (const x of sideTabs.querySelectorAll('button')) x.setAttribute('aria-selected', String(x === b));
+    document.getElementById('tracker')!.hidden = side !== 'people';
+    document.getElementById('town')!.hidden = side !== 'town';
+    refreshUi();
+  });
   const activity = new ActivityLog(document.getElementById('activity')!, sim, (id) => select(id, true));
   const inspector = new Inspector(document.getElementById('inspector')!, sim, art, {
     select: (id) => select(id, true),
@@ -98,9 +111,11 @@ async function boot(): Promise<void> {
     const asleep = sim.agents.filter((a) => statusOf(a) === 'asleep').length;
     const mood = Math.round(sim.agents.reduce((s, a) => s + a.mood, 0) / sim.agents.length);
     const ev = sim.events;
-    const happening = [ev.standup && 'Standup in progress', ev.pizza && 'Pizza in the kitchen', ev.party && 'Party in the lounge', ev.coffeeBroken && 'Coffee machine broken'].filter(Boolean).join(' · ');
-    statsEl.innerHTML = `<span><b>${working}</b> working</span><span><b>${asleep}</b> asleep</span><span>Mood <b>${mood}</b></span><span>Tasks done <b>${sim.tasksCompleted}</b></span><span>${ev.rain ? 'Raining' : sim.hour > 6 && sim.hour < 20 ? 'Clear' : 'Night'}</span>${happening ? `<span class="happening">${happening}</span>` : ''}`;
-    tracker.update(selected);
+    const happening = [ev.festival && 'Festival in the park', ev.drought && 'Drought', ev.standup && 'Standup', ev.pizza && 'Pizza in the kitchen', ev.party && 'Party in the lounge', ev.coffeeBroken && 'Coffee machine broken'].filter(Boolean).join(' · ');
+    statsEl.innerHTML = `<span><b>${sim.agents.length}</b> people</span><span><b>${working}</b> working</span><span><b>${asleep}</b> asleep</span><span>Mood <b>${mood}</b></span><span>Food <b>${Math.round(sim.stock.food)}</b></span><span>Wood <b>${Math.round(sim.stock.wood)}</b></span><span>Stone <b>${Math.round(sim.stock.stone)}</b></span><span>${ev.rain ? 'Raining' : sim.hour > 6 && sim.hour < 20 ? 'Clear' : 'Night'}</span>${happening ? `<span class="happening">${happening}</span>` : ''}`;
+    if (side === 'people') tracker.update(selected);
+    else town.update();
+    if (selected !== null && !sim.agent(selected)) select(null);
     activity.update(selected);
     inspector.update();
   };
@@ -197,6 +212,7 @@ async function boot(): Promise<void> {
     world.root.scale.set(camera.zoom);
     world.root.position.set(Math.round(camera.cx - camera.x * camera.zoom), Math.round(camera.cy - camera.y * camera.zoom));
     const alpha = speed > 0 ? acc / STEP_MS : 1;
+    world.sync();
     people.update(Math.min(1, alpha), dt, speed, camera, app.screen.width, app.screen.height);
     people.updateWeather(sim.hour, !!sim.events.rain, performance.now(), app.screen.width, app.screen.height);
     uiTimer -= dt;

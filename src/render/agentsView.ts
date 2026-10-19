@@ -6,6 +6,8 @@ import type { Car } from '../sim/traffic';
 import type { Agent } from '../sim/types';
 import type { Sim } from '../sim/sim';
 import type { WorldView } from './worldView';
+import { ageOf } from '../sim/agents';
+import { ADULT_AGE } from '../sim/defs';
 
 /** Badge shown over an agent's head when a need is low. */
 export interface Badge {
@@ -40,6 +42,8 @@ interface AgentSprite {
   bubbleBg: Graphics;
   bubbleSig: string;
   anim: number;
+  carry: Graphics;
+  carrySig: string;
 }
 
 const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
@@ -61,7 +65,24 @@ export class AgentsView {
     readonly world: WorldView,
   ) {
     world.entities.addChild(this.ring);
-    for (const a of sim.agents) this.add(a);
+    this.syncPopulation();
+  }
+
+  private popVersion = -1;
+
+  /** Adds sprites for the newborn and newly arrived, and clears away the departed. */
+  private syncPopulation(): void {
+    if (this.popVersion === this.sim.populationVersion) return;
+    this.popVersion = this.sim.populationVersion;
+    const live = new Set(this.sim.agents.map((a) => a.id));
+    for (const a of this.sim.agents) if (!this.sprites.has(a.id)) this.add(a);
+    for (const [id, s] of this.sprites) {
+      if (live.has(id)) continue;
+      for (const d of [s.body, s.shadow, s.tag, s.badges, s.bubble, s.carry]) d.destroy({ children: true });
+      this.sprites.delete(id);
+      if (this.selected === id) this.selected = null;
+      if (this.hovered === id) this.hovered = null;
+    }
   }
 
   private add(a: Agent): void {
@@ -81,8 +102,10 @@ export class AgentsView {
     const bubbleText = new Text({ text: '', style: { fontFamily: FONT, fontSize: 11, fontWeight: '600', fill: 0x1f2433 } });
     bubbleText.anchor.set(0.5, 0.5);
     bubble.addChild(bubbleBg, bubbleText);
+    const carry = new Graphics();
+    this.world.entities.addChild(carry);
     this.overlay.addChild(tag, badges, bubble);
-    this.sprites.set(a.id, { body, shadow, frames, tag, name, badges, badgeSig: '', bubble, bubbleText, bubbleBg, bubbleSig: '', anim: a.id * 0.37 });
+    this.sprites.set(a.id, { body, shadow, frames, tag, name, badges, badgeSig: '', bubble, bubbleText, bubbleBg, bubbleSig: '', anim: a.id * 0.37, carry, carrySig: '' });
   }
 
   /** Agent under a screen point, if any. */
@@ -111,8 +134,14 @@ export class AgentsView {
 
   update(alpha: number, dtSec: number, speed: number, cam: Camera, viewW: number, viewH: number): void {
     const sim = this.sim;
+    this.syncPopulation();
     for (const a of sim.agents) {
       const s = this.sprites.get(a.id)!;
+      // Kids are drawn smaller and grow into full size by eighteen.
+      const age = ageOf(sim, a);
+      const scale = age < 4 ? 0.55 : age < ADULT_AGE ? 0.62 + (age / ADULT_AGE) * 0.38 : 1;
+      s.body.scale.set(scale);
+      s.shadow.scale.set(scale);
       const x = (a.px + (a.x - a.px) * alpha + 0.5) * TILE;
       const y = (a.py + (a.y - a.py) * alpha + 1) * TILE - 2;
       const moving = a.moving && speed > 0;
@@ -135,6 +164,17 @@ export class AgentsView {
         s.body.zIndex = Math.round(y) + 0.5;
       }
       s.shadow.position.set(Math.round(x), Math.round(y));
+      const csig = a.carry ? a.carry.kind : '';
+      if (csig !== s.carrySig) {
+        s.carrySig = csig;
+        const g = s.carry.clear();
+        if (a.carry?.kind === 'wood') g.rect(-5, -2, 10, 3).fill(0x8a5f37).rect(-5, 1, 10, 3).fill(0x9b6a3c).rect(4, -2, 2, 6).fill(0xd4a56a);
+        else if (a.carry?.kind === 'stone') g.rect(-4, -1, 5, 4).fill(0x8d877f).rect(0, -3, 5, 5).fill(0xa8a29a);
+        else if (a.carry?.kind === 'food') g.rect(-5, 0, 10, 4).fill(0xa97a47).rect(-4, -2, 3, 2).fill(0xe9c74c).rect(0, -3, 3, 3).fill(0x7fbf4f);
+      }
+      s.carry.visible = !!a.carry;
+      s.carry.position.set(Math.round(x), Math.round(y - 17 * scale));
+      s.carry.zIndex = s.body.zIndex + 0.1;
       s.shadow.zIndex = Math.round(y) - 8;
       s.shadow.visible = s.body.rotation === 0;
 

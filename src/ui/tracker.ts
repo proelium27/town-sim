@@ -4,6 +4,7 @@ import { moodWord } from '../sim/social';
 import type { Agent } from '../sim/types';
 import type { Sim } from '../sim/sim';
 import { badgesFor } from '../render/agentsView';
+import { ageOf } from '../sim/agents';
 import { esc } from './util';
 
 type Filter = 'all' | 'working' | 'break' | 'attention';
@@ -25,11 +26,12 @@ export class Tracker {
   private countEl: HTMLElement;
   private segEl: HTMLElement;
   private emptyEl: HTMLElement;
+  private popVersion = -1;
 
   constructor(
     root: HTMLElement,
     private sim: Sim,
-    art: Art,
+    private art: Art,
     onSelect: (id: number) => void,
   ) {
     root.innerHTML = `
@@ -51,24 +53,7 @@ export class Tracker {
     this.countEl = root.querySelector('#tr-count')!;
     this.segEl = root.querySelector('.seg')!;
     this.emptyEl = root.querySelector('.tr-empty')!;
-    for (const a of sim.agents) {
-      const li = document.createElement('li');
-      li.innerHTML = `
-        <button class="person" data-id="${a.id}">
-          <img class="avatar" src="${art.portrait(a.outfit)}" alt="" width="32" height="32" />
-          <span class="who"><b>${esc(a.name)}</b><span class="role">${ROLES[a.role].title}</span></span>
-          <span class="st" data-f="st"></span>
-          <span class="doing" data-f="doing"></span>
-          <span class="task"><span class="t" data-f="task"></span><span class="pct num" data-f="pct"></span></span>
-          <span class="prog"><i data-f="prog"></i></span>
-          <span class="minis">
-            <span class="mini" title="Mood"><span class="lbl">Mood</span><span class="bar" style="--c:var(--n-mood)"><i data-f="mood"></i></span></span>
-            <span class="mini" title="Energy"><span class="lbl">Energy</span><span class="bar" style="--c:var(--n-energy)"><i data-f="energy"></i></span></span>
-          </span>
-        </button>`;
-      this.list.appendChild(li);
-      this.rows.set(a.id, li);
-    }
+    this.rebuild();
     this.list.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest('[data-id]') as HTMLElement | null;
       if (b) onSelect(Number(b.dataset.id));
@@ -83,7 +68,34 @@ export class Tracker {
     });
   }
 
+  /** One row per living person; rebuilt when someone is born, arrives or dies. */
+  private rebuild(): void {
+    this.popVersion = this.sim.populationVersion;
+    this.list.innerHTML = '';
+    this.rows.clear();
+    const sorted = [...this.sim.agents].sort((a, b) => a.birth - b.birth);
+    for (const a of sorted) {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <button class="person" data-id="${a.id}">
+          <img class="avatar" src="${this.art.portrait(a.outfit)}" alt="" width="32" height="32" />
+          <span class="who"><b>${esc(a.name)}</b><span class="role" data-f="role"></span></span>
+          <span class="st" data-f="st"></span>
+          <span class="doing" data-f="doing"></span>
+          <span class="task"><span class="t" data-f="task"></span><span class="pct num" data-f="pct"></span></span>
+          <span class="prog"><i data-f="prog"></i></span>
+          <span class="minis">
+            <span class="mini" title="Mood"><span class="lbl">Mood</span><span class="bar" style="--c:var(--n-mood)"><i data-f="mood"></i></span></span>
+            <span class="mini" title="Energy"><span class="lbl">Energy</span><span class="bar" style="--c:var(--n-energy)"><i data-f="energy"></i></span></span>
+          </span>
+        </button>`;
+      this.list.appendChild(li);
+      this.rows.set(a.id, li);
+    }
+  }
+
   update(selected: number | null): void {
+    if (this.popVersion !== this.sim.populationVersion) this.rebuild();
     const q = this.search.value.trim().toLowerCase();
     let shown = 0;
     let working = 0;
@@ -109,6 +121,7 @@ export class Tracker {
         stEl.textContent = stLabel;
         stEl.className = `st ${st} ${needsAttention(a) ? 'attn' : ''}`;
       }
+      set('role', `${ROLES[a.role].title} · ${Math.floor(ageOf(this.sim, a))}`);
       set('doing', a.action.stage === 'travel' && a.action.kind !== 'wander' && a.action.kind !== 'stroll' ? `Heading out: ${a.action.label}` : a.action.label);
       const t = a.task;
       set('task', t ? t.title : 'No task');
@@ -119,7 +132,7 @@ export class Tracker {
       (li.querySelector('[data-f="energy"]') as HTMLElement).style.width = `${a.needs.energy}%`;
       btn.title = `${a.name}: ${moodWord(a.mood)} mood`;
     }
-    this.countEl.textContent = `${working}/${this.sim.agents.length} working`;
+    this.countEl.textContent = `${this.sim.agents.length} people · ${working} working`;
     this.emptyEl.hidden = shown > 0;
   }
 

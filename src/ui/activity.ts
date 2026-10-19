@@ -26,6 +26,8 @@ export class ActivityLog {
           <button role="tab" data-f="all" aria-selected="true">All</button>
           <button role="tab" data-f="work" aria-selected="false">Work</button>
           <button role="tab" data-f="social" aria-selected="false">Social</button>
+          <button role="tab" data-f="build" aria-selected="false">Building</button>
+          <button role="tab" data-f="family" aria-selected="false">Family</button>
           <button role="tab" data-f="life" aria-selected="false">Life</button>
           <button role="tab" data-f="event" aria-selected="false">Town</button>
         </div>

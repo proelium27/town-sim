@@ -1,4 +1,5 @@
 import type { Art } from '../assets/loader';
+import { ageOf } from '../sim/agents';
 import { xpToNext } from '../sim/ai';
 import { NEED_KEYS, NEED_LABEL, ROLES, SKILL_KEYS, SKILL_LABEL, TRAITS } from '../sim/defs';
 import { moodParts, moodTarget, moodWord, relationLabel } from '../sim/social';
@@ -44,18 +45,20 @@ export class Inspector {
     if (id === null) return;
     const a = this.sim.agent(id)!;
     const role = ROLES[a.role];
-    const wp = this.sim.town.workplaces.find((w) => w.id === role.workplace)!;
     this.root.innerHTML = `
       <header class="ins-head">
         <img class="avatar big" src="${this.art.portrait(a.outfit)}" alt="" width="48" height="48" />
         <div class="ins-id">
           <h2>${esc(a.name)}</h2>
-          <p>${role.title} at ${esc(wp.name)} · ${a.age}</p>
+          <p data-f="title"></p>
         </div>
         <button class="icon-btn" data-act="close" aria-label="Close inspector" title="Close (Esc)"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
       </header>
       <div class="chips">${a.traits.map((t) => `<span class="chip" title="${esc(TRAITS[t].description)}">${TRAITS[t].name}</span>`).join('')}</div>
       <div class="ins-actions"><button class="btn" data-act="follow" data-f="follow">Follow</button><span class="money num" data-f="money"></span></div>
+
+      <h3>Family <small data-f="home"></small></h3>
+      <ul class="list family" data-slot="family"></ul>
 
       <section class="now">
         <div class="now-row"><span class="k">Doing</span><b data-f="doing"></b></div>
@@ -101,13 +104,31 @@ export class Inspector {
   update(): void {
     if (this.agentId === null) return;
     const a = this.sim.agent(this.agentId);
-    if (!a) return;
+    if (!a) return this.hooks.select(null);
     const r = this.root;
     const set = (f: string, v: string, html = false) => {
       const el = r.querySelector(`[data-f="${f}"]`) as HTMLElement | null;
       if (!el) return;
       if (html ? el.innerHTML !== v : el.textContent !== v) html ? (el.innerHTML = v) : (el.textContent = v);
     };
+    const role = ROLES[a.role];
+    const wpName = this.sim.town.workplaces.find((w) => w.id === role.workplace)?.name ?? this.sim.building(a.workBuilding)?.name;
+    const age = Math.floor(ageOf(this.sim, a));
+    set('title', `${role.title}${wpName ? ` at ${esc(wpName)}` : ''} · ${age} years old`, true);
+    const hh = this.sim.town.households[a.household];
+    set('home', hh.building >= 0 ? `lives at ${esc(hh.name)}` : 'no home yet', true);
+    const rel = (id: number, label: string) => {
+      const p = this.sim.person(id);
+      if (!p) return '';
+      const alive = !!this.sim.agent(id);
+      return `<li><button class="row" ${alive ? `data-act="person" data-id="${id}"` : 'disabled'}><span>${esc(p.name)} <span class="meta">${label}${alive ? `, ${Math.floor(ageOf(this.sim, p))}` : ', passed away'}</span></span><span class="meta">${alive ? ROLES[p.role].title : ''}</span></button></li>`;
+    };
+    const fam = [
+      a.partner !== null ? rel(a.partner, 'partner') : '',
+      ...a.parents.map((id) => rel(id, 'parent')),
+      ...a.children.map((id) => rel(id, 'child')),
+    ].join('');
+    this.slot('family', JSON.stringify([a.partner, a.parents, a.children, age, hh.building, ...a.children.map((id) => !!this.sim.agent(id))]), fam || '<li class="meta">No family in town yet.</li>');
     const following = this.hooks.isFollowing();
     const fb = r.querySelector('[data-f="follow"]') as HTMLElement;
     fb.setAttribute('aria-pressed', String(following));
@@ -119,10 +140,14 @@ export class Inspector {
     set('thought', th ? `“${th.text}”` : '');
 
     const t = a.task;
-    set('task', t?.title ?? 'Nothing assigned');
-    const pct = t ? Math.min(100, (t.progress / t.total) * 100) : 0;
-    set('taskpct', t ? `${Math.floor(pct)}%` : '');
+    // Outdoor workers don't have desk tasks; show the build they're on, or what they're gathering.
+    const pr = this.sim.projects.find((p) => p.id === a.action.projectId) ?? this.sim.projects.find((p) => p.builders.has(a.id));
+    const title = t?.title ?? (pr ? `Building ${pr.name}` : role.station === 'labor' ? (a.carry ? `Carrying ${Math.round(a.carry.amount)} ${a.carry.kind}` : a.action.label) : a.role === 'child' ? 'Growing up' : 'Nothing assigned');
+    set('task', title);
+    const pct = t ? Math.min(100, (t.progress / t.total) * 100) : pr ? Math.min(100, (pr.progress / pr.work) * 100) : 0;
+    set('taskpct', t || pr ? `${Math.floor(pct)}%` : '');
     (r.querySelector('[data-f="taskbar"]') as HTMLElement).style.width = `${pct}%`;
+    if (!t) set('taskmeta', pr ? `Wood ${Math.floor(Math.min(pr.delivered.wood, pr.need.wood))}/${pr.need.wood}, stone ${Math.floor(Math.min(pr.delivered.stone, pr.need.stone))}/${pr.need.stone}. Proposed because ${esc(pr.reason)}.` : '', true);
     if (t) {
       const left = t.due !== undefined ? t.due - this.sim.time : undefined;
       set('taskmeta', left === undefined ? `Started ${dayTime(t.started)}` : left > 0 ? `Due ${dayTime(t.due!)} (in ${duration(left)})` : 'Overdue', false);

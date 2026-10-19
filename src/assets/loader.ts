@@ -33,6 +33,10 @@ export class Art {
     );
   }
 
+  image(k: SheetKey): CanvasImageSource {
+    return this.images[k] as CanvasImageSource;
+  }
+
   rect(f: FrameRef): Rectangle {
     if (f.px) return new Rectangle(f.px.x, f.px.y, f.px.w, f.px.h);
     const step = TILE + SHEETS[f.sheet].spacing;

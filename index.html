@@ -20,7 +20,14 @@
       </div>
     </header>
 
-    <aside class="tracker" id="tracker" aria-label="People"></aside>
+    <aside class="tracker" aria-label="People and town">
+      <div class="side-tabs" role="tablist" id="side-tabs">
+        <button role="tab" data-side="people" aria-selected="true">People</button>
+        <button role="tab" data-side="town" aria-selected="false">Town</button>
+      </div>
+      <div class="side-pane" id="tracker"></div>
+      <div class="side-pane town-pane" id="town" hidden></div>
+    </aside>
     <section class="activity" id="activity" aria-label="Activity log"></section>
     <aside class="inspector" id="inspector" aria-label="Inspector" hidden></aside>
 
