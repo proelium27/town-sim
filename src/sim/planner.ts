@@ -326,7 +326,7 @@ export function findSite(sim: Sim, key: BlueprintKey, near?: { x: number; y: num
         }
       }
       if (!ok) continue;
-      // Farms like open land a bit out of town; everything else hugs the center.
+      // Farms like open land a bit out of town; everything else stays close to the center (or the family).
       const score = (bp.kind === 'farm' ? Math.abs(d - 30) : d) + clear * 3;
       cands.push({ x, y, score });
     }

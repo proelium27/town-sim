@@ -70,7 +70,7 @@ describe('homes that grow', () => {
     expect(sim.map.room[wingCell]).toBe(room.id);
   }, 60_000);
 
-  it('an east wing leaves the bathroom walled off', () => {
+  it('an east wing leaves the bathroom walled off, with two beds and a rug', () => {
     for (const doorTop of [true, false]) {
       const { sim, hh, b } = freshHouse(doorTop);
       const m = sim.map;
@@ -91,6 +91,9 @@ describe('homes that grow', () => {
       for (let y = b.y + 1; y < b.y + b.h - 1; y++) if (m.walkable(oldWall, y)) openings.push(y);
       expect(openings.length).toBeGreaterThanOrEqual(2);
       expect(sim.nav.findPath(m.idx(b.door.x, b.door.y), m.idx(wing.x + 1, wing.y + 3), 40000)).not.toBeNull();
+      // Two beds and a rug, all inside the wing.
+      const furnished = m.props.filter((p) => p.w > 0 && p.x >= wing.x && p.x + p.w <= wing.x + wing.w - 1 && p.y > wing.y && p.y < wing.y + wing.h - 1);
+      expect(furnished.map((p) => p.key).sort()).toEqual(['bedSingle', 'bedSingle', hh.id % 2 ? 'rugGreen' : 'rugOrange']);
     }
   });
 

@@ -96,6 +96,7 @@ export function stampExtension(sim: Sim, site: ExtensionSite, household: number)
     m.addProp({ key: 'bedSingle', x: bx, y: by, w: 1, h: 2, blocks: false, cost: 6, household, building: b.id });
     m.addProp({ key: 'plant', x: 0, y: 0, w: 0, h: 0, use: 'sleep', spot: { x: bx, y: by, facing: 'down' }, blocks: false, household, building: b.id });
   }
+  m.addProp({ key: household % 2 ? 'rugGreen' : 'rugOrange', x: east ? x0 : x0 + 1, y: y0 + 3, w: 3, h: 1, blocks: false, flat: true, building: b.id });
   m.refreshAll();
 }
 
