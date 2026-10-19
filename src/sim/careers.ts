@@ -1,4 +1,5 @@
-import { ageOf, newTask, stationFor } from './agents';
+import { ageOf, freeStations, newTask, stationFor } from './agents';
+import { openSlots } from './planner';
 import { ADULT_AGE, MIN_PER_DAY, ROLES, type RoleKey, type TraitKey } from './defs';
 import { addMemory, first, kinship, think } from './social';
 import type { Sim } from './sim';
@@ -76,12 +77,15 @@ export function chooseCareer(sim: Sim, a: Agent): CareerPick {
     .filter((x) => x.o && ageOf(sim, x.o) >= ADULT_AGE && !a.parents.includes(x.o.id))
     .sort((x, y) => y.r.opinion - x.r.opinion)[0]?.o;
   const desks = new Set(sim.agents.map((o) => o.deskId ?? -1));
-  const workers = (r: RoleKey) => sim.agents.filter((o) => o.role === r).length;
+  const open = openSlots(sim);
   let best: CareerPick & { score: number } = { role: 'laborer', why: 'the town always needs a hand', score: -1 };
   for (const [role, fit] of Object.entries(FIT) as [RoleKey, Partial<Record<Aptitude, number>>][]) {
     const def = ROLES[role];
-    if (def.station === 'desk' && stationFor(sim, role, desks) === null) continue;
+    if (def.station === 'desk' && !freeStations(sim, role, desks).length) continue;
     if (workplaceFor(sim, role) === undefined) continue;
+    // The town's flexible trades only take people when they have an opening.
+    const slots = open.get(role) ?? 0;
+    if (def.flexible && slots <= 0) continue;
     if ((role === 'carpenter' || role === 'mason' || role === 'toolmaker') && !sim.map.buildings.some((b) => b.kind === 'workshop')) continue;
     const weights = Object.entries(fit) as [Aptitude, number][];
     let score = weights.reduce((s, [k, w]) => s + w * a.aptitude[k], 0) / weights.reduce((s, [, w]) => s + w, 0);
@@ -97,10 +101,11 @@ export function chooseCareer(sim: Sim, a: Agent): CareerPick {
       score += 10;
       reasons.push(`looks up to ${first(idol)}`);
     }
-    // Building-bound jobs are filled by allocateRoles anyway, so they don't need recruits.
-    if (def.flexible && workers(role) === 0 && role !== 'teacher' && role !== 'cook' && role !== 'doctor') {
-      score += 8;
-      reasons.push('the town has nobody doing it');
+    // A town short of farmers nudges people toward farming.
+    if (def.flexible) {
+      score += 4 * Math.min(slots, 3);
+      if (!sim.agents.some((o) => o.role === role)) reasons.push('the town has nobody doing it');
+      else if (slots >= 2) reasons.push(`the town is short of ${def.title.toLowerCase()}s`);
     }
     score += sim.rng.range(0, 6);
     if (score > best.score) best = { role, why: reasons.join(', ') || 'it suits them', score };
@@ -148,6 +153,8 @@ export function finishApprenticeships(sim: Sim): void {
     a.mentor = undefined;
     addMemory(sim, a, 'qualified');
     think(sim, a, `Apprenticeship done${m ? `. Thanks, ${first(m)}` : ''}. I know what I'm doing now.`, 'good');
-    sim.log(`${first(a)} finished their apprenticeship as a ${ROLES[a.role].title.toLowerCase()}`, 'work', 'good', a, m);
+    const trade = ROLES[a.career ?? a.role].title.toLowerCase();
+    const now = a.career && a.career !== a.role && ROLES[a.role].flexible ? ` (helping out as a ${ROLES[a.role].title.toLowerCase()} for now)` : '';
+    sim.log(`${first(a)} finished their apprenticeship as a ${trade}${now}`, 'work', 'good', a, m);
   }
 }

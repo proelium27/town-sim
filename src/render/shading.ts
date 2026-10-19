@@ -9,6 +9,8 @@ const TUFT_DARK = 0x3f7f3a;
 const PATCH_DARK = 0x2f5f2c;
 const PATCH_LIGHT = 0xd8f08a;
 const PETALS = [0xfbf6e9, 0xf6d24a, 0xf29ab8, 0xb9a4f0];
+/** Lawn detail is baked in square chunks of this many tiles, so a worn patch redraws only its own. */
+const CHUNK = 16;
 
 /** Stable per-cell hash in [0, 1). */
 const hash = (x: number, y: number, salt = 0): number => {
@@ -39,11 +41,16 @@ function noise(x: number, y: number, scale: number): number {
  * ambient occlusion where floors meet walls, and contact shadows under props. Sits between the
  * ground and the walls. The town changes as people chop and build, so each part rebuilds only
  * when its own inputs change: the lawn and building shadows when ground or walls do (rare),
- * prop shadows when trees fall or furniture appears (often, and cheap).
+ * prop shadows when trees fall or furniture appears (often, and cheap). Footsteps wearing grass
+ * into trails happen all the time, so those redraw only the lawn chunks they touch.
  */
 export class Shading {
   readonly layer = new Container();
-  private lawnG = new Graphics();
+  private lawnG = new Container();
+  private chunks: Graphics[] = [];
+  private chunksW: number;
+  /** Lawn chunks whose ground changed since the last sync. */
+  private lawnDirty = new Set<number>();
   private wallG = new Graphics();
   private propG = new Graphics();
   private keys = { lawn: '', walls: '', props: '' };
@@ -51,8 +58,17 @@ export class Shading {
   season = 0;
 
   constructor(readonly map: TownMap) {
+    this.chunksW = Math.ceil(map.w / CHUNK);
+    const n = this.chunksW * Math.ceil(map.h / CHUNK);
+    for (let c = 0; c < n; c++) this.chunks.push(this.lawnG.addChild(new Graphics()));
     this.layer.addChild(this.lawnG, this.wallG, this.propG);
     this.sync();
+  }
+
+  /** The ground under cell i changed (grass worn to a trail, say): redraw its patch of lawn. */
+  touch(i: number): void {
+    const m = this.map;
+    this.lawnDirty.add(Math.floor(m.cy(i) / CHUNK) * this.chunksW + Math.floor(m.cx(i) / CHUNK));
   }
 
   sync(): void {
@@ -60,7 +76,11 @@ export class Shading {
     const lawn = `${m.lawnVersion}:${m.wallVersion}`;
     if (lawn !== this.keys.lawn) {
       this.keys.lawn = lawn;
-      this.lawn(this.lawnG.clear());
+      this.lawnDirty.clear();
+      for (let c = 0; c < this.chunks.length; c++) this.lawn(c);
+    } else if (this.lawnDirty.size) {
+      for (const c of this.lawnDirty) this.lawn(c);
+      this.lawnDirty.clear();
     }
     this.lawnG.visible = this.season !== 3;
     const walls = `${m.wallVersion}`;
@@ -84,12 +104,15 @@ export class Shading {
     return m.ground[i] === 'grass' && m.cell[i] === Cell.Open && m.room[i] < 0;
   }
 
-  /** Broad light/dark patches, then scattered tufts and the odd flower. */
-  private lawn(g: Graphics): void {
+  /** Broad light/dark patches, then scattered tufts and the odd flower, for one chunk of the map. */
+  private lawn(c: number): void {
     const m = this.map;
+    const g = this.chunks[c].clear();
     const H = TILE / 2;
-    for (let y = 0; y < m.h; y++) {
-      for (let x = 0; x < m.w; x++) {
+    const x0 = (c % this.chunksW) * CHUNK;
+    const y0 = Math.floor(c / this.chunksW) * CHUNK;
+    for (let y = y0; y < Math.min(m.h, y0 + CHUNK); y++) {
+      for (let x = x0; x < Math.min(m.w, x0 + CHUNK); x++) {
         if (!this.outdoorGrass(x, y)) continue;
         const X = x * TILE;
         const Y = y * TILE;

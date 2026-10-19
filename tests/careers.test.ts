@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { laborRate } from '../src/sim/ai';
-import { APTITUDES, chooseCareer, learnBoost } from '../src/sim/careers';
-import { allocateRoles, findSite, setRole } from '../src/sim/planner';
+import { freeStations } from '../src/sim/agents';
+import { APTITUDES, chooseCareer, finishApprenticeships, FIT, learnBoost } from '../src/sim/careers';
+import { ROLES } from '../src/sim/defs';
+import { allocateRoles, findSite, openSlots, setRole } from '../src/sim/planner';
 import { BLUEPRINTS } from '../src/world/blueprints';
 import { Sim } from '../src/sim/sim';
+import type { Agent } from '../src/sim/types';
 
 describe('school', () => {
   it('kids build aptitudes in class', () => {
@@ -26,7 +29,11 @@ describe('careers', () => {
     sim.run(60);
     const kid = sim.agents.find((a) => a.role === 'child' && a.parents.length)!;
     const parent = sim.agent(kid.parents[0])!;
+    // The town wants more farmers than it has, so there's a place to step into.
+    sim.priorities.food = 2;
+    for (const a of sim.agents) if (a.role === 'farmer') setRole(sim, a, 'laborer', null);
     setRole(sim, parent, 'farmer', null);
+    expect(openSlots(sim).get('farmer')).toBeGreaterThan(0);
     kid.aptitude = { hands: 10, numbers: 10, people: 10, outdoors: 90 };
     kid.birth = sim.time - (18.001 / 2) * 1440;
     sim.timers.life = 0;
@@ -86,5 +93,104 @@ describe('careers', () => {
     for (const a of sim.agents) if (a.role === 'woodcutter') setRole(sim, a, 'laborer', null);
     allocateRoles(sim);
     expect(keen.role).toBe('woodcutter');
+  });
+});
+
+describe('career openings', () => {
+  const roles = (sim: Sim) => sim.agents.map((a) => [a.id, a.role, a.workBuilding]);
+
+  it('a settled town reshuffles nobody, even someone trained for a full trade', () => {
+    const sim = new Sim(3);
+    sim.run(4 * 1440);
+    allocateRoles(sim);
+    // A builder who trained as a woodcutter, while the woodcutters are fully staffed.
+    for (const a of sim.agents) if (a.role === 'woodcutter') a.career = 'woodcutter';
+    const keen = sim.agents.find((a) => a.role === 'builder');
+    if (keen) keen.career = 'woodcutter';
+    const before = roles(sim);
+    const v = sim.activityVersion;
+    for (let i = 0; i < 5; i++) allocateRoles(sim);
+    expect(roles(sim)).toEqual(before);
+    expect(sim.activityVersion).toBe(v);
+  }, 120_000);
+
+  it('a kid whose family trade is full picks one with an opening, and keeps it', () => {
+    const sim = new Sim(7);
+    sim.run(60);
+    const kid = sim.agents.find((a) => a.role === 'child' && a.parents.length)!;
+    const parent = sim.agent(kid.parents[0])!;
+    setRole(sim, parent, 'woodcutter', null);
+    // Fill every woodcutter place.
+    for (const a of sim.agents) {
+      if ((openSlots(sim).get('woodcutter') ?? 0) <= 0) break;
+      if (a.role !== 'woodcutter' && a.role !== 'child' && ROLES[a.role].flexible) setRole(sim, a, 'woodcutter', null);
+    }
+    expect(openSlots(sim).get('woodcutter')).toBeLessThanOrEqual(0);
+    kid.aptitude = { hands: 10, numbers: 10, people: 10, outdoors: 90 };
+    kid.birth = sim.time - (18.001 / 2) * 1440;
+    sim.timers.life = 0;
+    sim.run(5);
+    expect(kid.career).toBeDefined();
+    expect(kid.career).not.toBe('woodcutter');
+    expect(kid.role).toBe(kid.career);
+    allocateRoles(sim);
+    expect(kid.role).toBe(kid.career);
+  });
+
+  it('checking which office jobs have a free desk does not use one up', () => {
+    const sim = new Sim(7);
+    sim.run(60);
+    const kid = sim.agents.find((a) => a.role === 'child' && a.parents.length)!;
+    const parent = sim.agent(kid.parents[0])!;
+    setRole(sim, parent, 'writer', null);
+    kid.relations.clear();
+    kid.aptitude = { hands: 5, numbers: 60, people: 95, outdoors: 5 };
+    // Leave exactly one office desk free.
+    const taken = () => new Set(sim.agents.map((o) => o.deskId ?? -1));
+    const free = freeStations(sim, 'writer', taken());
+    expect(free.length).toBeGreaterThan(0);
+    for (const p of free.slice(1)) p.use = undefined;
+    expect(freeStations(sim, 'writer', taken()).length).toBe(1);
+    expect(chooseCareer(sim, kid).role).toBe('writer');
+  });
+
+  it('grown kids follow a parent into their trade far more often than chance', () => {
+    let withParent = 0;
+    let without = 0;
+    let draws = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const sim = new Sim(seed);
+      const kid = sim.agents.find((a) => a.role === 'child' && a.parents.length)!;
+      const parent = sim.agent(kid.parents[0])!;
+      const other = sim.agents.find((a) => !kid.parents.includes(a.id) && a.role !== 'child' && ROLES[a.role].flexible)!;
+      kid.relations.clear();
+      sim.stock.wood = 0;
+      for (let i = 0; i < 40; i++) {
+        kid.aptitude = Object.fromEntries(APTITUDES.map((k) => [k, sim.rng.range(10, 60)])) as Agent['aptitude'];
+        // The same number of woodcutters either way: the parent, or an unrelated neighbour.
+        for (const a of sim.agents) if (a.role === 'woodcutter') setRole(sim, a, 'laborer', null);
+        setRole(sim, parent, 'woodcutter', null);
+        if (chooseCareer(sim, kid).role === 'woodcutter') withParent++;
+        setRole(sim, parent, 'laborer', null);
+        setRole(sim, other, 'woodcutter', null);
+        if (chooseCareer(sim, kid).role === 'woodcutter') without++;
+        setRole(sim, other, 'laborer', null);
+        draws++;
+      }
+    }
+    expect(withParent).toBeGreaterThan(without * 2);
+    expect(withParent).toBeGreaterThan((draws / Object.keys(FIT).length) * 2);
+  });
+
+  it("an apprentice who's helping out elsewhere still qualifies in their own trade", () => {
+    const sim = new Sim(7);
+    const a = sim.agents.find((x) => x.role !== 'child')!;
+    setRole(sim, a, 'laborer', null);
+    a.career = 'woodcutter';
+    a.apprenticeUntil = sim.time - 1;
+    finishApprenticeships(sim);
+    const line = sim.activity[sim.activity.length - 1].text;
+    expect(line).toContain('finished their apprenticeship as a woodcutter');
+    expect(line).toContain('helping out as a laborer');
   });
 });

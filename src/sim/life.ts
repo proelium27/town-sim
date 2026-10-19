@@ -1,4 +1,4 @@
-import { ageOf, createAgent } from './agents';
+import { ageOf, createAgent, surnameOf } from './agents';
 import { ADULT_AGE, RETIRE_AGE, ROLES } from './defs';
 import { graveSlots } from '../world/blueprints';
 import { beginCareer, chooseCareer, finishApprenticeships } from './careers';
@@ -168,7 +168,7 @@ export function newcomers(sim: Sim, n: number, force: boolean): Agent[] {
   for (let i = 0; i < n; i++) {
     const kid = family && i === 2;
     const age = kid ? sim.rng.range(4, 12) : sim.rng.range(20, 40);
-    const a = createAgent(sim, { role: kid ? 'child' : 'laborer', household: hh, age, cell, surname: family && made[0] ? made[0].name.split(' ').slice(1).join(' ') : undefined, parents: kid ? made.slice(0, 2) : [] });
+    const a = createAgent(sim, { role: kid ? 'child' : 'laborer', household: hh, age, cell, surname: family && made[0] ? surnameOf(made[0].name) : undefined, parents: kid ? made.slice(0, 2) : [] });
     a.at = m.idx(m.w - 1 - i, 27);
     a.x = a.px = m.cx(a.at);
     a.y = a.py = m.cy(a.at);
