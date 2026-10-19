@@ -100,6 +100,13 @@ export class ActivityLog {
       .reverse();
     this.list.innerHTML = items.length
       ? items.map((e) => `<li class="${e.kind} ${e.tone}"><time class="num">${hhmm(e.t)}</time><span class="tag">${KIND_LABEL[e.kind]}</span><span class="txt">${this.line(e)}</span></li>`).join('')
-      : '<li class="empty">Nothing yet. Give it a minute; the town is just waking up.</li>';
+      : `<li class="empty">${this.emptyText(who)}</li>`;
+  }
+
+  /** Says why the list is empty, so a filter never reads as "nothing is happening". */
+  private emptyText(who: { name: string } | undefined): string {
+    if (this.onlySelected && who) return `Nothing from ${esc(who.name.split(' ')[0])} yet${this.filter === 'all' ? '' : ` in ${KIND_LABEL[this.filter].toLowerCase()}`}.`;
+    if (this.filter !== 'all') return `No ${KIND_LABEL[this.filter].toLowerCase()} news yet.`;
+    return 'Nothing yet. Give it a minute; the town is just waking up.';
   }
 }

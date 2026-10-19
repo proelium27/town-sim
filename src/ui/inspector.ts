@@ -129,7 +129,7 @@ export class Inspector {
     fb.setAttribute('aria-pressed', String(following));
     fb.textContent = following ? 'Following' : 'Follow';
     set('money', `$${Math.round(a.money)} · ${a.tasksDone} tasks done · ${duration(a.workedToday)} worked today`);
-    set('doing', a.action.stage === 'travel' && a.action.kind !== 'wander' && a.action.kind !== 'stroll' ? `On the way: ${a.action.label}` : a.action.label);
+    set('doing', a.action.stage === 'travel' && a.action.kind !== 'wander' && a.action.kind !== 'stroll' ? `→ ${a.action.label}` : a.action.label);
     set('why', a.action.reason || 'Just going with the flow');
     const th = a.thoughts[a.thoughts.length - 1];
     set('thought', th ? th.text : '');

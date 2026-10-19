@@ -43,9 +43,10 @@ async function boot(): Promise<void> {
   const layout = () => {
     const W = window.innerWidth;
     const H = window.innerHeight;
+    // Layout boxes (offset*), not getBoundingClientRect: the inspector's slide-in transform would skew it.
     const edge = (id: string) => {
       const el = document.getElementById(id)!;
-      return el.hidden ? null : el.getBoundingClientRect();
+      return el.hidden ? null : { left: el.offsetLeft, right: el.offsetLeft + el.offsetWidth, bottom: el.offsetTop + el.offsetHeight };
     };
     const roster = edge('tracker');
     const ins = edge('inspector');
@@ -53,8 +54,15 @@ async function boot(): Promise<void> {
     const left = roster ? roster.right : 0;
     const right = ins ? ins.left : W;
     const top = hud ? hud.bottom : 0;
-    camera.cx = (left + right) / 2;
-    camera.cy = (top + H) / 2;
+    // Opening or closing a panel moves the clear middle; shift the camera with it so the world stays put on screen.
+    const cx = (left + right) / 2;
+    const cy = (top + H) / 2;
+    camera.x += (cx - camera.cx) / camera.zoom;
+    camera.tx += (cx - camera.cx) / camera.tz;
+    camera.y += (cy - camera.cy) / camera.zoom;
+    camera.ty += (cy - camera.cy) / camera.tz;
+    camera.cx = cx;
+    camera.cy = cy;
     // Clamp to the clear area so the map's own edges (and anyone standing there) can always be brought into view.
     camera.view = { left, top, right, bottom: H };
     camera.clampTarget();
@@ -77,9 +85,13 @@ async function boot(): Promise<void> {
     if (id === null) following = false;
     inspector.show(id);
     layout();
-    if (focus && id !== null) {
+    if (id !== null) {
       const a = sim.agent(id)!;
-      camera.lookAtClamped((a.x + 0.5) * TILE, (a.y + 0.5) * TILE);
+      const [sx, sy] = camera.toScreen((a.x + 0.5) * TILE, (a.y + 0.5) * TILE);
+      const v = camera.view;
+      const hidden = sx < v.left + 48 || sx > v.right - 48 || sy < v.top + 48 || sy > v.bottom - 48;
+      // Picked from a list: bring them to the middle. Clicked on the map: only pan if a panel now covers them.
+      if (focus || hidden) camera.lookAtClamped((a.x + 0.5) * TILE, (a.y + 0.5) * TILE);
     }
     refreshUi();
   };

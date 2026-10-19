@@ -195,18 +195,27 @@ kbd { font: 500 10px var(--font); color: var(--text-3); padding: 1px 5px; border
   left: calc(var(--roster-w) + var(--gap) * 2); bottom: var(--gap);
   width: min(620px, calc(100vw - var(--roster-w) - var(--gap) * 3));
   height: 128px; display: flex; flex-direction: column; overflow: hidden;
+  container-type: inline-size;
   transition: height 220ms var(--ease);
 }
 body.inspecting .activity { width: min(620px, calc(100vw - var(--roster-w) - var(--ins-w) - var(--gap) * 4)); }
 .activity.expanded { height: min(380px, calc(100vh - var(--hud-h) - var(--gap) * 4)); }
 .act-head { display: flex; align-items: center; gap: 12px; padding: 7px 8px 7px 12px; border-bottom: 2px solid var(--edge); }
-.act-head .seg { flex: none; }
+.act-head .seg { flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.act-head .seg::-webkit-scrollbar { display: none; }
+.act-head .icon-btn, .act-head .chip-btn { flex: none; }
 .act-head .chip-btn { margin-left: auto; }
 .act-toggle { margin-left: auto; }
 .act-head .chip-btn:not([hidden]) + .act-toggle { margin-left: 0; }
 .activity.expanded .act-toggle svg { transform: scaleY(-1); }
 .feed { list-style: none; margin: 0; padding: 4px 12px 8px; overflow-y: auto; flex: 1; scrollbar-width: thin; scrollbar-color: var(--panel-3) transparent; }
 .activity:not(.expanded) .feed { overflow: hidden; mask-image: linear-gradient(to bottom, #000 62%, transparent); }
+.activity:not(.expanded) .feed .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@container (max-width: 540px) {
+  .act-head { gap: 8px; }
+  .act-head h2 { display: none; }
+  .act-head .seg button { padding: 4px 7px; }
+}
 .feed li { display: grid; grid-template-columns: 38px 50px 1fr; gap: 8px; align-items: baseline; padding: 3px 0; font-size: 12px; color: var(--text-2); }
 .feed time { color: var(--text-3); font-size: 11px; }
 .feed .tag { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-3); }
