@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createAgent, surnameOf } from '../src/sim/agents';
+import { ageOf, createAgent, surnameOf } from '../src/sim/agents';
 import { birthdayOf, milestoneFor } from '../src/sim/events';
 import { die } from '../src/sim/life';
+import { completeProject, moveTo, newHousehold } from '../src/sim/planner';
 import { loadSim, saveSim } from '../src/sim/save';
 import { Sim } from '../src/sim/sim';
 import { kinship } from '../src/sim/social';
@@ -165,5 +166,36 @@ describe('names', () => {
     const named = babies.filter((b) => b.namedAfter === gp.id);
     expect(named.length).toBeGreaterThan(0);
     for (const b of named) expect(b.name).toBe(`${gp.name.split(' ')[0]} ${surname} III`);
+  });
+});
+
+describe('moving house', () => {
+  it('a baby born after the new home was proposed moves in with the parents', () => {
+    const sim = new Sim(7);
+    const proposed = () => sim.projects.find((p) => p.blueprint === 'house' && p.forAgents.length >= 2);
+    while (!proposed() && sim.time < 6 * 1440) sim.run(60);
+    const pr = proposed()!;
+    expect(pr).toBeDefined();
+    const [a, b] = pr.forAgents.map((id) => sim.agent(id)!);
+    expect(a.partner).toBe(b.id);
+    const oldHome = a.household;
+    const baby = createAgent(sim, { role: 'child', household: oldHome, age: 0, parents: [a, b], cell: a.at });
+    sim.agents.push(baby);
+    completeProject(sim, pr);
+    expect(a.household).not.toBe(oldHome);
+    expect(baby.household).toBe(a.household);
+    expect(sim.activity.some((e) => / moved in$/.test(e.text) && e.text.includes(baby.name.split(' ')[0]))).toBe(true);
+  }, 60_000);
+
+  it('a child is never left in a house with no grown-up when the adults move out', () => {
+    const sim = new Sim(7);
+    const kid = sim.agents.find((x) => ageOf(sim, x) < 18)!;
+    const home = kid.household;
+    const adults = sim.agents.filter((x) => x.household === home && ageOf(sim, x) >= 18);
+    expect(adults.length).toBeGreaterThan(0);
+    const dest = newHousehold(sim, 'Test house').id;
+    moveTo(sim, adults, dest);
+    expect(sim.agents.filter((x) => x.household === home)).toHaveLength(0);
+    expect(kid.household).toBe(dest);
   });
 });

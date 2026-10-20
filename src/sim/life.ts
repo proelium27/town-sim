@@ -187,8 +187,8 @@ export function newcomers(sim: Sim, n: number, force: boolean): Agent[] {
     a.y = a.py = m.cy(a.at);
     made.push(a);
     sim.agents.push(a);
-    // If they didn't land a home they at least have each other; place them with any room, else homeless.
-    if (!whole && !force && homes[i]) a.household = homes[Math.min(i, homes.length - 1)].h.id;
+    // If they didn't land a home they at least have each other; place them with any room (a kid stays with a parent), else homeless.
+    if (!whole && !force && homes[i]) a.household = kid ? made[0].household : homes[Math.min(i, homes.length - 1)].h.id;
   }
   if (family && made.length >= 2) {
     made[0].partner = made[1].id;
