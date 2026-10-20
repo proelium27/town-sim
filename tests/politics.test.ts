@@ -23,7 +23,7 @@ describe('elections', () => {
     const L = sim.lastElection!;
     const voters = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE).length;
     expect(L.votes.reduce((s, [, n]) => s + n, 0)).toBeGreaterThanOrEqual(voters - 2);
-    expect(sim.activity.some((e) => /elected mayor with \d+ votes/.test(e.text))).toBe(true);
+    expect(sim.activity.some((e) => /elected mayor with \d+ votes?\b/.test(e.text))).toBe(true);
     expect(sim.agent(sim.mayor!)!.memories.some((m) => m.kind === 'wonElection')).toBe(true);
   }, 120_000);
 

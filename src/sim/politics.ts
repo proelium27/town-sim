@@ -1,5 +1,5 @@
 import { ageOf } from './agents';
-import { ADULT_AGE, ELECTION_DAY, PRIORITY_LABEL, type PriorityKey, RALLY_HOUR, RALLY_LENGTH, type TraitKey, YEAR_DAYS } from './defs';
+import { ADULT_AGE, ELECTION_DAY, plural, PRIORITY_LABEL, type PriorityKey, RALLY_HOUR, RALLY_LENGTH, type TraitKey, YEAR_DAYS } from './defs';
 import { foodBalance } from './economy';
 import { addMemory, first, kinship, say, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
@@ -190,7 +190,7 @@ function vote(sim: Sim, e: ElectionState): void {
   }
   for (const [voter, cand] of backed) if (cand === winnerId && voter !== winnerId) addMemory(sim, sim.agent(voter)!, 'myCandidateWon');
   const others = votes.slice(1).map(([id, n]) => `${first(sim.agent(id)!)} ${n}`).join(', ');
-  sim.log(`${winner.name} ${was === winnerId ? 'was re-elected' : 'was elected'} mayor with ${votes[0][1]} votes${others ? ` (${others})` : ', unopposed'}, promising ${PITCH[platform]}`, 'event', 'good', winner);
+  sim.log(`${winner.name} ${was === winnerId ? 'was re-elected' : 'was elected'} mayor with ${plural(votes[0][1], 'vote')}${others ? ` (${others})` : ', unopposed'}, promising ${PITCH[platform]}`, 'event', 'good', winner);
   sim.milestone(`${winner.name} became mayor`);
 }
 
