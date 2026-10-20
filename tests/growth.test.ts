@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createAgent } from '../src/sim/agents';
 import { triggerWorldEvent } from '../src/sim/events';
-import { checkTier, extensionSite, paveFrontier, stampExtension, TIER_AT } from '../src/sim/growth';
+import { MIN_PER_DAY } from '../src/sim/defs';
+import { CHARTER_HOURS, checkTier, extensionSite, paveFrontier, stampExtension, TIER_AT } from '../src/sim/growth';
 import { capacity, completeProject, findSite, members, newHousehold, tickPlanner } from '../src/sim/planner';
 import { BLUEPRINTS } from '../src/world/blueprints';
 import { Cell } from '../src/world/map';
@@ -170,6 +171,7 @@ describe('homes that grow', () => {
 describe('town tiers', () => {
   it('a village becomes a town, with a charter day', () => {
     const sim = new Sim(7);
+    sim.time = 18 * 60;
     const logged = sim.activity.length;
     const saved = TIER_AT[1];
     TIER_AT[1] = [10, 5];
@@ -188,6 +190,7 @@ describe('town tiers', () => {
 
   it('a charter during a festival turns the festival into the charter day', () => {
     const sim = new Sim(7);
+    sim.time = 18 * 60;
     triggerWorldEvent(sim, 'festival');
     const until = sim.events.festival!.until;
     const logged = sim.activity.length;
@@ -201,6 +204,57 @@ describe('town tiers', () => {
     expect(sim.events.festival).toMatchObject({ name: 'Charter day', until });
     const said = sim.activity.slice(logged).map((e) => e.text);
     expect(said).toEqual(['Northwind is now a town! The spring fair in the park becomes a charter day']);
+  });
+
+  it('a charter earned at night waits for the evening, when the town is up to dance', () => {
+    const sim = new Sim(7);
+    sim.run(MIN_PER_DAY - 6.5 * 60 + 2 * 60);
+    expect(sim.day).toBe(1);
+    expect(Math.round(sim.hour)).toBe(2);
+    const saved = TIER_AT[1];
+    TIER_AT[1] = [10, 5];
+    let at = -1;
+    let said: string[] = [];
+    try {
+      checkTier(sim);
+      expect(sim.tier).toBe(0);
+      expect(sim.events.festival).toBeNull();
+      const logged = sim.activity.length;
+      for (let k = 0; k < 24 * 60 && sim.tier === 0; k++) sim.run(1);
+      at = sim.hour;
+      said = sim.activity.slice(logged).map((e) => e.text);
+    } finally {
+      TIER_AT[1] = saved;
+    }
+    expect(sim.tier).toBe(1);
+    expect(sim.day).toBe(1);
+    expect(at).toBeGreaterThanOrEqual(CHARTER_HOURS[0]);
+    expect(at).toBeLessThan(CHARTER_HOURS[1]);
+    expect(sim.events.festival?.name).toBe('Charter day');
+    expect(said).toContain("Northwind is now a town! There's a charter day in the park");
+    // Townsfolk are up to dance, rather than the charter day passing while they sleep.
+    const logged = sim.activity.length;
+    sim.run(200);
+    const over = sim.activity.slice(logged).map((e) => e.text).find((t) => t.startsWith('The festival is over'));
+    expect(Number(over?.match(/(\d+) townsfolk/)?.[1])).toBeGreaterThan(0);
+  }, 60_000);
+
+  it("a charter starting just before the seasonal festival takes over tonight's festival", () => {
+    const sim = new Sim(7);
+    sim.time = MIN_PER_DAY + 16 * 60;
+    sim.events.seasonal = { at: MIN_PER_DAY + 17 * 60, name: 'Spring fair' };
+    const logged = sim.activity.length;
+    const saved = TIER_AT[1];
+    TIER_AT[1] = [10, 5];
+    try {
+      checkTier(sim);
+    } finally {
+      TIER_AT[1] = saved;
+    }
+    expect(sim.events.festival?.name).toBe('Charter day');
+    expect(sim.events.seasonal).toBeNull();
+    const said = sim.activity.slice(logged).map((e) => e.text);
+    expect(said).toEqual(["Northwind is now a town! Tonight's spring fair in the park becomes a charter day"]);
   });
 
   it('paving stays out of farm plots', () => {
