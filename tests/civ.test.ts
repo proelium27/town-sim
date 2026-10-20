@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { ageOf, createAgent } from '../src/sim/agents';
 import { triggerWorldEvent } from '../src/sim/events';
+import { laborPlan } from '../src/sim/labor';
 import { die } from '../src/sim/life';
-import { allocateRoles } from '../src/sim/planner';
+import { allocateRoles, stageOf } from '../src/sim/planner';
 import { Sim } from '../src/sim/sim';
 import { kinship, rel, relationLabel, shiftOpinion } from '../src/sim/social';
 
@@ -40,6 +41,23 @@ describe('a self-building town', () => {
     const grown = sim.activity.filter((e) => e.text.includes('came of age'));
     const kids = sim.agents.filter((a) => ageOf(sim, a) < 18);
     expect(grown.length + kids.length).toBeGreaterThan(0);
+  });
+});
+
+describe('construction', () => {
+  it('a fully supplied site within half a point of done still gets finished', () => {
+    const sim = new Sim(7);
+    while (sim.time < 3 * 1440 && !sim.projects.some((p) => stageOf(sim, p) !== 'clearing')) sim.run(30);
+    const pr = sim.projects.find((p) => stageOf(sim, p) !== 'clearing')!;
+    for (const [g, n] of Object.entries(pr.need)) pr.delivered[g as keyof typeof pr.need] = n;
+    // A builder knocked off for the day just short of the end.
+    pr.progress = pr.work - 0.3;
+    sim.projects.splice(0, sim.projects.length, pr);
+    const b = sim.agents.find((a) => a.role === 'builder')!;
+    b.carry = null;
+    const plan = laborPlan(sim, b);
+    expect(plan?.kind).toBe('build');
+    expect(plan?.projectId).toBe(pr.id);
   });
 });
 

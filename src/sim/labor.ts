@@ -1,6 +1,6 @@
 import type { Prop } from '../world/map';
 import { billGoods, type Good, PRIORITY_WEIGHT } from './defs';
-import { buildCap, clutter, shortOf, stageOf } from './planner';
+import { buildCap, clutter, shortOf, stageOf, supplied } from './planner';
 import { chill, FIREWOOD_STOCK, HEARTH_FULL, SPLIT } from './seasons';
 import type { ActionKind, Agent, Project } from './types';
 import type { Sim } from './sim';
@@ -145,7 +145,9 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
         });
       }
     }
-    if (stage !== 'clearing' && pr.progress < buildCap(pr) - 0.5) {
+    // Build while materials allow; once everything has arrived, finish the last sliver too, or a
+    // builder who stopped within half a point of done would leave the site unfinished for good.
+    if (stage !== 'clearing' && (pr.progress < buildCap(pr) - 0.5 || (supplied(pr) && pr.progress < pr.work - 0.01))) {
       plans.push(() => {
         const c = siteCell(sim, a, pr);
         if (!c) return null;
