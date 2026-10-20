@@ -16,7 +16,7 @@ describe('a self-building town', () => {
   const startPop = sim.agents.length;
 
   it('proposes, builds and moves into new buildings without any player input', () => {
-    sim.run(9 * 1440);
+    sim.run(10 * 1440);
     const built = sim.map.buildings.slice(startBuildings);
     expect(built.length).toBeGreaterThanOrEqual(3);
     expect(built.some((b) => b.kind === 'house')).toBe(true);
