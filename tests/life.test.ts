@@ -199,3 +199,44 @@ describe('moving house', () => {
     expect(kid.household).toBe(dest);
   });
 });
+
+describe('orphans', () => {
+  /** A child in seed 7, the grown-ups they live with, and a grown-up in another home. */
+  const scene = () => {
+    const sim = new Sim(7);
+    const kid = sim.agents.find((x) => ageOf(sim, x) < 18)!;
+    const adults = sim.agents.filter((x) => x.household === kid.household && ageOf(sim, x) >= 18);
+    const other = sim.agents.find((x) => x.household !== kid.household && ageOf(sim, x) >= 18)!;
+    return { sim, kid, adults, other };
+  };
+  const fn = (x: { name: string }) => x.name.split(' ')[0];
+
+  it('when the last grown-up at home dies, the children go to live with a grandparent', () => {
+    const { sim, kid, adults, other: gran } = scene();
+    // Make someone in another home the grandparent, through one of the kid's parents.
+    const parent = sim.agent(kid.parents.find((id) => adults.some((a) => a.id === id))!)!;
+    parent.parents.push(gran.id);
+    gran.children.push(parent.id);
+    const siblings = sim.agents.filter((x) => x.household === kid.household && ageOf(sim, x) < 18);
+    for (const a of adults) die(sim, a, 'a test');
+    for (const k of siblings) expect(k.household).toBe(gran.household);
+    expect(sim.activity.some((e) => e.text.startsWith(`${siblings.map(fn).join(' and ')} went to live with their grandparent ${fn(gran)}`))).toBe(true);
+  });
+
+  it('with no family left, the children go to the home with the most room', () => {
+    const { sim, kid, adults } = scene();
+    // Nobody else in town is kin.
+    for (const a of adults) {
+      for (const o of sim.agents) if (o.household !== kid.household) {
+        o.parents = o.parents.filter((id) => id !== a.id);
+        o.children = o.children.filter((id) => id !== a.id);
+      }
+      a.parents = [];
+    }
+    for (const a of adults) die(sim, a, 'a test');
+    const home = sim.town.households[kid.household];
+    expect(home.building).toBeGreaterThanOrEqual(0);
+    expect(sim.agents.some((x) => x.household === kid.household && ageOf(sim, x) >= 18)).toBe(true);
+    expect(sim.activity.some((e) => e.text.endsWith(`went to live at ${home.name}`) && e.text.includes(fn(kid)))).toBe(true);
+  });
+});
