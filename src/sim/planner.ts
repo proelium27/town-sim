@@ -547,6 +547,7 @@ export function allocateRoles(sim: Sim): void {
   demand.forEach(([r], i) => open.set(r, (open.get(r) ?? 0) + quota[i]));
   for (const a of pool) if (open.has(a.role)) open.set(a.role, open.get(a.role)! - 1);
   const calledAway = (a: Agent, role: RoleKey) => a.career !== undefined && a.career !== role && (open.get(a.career) ?? 0) > 0;
+  const settling = (a: Agent) => sim.time - (a.roleSince ?? -Infinity) < MIN_TENURE;
   const fits = (a: Agent, [role, , building]: RoleSlot) => a.role === role && (building === null || a.workBuilding === building);
 
   const line = new Map<number, number>();
@@ -562,7 +563,8 @@ export function allocateRoles(sim: Sim): void {
     const [role, , building] = slot;
     let need = quota[i] - taken(i);
     if (need <= 0) return;
-    const spare = pool.filter((a) => !line.has(a.id));
+    // Anyone who only just took up their trade is asked last, so a dip in one line doesn't bounce them straight back.
+    const spare = pool.filter((a) => !line.has(a.id)).sort((x, y) => Number(settling(x)) - Number(settling(y)));
     const order = [...spare.filter((a) => a.career === role), ...spare.filter((a) => a.career !== role && !calledAway(a, role)), ...spare.filter((a) => a.career !== role && calledAway(a, role))];
     for (const a of order) {
       if (need <= 0) break;
@@ -578,7 +580,7 @@ export function allocateRoles(sim: Sim): void {
   const keeps = (a: Agent) => (a.role === 'builder' && demand.some((slot) => fits(a, slot))) || (CRAFT_ROLES.includes(a.role) && hasWorkshop(sim));
   for (const a of pool) {
     if (line.has(a.id) || a.role === 'laborer') continue;
-    if (sim.time - (a.roleSince ?? -Infinity) < MIN_TENURE || keeps(a)) continue;
+    if (settling(a) || keeps(a)) continue;
     setRole(sim, a, 'laborer', null);
     changes.push(`${first(a)} is helping out as a laborer`);
   }
