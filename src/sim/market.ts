@@ -117,6 +117,9 @@ function tradeList(sim: Sim): { sell: [Good, number, number][]; buy: [Good, numb
   return { sell, buy };
 }
 
+/** What trade() reports when the town had nothing to sell and bought nothing. */
+export const NO_TRADE = 'nothing changed hands';
+
 /** The trader buys the town's surplus and sells what it's short of, as far as the treasury allows. */
 export function trade(sim: Sim): string {
   const { sell, buy } = tradeList(sim);
@@ -137,7 +140,15 @@ export function trade(sim: Sim): string {
     sim.ledger.trade -= afford * p;
     parts.push(`bought ${afford} ${GOODS[g].label.toLowerCase()}`);
   }
-  return parts.length ? parts.join(', ') : 'nothing changed hands';
+  return parts.length ? parts.join(', ') : NO_TRADE;
+}
+
+/** The trader's stop at the market, for the activity log: what changed hands, or a quiet note on why nothing did. */
+export function traderVisit(sim: Sim): void {
+  const short = tradeList(sim).buy.length > 0;
+  const done = trade(sim);
+  if (done !== NO_TRADE) sim.log(`The trader stopped at the market: ${done}`, 'event', 'good');
+  else sim.log(`The trader came by, but the town had nothing to sell and ${short ? 'no money to spare' : 'needed nothing'}`, 'event', 'neutral');
 }
 
 export type Ledger = { sales: number; taxes: number; wages: number; trade: number; projects: number; pensions: number; bonuses: number };

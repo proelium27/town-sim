@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { SEASON_DAYS } from '../src/sim/defs';
-import { BASE_PRICE, BROKE_RETRY, canAffordGroceries, HARD_DAYS, HARDSHIP_FLOOR, HARDSHIP_KEEP, price, RESERVE_MIN, tickMarket, townPaid, trade } from '../src/sim/market';
+import { GOOD_KEYS, SEASON_DAYS } from '../src/sim/defs';
+import { BASE_PRICE, BROKE_RETRY, canAffordGroceries, HARD_DAYS, HARDSHIP_FLOOR, HARDSHIP_KEEP, price, RESERVE_MIN, tickMarket, townPaid, trade, traderVisit, NO_TRADE, wantOf } from '../src/sim/market';
 import { Sim } from '../src/sim/sim';
 import { addMemory, kinship } from '../src/sim/social';
 import type { Agent } from '../src/sim/types';
@@ -54,6 +54,29 @@ describe('the trader', () => {
     sim.run(1440 + 13 * 60 - sim.time);
     expect(sim.activity.some((e) => e.text.startsWith('The trader stopped at the market'))).toBe(true);
   }, 60_000);
+
+  it('logs a visit where nothing changed hands as a neutral note that says why, not good news', () => {
+    const sim = new Sim(7, { agents: false });
+    // Every store exactly where the town wants it: nothing to sell.
+    for (const g of GOOD_KEYS) sim.stock[g] = Math.ceil(wantOf(sim, g));
+    const last = () => sim.activity[sim.activity.length - 1];
+    sim.treasury = 1000;
+    traderVisit(sim);
+    expect(last().text).toBe('The trader came by, but the town had nothing to sell and needed nothing');
+    expect(last().tone).toBe('neutral');
+    // Short of firewood, but the treasury is empty.
+    sim.stock.firewood = 0;
+    sim.treasury = 0;
+    traderVisit(sim);
+    expect(last().text).toBe('The trader came by, but the town had nothing to sell and no money to spare');
+    expect(last().tone).toBe('neutral');
+    expect(sim.activity.some((e) => e.text.includes(NO_TRADE))).toBe(false);
+    // A glut sells, and that is good news.
+    sim.stock.stone = 500;
+    traderVisit(sim);
+    expect(last().text).toMatch(/^The trader stopped at the market: sold \d+ stone/);
+    expect(last().tone).toBe('good');
+  });
 });
 
 describe('the treasury', () => {
