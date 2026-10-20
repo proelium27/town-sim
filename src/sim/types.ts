@@ -119,6 +119,8 @@ export interface Agent {
   mealReady: boolean;
   /** Day index of the last coffee, for the morning-coffee habit. */
   coffeeDay: number;
+  /** Game minute a cook last found the cupboard bare, so they eat out or shop instead of retrying. */
+  bareAt?: number;
   /** Game minute of the last near-miss with a car, to avoid repeat scares. */
   lastScare: number;
 

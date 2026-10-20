@@ -399,13 +399,15 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
     if (n.hunger < 15) s += 0.5;
     const reason = lunchy ? 'Lunchtime' : breakfast ? 'Breakfast' : dinner ? 'Dinnertime' : `Hungry (${Math.round(n.hunger)})`;
     const atHomeTime = loc === 'home' || (!workTime && !schoolTime && (evening || dinner || breakfast));
-    if (homed && atHomeTime && pantry > 0 && stage !== 'toddler') {
+    // Half a meal is enough for a plate; after a bare-cupboard surprise, look elsewhere for a while.
+    const cupboardChecked = a.bareAt !== undefined && sim.time - a.bareAt < 120;
+    if (homed && atHomeTime && pantry >= 0.5 && !cupboardChecked && stage !== 'toddler') {
       const famHome = dinner && sim.agents.some((x) => x.id !== a.id && x.household === a.household && sim.roomOf(x)?.id === sim.town.households[a.household].room);
       o.push(spotOption(sim, a, 'cook', s + (famHome ? 0.2 : 0), reason, ['cook'], () => (stage === 'child' ? 'Making a sandwich' : 'Cooking at home'), stage === 'child' ? 8 : 18, homeOnly));
     }
-    if (little && homed && pantry > 0) {
+    if (little && homed && pantry >= 0.5) {
       o.push(spotOption(sim, a, 'eat', s * 0.9, reason, ['eat'], () => 'Having a snack at home', 15, homeOnly, () => {
-        if (sim.pantry[a.household] < 1) return false;
+        if (sim.pantry[a.household] < 0.5) return false;
         sim.pantry[a.household] -= 0.5;
       }));
     }
@@ -898,14 +900,16 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
     case 'cook':
       gainXp(sim, a, 'cooking', dt * 0.4);
       if (tick()) {
-        if (sim.pantry[a.household] < 1) {
+        // A full meal feeds the family; half a meal (left by a family dinner or a snack) makes one plate.
+        const portion = Math.min(1, sim.pantry[a.household]);
+        if (portion < 0.5) {
+          a.bareAt = sim.time;
           think(sim, a, 'The cupboards are bare.', 'bad');
           return finish(sim, a);
         }
-        sim.pantry[a.household] -= 1;
-        // One pot feeds whoever in the family is home and hungry.
+        sim.pantry[a.household] -= portion;
         a.mealReady = true;
-        for (const o of sim.agents) if (o.household === a.household && o.id !== a.id && o.needs.hunger < 70 && sim.roomOf(o) === sim.roomOf(a)) o.mealReady = true;
+        if (portion >= 1) for (const o of sim.agents) if (o.household === a.household && o.id !== a.id && o.needs.hunger < 70 && sim.roomOf(o) === sim.roomOf(a)) o.mealReady = true;
         say(sim, a, '♨', 'good');
         finish(sim, a);
       }
