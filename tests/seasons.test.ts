@@ -92,9 +92,15 @@ describe('seasons', () => {
     const lowest = (sim: Sim) => {
       let min = Infinity;
       at(sim, 6, 0);
+      // Surplus sold to the trader still counts: this is about the harvest, not the treasury.
+      let sold = 0;
+      let seen = sim.activityVersion;
       while (sim.time < 8 * 1440) {
         sim.run(60);
-        min = Math.min(min, sim.stock.food);
+        const fresh = sim.activityVersion - seen;
+        seen = sim.activityVersion;
+        if (fresh > 0) for (const e of sim.activity.slice(-fresh)) sold += Number(/^The trader stopped.*\bsold (\d+) food/.exec(e.text)?.[1] ?? 0);
+        min = Math.min(min, sim.stock.food + sold);
       }
       return min;
     };
