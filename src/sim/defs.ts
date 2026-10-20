@@ -172,6 +172,8 @@ export const PRIORITY_LABEL: Record<PriorityKey, string> = {
 };
 /** Low / Normal / High multipliers. */
 export const PRIORITY_WEIGHT = [0.4, 1, 1.9];
+/** The most of the flexible workforce a lever can put into its own trade, at Low / Normal / High. */
+export const PRIORITY_SHARE = [0.3, 0.5, 0.7];
 
 // ------------------------------------------------------------------ traits
 

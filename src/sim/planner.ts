@@ -2,7 +2,7 @@ import type { GroundKey } from '../assets/manifest';
 import { BLUEPRINTS, type BlueprintKey } from '../world/blueprints';
 import type { Household } from '../world/town';
 import { ageOf, hoursOf, makeSchedule, newTask, surnameOf } from './agents';
-import { ADULT_AGE, type Bill, billGoods, type Good, GOODS, MIN_PER_DAY, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
+import { ADULT_AGE, type Bill, billGoods, type Good, GOODS, MIN_PER_DAY, PRIORITY_SHARE, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
 import { foodBalance } from './economy';
 import { bury } from './life';
 import { projectCushion } from './market';
@@ -173,7 +173,8 @@ function proposals(sim: Sim): Proposal[] {
   const fw = weight(sim, 'food');
   const fb = foodBalance(sim, true);
   const plannedFarms = sim.projects.filter((p) => p.blueprint === 'farm').length;
-  const deficit = fb.eat - fb.produce - plannedFarms * 50;
+  // With food on High the town breaks new fields until it grows a good margin over what it eats.
+  const deficit = fb.eat * (sim.priorities.food === 2 ? 1.3 : 1) - fb.produce - plannedFarms * 50;
   // Nobody breaks new fields in winter; nothing would grow before spring.
   if (sim.season !== 3 && (deficit > 0 || sim.stock.food < sim.agents.length * 2)) {
     const farmer = sim.agents.find((a) => a.role === 'farmer');
@@ -466,9 +467,17 @@ export function roleDemand(sim: Sim): RoleSlot[] {
   const hw = PRIORITY_WEIGHT[sim.priorities.housing];
   const mw = PRIORITY_WEIGHT[sim.priorities.materials];
   const fw = PRIORITY_WEIGHT[sim.priorities.food];
-  demand.push(['farmer', Math.max(1, Math.round(farms * 1.5 * fw)), null]);
+  // A skeleton crew comes first, so no lever set to High can strip the town of the hands that grow, build and gather.
+  demand.push(['farmer', 1, null], ['builder', 1, null], ['woodcutter', 1, null]);
+  // Then the levers tilt the rest of the mix, each claiming no more than its share of the workforce.
+  const pool = sim.agents.filter((a) => ROLES[a.role].flexible && ageOf(sim, a) >= ADULT_AGE).length;
+  const capped = (n: number, k: PriorityKey) => Math.min(n, Math.max(1, Math.round(pool * PRIORITY_SHARE[sim.priorities[k]]))) - 1;
+  // Farms are staffed before building crews, unless housing is the higher priority.
+  const tilt: RoleSlot[] = [['farmer', capped(Math.round(farms * 1.5 * fw), 'food'), null], ['builder', capped(Math.round((1 + sim.projects.length * 0.8) * hw), 'housing'), null]];
+  if (sim.priorities.housing > sim.priorities.food) tilt.reverse();
+  demand.push(tilt[0]);
   if (hasWorkshop(sim)) demand.push(['carpenter', 1, null]);
-  demand.push(['builder', Math.max(1, Math.round((1 + sim.projects.length * 0.8) * hw)), null]);
+  demand.push(tilt[1]);
   // Once there's a workshop, the trades it needs (one carpenter is staffed even before builders, above).
   if (hasWorkshop(sim)) {
     for (const role of CRAFT_ROLES) {
@@ -486,8 +495,8 @@ export function roleDemand(sim: Sim): RoleSlot[] {
   // Autumn and winter need firewood split and carried to every hearth.
   const cold = sim.season >= 2 ? 1 : 0;
   const shop = hasWorkshop(sim) ? 1 : 0;
-  demand.push(['woodcutter', Math.max(1, Math.round((sim.stock.wood < 60 || sim.stock.stone < 40 ? 2 : 1) * mw) + cold + shop), null]);
-  return demand;
+  demand.push(['woodcutter', Math.max(1, Math.round((sim.stock.wood < 60 || sim.stock.stone < 40 ? 2 : 1) * mw) + cold + shop) - 1, null]);
+  return demand.filter(([, n]) => n > 0);
 }
 
 /** Unfilled places per demanded role: the total wanted less the adults already doing it (zero or below: full). */

@@ -102,7 +102,8 @@ describe('career openings', () => {
   }, 120_000);
 
   it('people settle into their jobs instead of being rotated every few hours', () => {
-    const sim = new Sim(7);
+    // A seed whose town builds its workshop early, so the trades are in the mix.
+    const sim = new Sim(2);
     const days = 14;
     const was = new Map(sim.agents.map((a) => [a.id, { role: a.role, since: sim.time, from: '' }]));
     let moves = 0;
@@ -121,7 +122,7 @@ describe('career openings', () => {
         was.set(a.id, { role: a.role, since: sim.time, from: w.role });
       }
     }
-    // Before, about four and a half moves a day, with crafters stood down to labor and taken back within hours.
+    // Before, four to six moves a day, with crafters stood down to labor and taken back within hours.
     expect(sim.map.buildings.some((b) => b.kind === 'workshop')).toBe(true);
     expect(flips).toBe(0);
     expect(backs).toBeLessThanOrEqual(2);

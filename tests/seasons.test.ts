@@ -4,7 +4,7 @@ import { triggerWorldEvent } from '../src/sim/events';
 import { gatherKind, laborPlan } from '../src/sim/labor';
 import type { Agent } from '../src/sim/types';
 import { loadSim, saveSim } from '../src/sim/save';
-import { chill, tickSeasons, winterReadiness } from '../src/sim/seasons';
+import { chill, HEARTH_FULL, tickSeasons, winterReadiness } from '../src/sim/seasons';
 import { Sim } from '../src/sim/sim';
 import { winterLine } from '../src/ui/townPanel';
 
@@ -112,6 +112,9 @@ describe('seasons', () => {
     // stock one so there are deliveries to watch.
     sim.stock.firewood = Math.max(sim.stock.firewood, 40);
     at(sim, 6, 6);
+    // With a woodcutter always on the crew, the hearths start winter well stoked; burn them down
+    // so some need a delivery before the day is out.
+    for (const h of sim.town.households) sim.fuel[h.id] = Math.min(sim.fuel[h.id], HEARTH_FULL * 0.4);
     // Watch everyone walking firewood to a home: when that errand ends, the load must be by the hearth.
     const out = new Map<number, { action: object; hh: number; fuel: number }>();
     let delivered = 0;
