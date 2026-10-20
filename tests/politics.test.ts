@@ -63,6 +63,24 @@ describe('elections', () => {
     expect(agendaWeight(sim, 'community')).toBe(1);
   });
 
+  it('a birthday on election day starts after the vote, so the family can hear the rally first', () => {
+    const sim = new Sim(7);
+    const homed = sim.agents.filter((a) => sim.town.households[a.household].building >= 0);
+    const host = homed.find((x) => homed.some((y) => y !== x && y.household === x.household && kinship(sim, x, y)))!;
+    // Born on election day (day 2 of the calendar), 32 today; nobody else celebrating.
+    host.birth = 2 * 1440 + 720 - 2 * 8 * 1440;
+    for (const x of sim.agents) if (x !== host) x.lastBirthday = 1;
+    at(sim, 2, 18.5);
+    expect(sim.election!.stage).toBe('rally');
+    expect(sim.events.birthdays).toHaveLength(0);
+    at(sim, 2, 19.5);
+    expect(sim.lastElection).not.toBeNull();
+    expect(sim.events.birthdays.some((b) => b.hosts.includes(host.id))).toBe(true);
+    at(sim, 2, 21.9);
+    expect(host.memories.some((m) => m.kind === 'myBirthday')).toBe(true);
+    expect(sim.agents.some((o) => o !== host && kinship(sim, o, host) && o.memories.some((m) => m.kind === 'birthday' && m.about === host.id))).toBe(true);
+  }, 120_000);
+
   it('a voter backs a clearly better-liked candidate on their second concern over a stranger on their first', () => {
     const sim = new Sim(7);
     const adults = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE);

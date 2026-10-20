@@ -45,6 +45,9 @@ export type Season = (typeof SEASONS)[number];
 export const YEAR_DAYS = SEASON_DAYS * SEASONS.length;
 /** Elections fall on the first day of summer: the campaign opens at 9, the rally is at 17, the vote at 19. */
 export const ELECTION_DAY = SEASON_DAYS;
+/** Birthday parties start at 18; on election day they wait until the votes are counted. */
+export const BIRTHDAY_HOUR = 18;
+export const ELECTION_BIRTHDAY_HOUR = 19.25;
 
 // ------------------------------------------------------------------ goods
 

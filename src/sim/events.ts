@@ -1,5 +1,5 @@
 import { ageOf } from './agents';
-import { MIN_PER_DAY, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
+import { BIRTHDAY_HOUR, ELECTION_BIRTHDAY_HOUR, ELECTION_DAY, MIN_PER_DAY, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
 import { fallIll } from './health';
 import { TRADER_EVERY } from './market';
 import { FESTIVALS, snowing } from './seasons';
@@ -82,9 +82,11 @@ function planDay(sim: Sim): void {
   if (sim.season === 3 && r.chance(0.22)) ev.plan.push({ at: base + r.range(2, 16) * 60, kind: 'snowstorm', length: 0 });
   // Birthdays follow the calendar: once a year, on the day of the year someone was born.
   const today = sim.day % YEAR_DAYS;
+  // On election day the party waits until the votes are in, so kin aren't torn between the rally and the cake.
+  const partyAt = base + (today === ELECTION_DAY ? ELECTION_BIRTHDAY_HOUR : BIRTHDAY_HOUR) * 60;
   for (const a of sim.agents) {
     if (birthdayOf(a.birth) !== today || a.lastBirthday >= sim.year || sim.time - a.birth < YEAR_DAYS * MIN_PER_DAY * 0.75) continue;
-    ev.plan.push({ at: base + 18 * 60, kind: 'birthday', length: 150, host: a.id });
+    ev.plan.push({ at: partyAt, kind: 'birthday', length: 150, host: a.id });
   }
   ev.plan.sort((x, y) => x.at - y.at);
   ev.plan.sort((a, b) => a.at - b.at);
