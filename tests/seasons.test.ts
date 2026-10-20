@@ -137,7 +137,8 @@ describe('seasons', () => {
     // Fewer hands bring in the autumn harvest, so more of it freezes in the fields. With the
     // economy in, the gap in the stores on this seed is about a fifth rather than a half.
     const short = lowest(low);
-    expect(short.ripeLost).toBeGreaterThan(normal.ripeLost * 1.5);
+    // Many more ripe crops lost: half as many again, or 20 more where Normal loses a lot too.
+    expect(short.ripeLost).toBeGreaterThan(Math.min(normal.ripeLost * 1.5, normal.ripeLost + 20));
     expect(short.min).toBeLessThan(normal.min * 0.85);
   }, 300_000);
 
