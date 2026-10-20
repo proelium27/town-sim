@@ -8,8 +8,14 @@ const at = (sim: Sim, day: number, hour: number) => sim.run(day * 1440 + hour * 
 /** A hungry adult at home with money for food and `pantry` meals in the cupboard. */
 function hungryAtHome(pantry: number, solo: boolean) {
   const sim = new Sim(11);
-  at(sim, 1, 18.5);
-  const a = sim.agents.find((x) => stageOf(sim, x) === 'adult' && !['eat', 'cook', 'party'].includes(x.action.kind) && sim.roomOf(x)?.id === sim.town.households[x.household].room)!;
+  // The first evening moment someone is home and not already at a meal or a party: the test is
+  // about a grown-up who has to feed themselves, and evening routines shift from branch to branch.
+  let a: Agent | undefined;
+  for (let hour = 18; !a && hour <= 21; hour += 0.5) {
+    at(sim, 1, hour);
+    a = sim.agents.find((x) => stageOf(sim, x) === 'adult' && !['eat', 'cook', 'party'].includes(x.action.kind) && sim.roomOf(x)?.id === sim.town.households[x.household].room);
+  }
+  if (!a) throw new Error('nobody at home to feed');
   if (solo) {
     // Everyone else in the house moves next door, so nobody else will restock this pantry.
     const next = sim.town.households.findIndex((h, i) => i !== a.household && h.building >= 0);
