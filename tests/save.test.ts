@@ -35,6 +35,18 @@ describe('saving and loading', () => {
     expect(b.agents.every((a) => a.needs.health === 100)).toBe(true);
   });
 
+  it('a mayor in a save from before term counts has served one term', () => {
+    const a = new Sim(3);
+    a.mayor = a.agents[0].id;
+    a.mayorTerms = 4;
+    const file = JSON.parse(saveSim(a));
+    expect(loadSim(JSON.stringify(file)).mayorTerms).toBe(4);
+    delete file.sim.mayorTerms;
+    expect(loadSim(JSON.stringify(file)).mayorTerms).toBe(1);
+    file.sim.mayor = null;
+    expect(loadSim(JSON.stringify(file)).mayorTerms).toBe(0);
+  });
+
   it('backfills new fields on people who moved away, too', () => {
     const a = new Sim(7, { agents: true });
     const gone = a.agents.pop()!;

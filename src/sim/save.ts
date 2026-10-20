@@ -94,7 +94,8 @@ export function loadSim(text: string): Sim {
   }
   sim.tier ??= 0;
   sim.hardDays ??= [];
-  sim.mayorTerms ??= sim.mayor === null ? 0 : 1;
+  // The Sim starts at 0 terms, so check the file itself: a mayor in an older save has served one term.
+  if (!('mayorTerms' in rest)) sim.mayorTerms = sim.mayor === null ? 0 : 1;
   sim.ledger = { ...emptyLedger(), ...sim.ledger };
   sim.lastLedger = { ...emptyLedger(), ...sim.lastLedger };
   return sim;
