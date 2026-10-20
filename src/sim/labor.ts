@@ -66,15 +66,38 @@ export function depositSpot(sim: Sim, a: Agent): { cell: number; path: number[] 
   return null;
 }
 
-/** A walkable cell inside a project's footprint to stand and work from, near the agent. */
-function siteCell(sim: Sim, a: Agent, pr: Project): { cell: number; path: number[] } | null {
+/** Walkable cells on a project's outline: where builders stand and loads are dropped. */
+export function siteEdges(sim: Sim, pr: Project): number[] {
   const m = sim.map;
   const cells: number[] = [];
   for (let y = pr.y; y < pr.y + pr.h; y++) for (let x = pr.x; x < pr.x + pr.w; x++) {
-    // Work from the outline so builders spread around the site.
     const edge = x === pr.x || y === pr.y || x === pr.x + pr.w - 1 || y === pr.y + pr.h - 1;
     if (edge && m.walkable(x, y)) cells.push(m.idx(x, y));
   }
+  return cells;
+}
+
+const reach = new WeakMap<Project, { key: string; ok: boolean }>();
+
+/** Can anyone walk from this cell onto the site at all? Cached until walls or props change. */
+export function siteReachable(sim: Sim, pr: Project, from: number): boolean {
+  const m = sim.map;
+  const key = `${m.propVersion}:${m.wallVersion}:${from}`;
+  const hit = reach.get(pr);
+  if (hit?.key === key) return hit.ok;
+  const ok = siteEdges(sim, pr).some((c) => sim.nav.connected(from, c));
+  reach.set(pr, { key, ok });
+  return ok;
+}
+
+/** How long hauling to a site waits after a load found no way onto it, in game minutes. */
+export const HAUL_PAUSE = 60;
+
+/** A walkable cell inside a project's footprint to stand and work from, near the agent. */
+function siteCell(sim: Sim, a: Agent, pr: Project): { cell: number; path: number[] } | null {
+  const m = sim.map;
+  // Work from the outline so builders spread around the site.
+  const cells = siteEdges(sim, pr);
   const busy = new Set(sim.agents.filter((o) => o.id !== a.id && o.action.projectId === pr.id).map((o) => o.action.dest));
   cells.sort((i, j) => (busy.has(i) ? 50 : 0) + Math.hypot(m.cx(i) - a.x, m.cy(i) - a.y) - ((busy.has(j) ? 50 : 0) + Math.hypot(m.cx(j) - a.x, m.cy(j) - a.y)));
   for (const cell of cells.slice(0, 3)) {
@@ -168,12 +191,14 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
       });
     }
     if (!builderish) continue;
+    // No fetching for a site nobody can walk onto (still hemmed in by trees, or walled off).
+    const paused = (pr.haulPause ?? 0) > sim.time;
     for (const mat of billGoods(pr.need)) {
       const short = shortOf(pr, mat) - inFlight(sim, pr, mat);
-      if (short > 0 && sim.stock[mat] >= 1) {
+      if (short > 0 && sim.stock[mat] >= 1 && !paused) {
         add(0.95 * mult, () => {
           const d = storehouse();
-          if (!d) return null;
+          if (!d || !siteReachable(sim, pr, d.cell)) return null;
           return { kind: 'haul', label: `Hauling ${mat} to ${pr.name}`, reason: `${pr.name} needs ${Math.ceil(short)} more ${mat}`, dest: d.cell, path: d.path, projectId: pr.id, leg: 'pickup', material: mat, timer: 2, score: 0.95 * mult };
         });
       }

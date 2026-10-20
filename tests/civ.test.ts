@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { ageOf, createAgent } from '../src/sim/agents';
 import { triggerWorldEvent } from '../src/sim/events';
 import { die } from '../src/sim/life';
-import { allocateRoles } from '../src/sim/planner';
-import { Sim } from '../src/sim/sim';
+import { allocateRoles, clutter, findSite, setRole } from '../src/sim/planner';
+import { Sim, STEP } from '../src/sim/sim';
 import { kinship, rel, relationLabel, shiftOpinion } from '../src/sim/social';
+import type { Action, Agent, Project } from '../src/sim/types';
+import { BLUEPRINTS } from '../src/world/blueprints';
+import { Cell } from '../src/world/map';
 
 describe('a self-building town', () => {
   const sim = new Sim(7);
@@ -135,5 +138,75 @@ describe('family bonds', () => {
     shiftOpinion(sim, parent, outsider, -10);
     expect(parent.relations.get(partner.id)!.opinion).toBe(45);
     expect(parent.relations.get(outsider.id)!.opinion).toBe(40);
+  });
+});
+
+describe('a build site nobody can reach', () => {
+  /** A house site with a wall all the way round it, so no one at the storehouse can walk onto it. */
+  function walledSite(): { sim: Sim; pr: Project } {
+    const sim = new Sim(7);
+    sim.run(150);
+    const site = findSite(sim, 'house')!;
+    const bp = BLUEPRINTS.house;
+    const pr: Project = {
+      id: 99, blueprint: 'house', name: 'Walled House', x: site.x, y: site.y, w: bp.w, h: bp.h, doorTop: site.doorTop, path: [],
+      need: { ...bp.cost }, delivered: {}, work: bp.work, progress: 0, reason: 'test', forAgents: [], started: sim.time, builders: new Set(),
+    };
+    for (const p of clutter(sim, pr)) sim.map.removeProp(p);
+    for (let y = pr.y - 2; y <= pr.y + pr.h + 1; y++) for (let x = pr.x - 2; x <= pr.x + pr.w + 1; x++) {
+      if (x === pr.x - 2 || y === pr.y - 2 || x === pr.x + pr.w + 1 || y === pr.y + pr.h + 1) sim.map.setCell(x, y, Cell.Wall);
+    }
+    // Nothing else to build, and a crew with time on their hands.
+    sim.projects = [pr];
+    for (const a of sim.agents.filter((o) => ['engineer', 'designer', 'writer'].includes(o.role))) setRole(sim, a, 'laborer', null);
+    sim.stock.wood = 200;
+    sim.stock.stone = 150;
+    return { sim, pr };
+  }
+
+  it('workers do not keep fetching goods for it and putting them back', () => {
+    const { sim, pr } = walledSite();
+    expect(sim.agents.some((a) => a.role === 'builder' || a.role === 'laborer')).toBe(true);
+    const seen = new Map<Agent, Action>();
+    const fetched = new Set<Agent>();
+    let hauls = 0;
+    let returns = 0;
+    // A working day.
+    for (let i = 0; i < Math.round((6 * 60) / STEP); i++) {
+      sim.step();
+      for (const a of sim.agents) {
+        const act = a.action;
+        if (seen.get(a) !== act && act.kind !== 'idle') {
+          // A deposit straight after a haul for this site is the load going back to the store.
+          if (act.kind === 'deposit' && fetched.has(a)) returns++;
+          fetched.delete(a);
+          if (act.kind === 'haul' && act.projectId === pr.id) {
+            hauls++;
+            fetched.add(a);
+          }
+        }
+        seen.set(a, act);
+      }
+    }
+    expect(hauls).toBeLessThanOrEqual(1);
+    expect(returns).toBeLessThanOrEqual(1);
+    expect(pr.delivered.wood ?? 0).toBe(0);
+  }, 120_000);
+
+  it('a load that finds no way onto the site goes quietly back, and hauling there pauses', () => {
+    const { sim, pr } = walledSite();
+    const a = sim.agents.find((o) => o.role === 'builder' || o.role === 'laborer')!;
+    a.carry = null;
+    a.action = { kind: 'haul', label: 'Hauling', reason: 'test', stage: 'travel', dest: a.at, timer: 2, started: sim.time, score: 1, projectId: pr.id, leg: 'pickup', material: 'wood' };
+    a.path = [];
+    a.pathPos = 0;
+    a.thinkIn = 30;
+    const logged = sim.activity.length;
+    sim.step();
+    expect(sim.stock.wood).toBe(200);
+    expect(a.carry).toBeNull();
+    expect(a.action.kind).not.toBe('deposit');
+    expect(pr.haulPause ?? 0).toBeGreaterThan(sim.time);
+    expect(sim.activity.slice(logged).some((e) => e.text.includes('brought'))).toBe(false);
   });
 });

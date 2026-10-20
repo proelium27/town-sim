@@ -166,6 +166,8 @@ export interface Project {
   builders: Set<number>;
   /** When the build began waiting on workshop goods that aren't coming (see unstick). */
   stalled?: number;
+  /** No one fetches goods for it before this time: the last load found no way onto the site. */
+  haulPause?: number;
 }
 
 export type ActivityKind = 'work' | 'social' | 'life' | 'event' | 'build' | 'family';

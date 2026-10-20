@@ -4,7 +4,7 @@ import { ageOf, hasUmbrella, newTask } from './agents';
 import { ADULT_AGE, type Good, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
 import { FOOD_PER_CROP } from './economy';
 import { birthdayNames } from './events';
-import { CARRY, laborPlan } from './labor';
+import { CARRY, HAUL_PAUSE, laborPlan, siteEdges } from './labor';
 import { buildCap, completeProject, shortOf, supplied } from './planner';
 import { chill, HEARTH_FULL, snowing } from './seasons';
 import { canMake, RECIPES, STATION_OF } from './workshop';
@@ -831,23 +831,24 @@ function arriveHaul(sim: Sim, a: Agent): void {
   if (act.leg === 'pickup') {
     const take = Math.min(CARRY, Math.floor(sim.stock[mat]), Math.ceil(shortOf(pr, mat)));
     if (take <= 0) return finish(sim, a);
-    sim.stock[mat] -= take;
-    a.carry = { kind: mat, amount: take };
-    // Second leg: walk it to the site.
-    const m = sim.map;
+    // Find the way to the site before loading up, so a site nobody can reach doesn't send the load
+    // straight back to the store (and the next worker off to fetch it again).
     let best: number[] | null = null;
     let dest = -1;
-    for (let y = pr.y; y < pr.y + pr.h && !best; y++) for (let x = pr.x; x < pr.x + pr.w; x++) {
-      const edge = x === pr.x || y === pr.y || x === pr.x + pr.w - 1 || y === pr.y + pr.h - 1;
-      if (!edge || !m.walkable(x, y)) continue;
-      const path = sim.nav.findPath(a.at, m.idx(x, y), 40000);
-      if (path) {
-        best = path;
-        dest = m.idx(x, y);
+    for (const cell of siteEdges(sim, pr)) {
+      best = sim.nav.findPath(a.at, cell, 40000);
+      if (best) {
+        dest = cell;
         break;
       }
     }
-    if (!best) return finish(sim, a);
+    if (!best) {
+      pr.haulPause = sim.time + HAUL_PAUSE;
+      return finish(sim, a);
+    }
+    sim.stock[mat] -= take;
+    a.carry = { kind: mat, amount: take };
+    // Second leg: walk it to the site.
     act.leg = 'deliver';
     act.label = `Carrying ${mat} to ${pr.name}`;
     act.dest = dest;
