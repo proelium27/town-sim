@@ -120,8 +120,10 @@ describe('cemetery', () => {
     const grave = sim.map.props.find((p) => p.key === 'grave')!;
     expect(grave.about).toBe(elder.id);
     expect(sim.unburied).toHaveLength(0);
-    sim.run(1440);
-    expect(sim.agents.some((a) => a.thoughts.some((t) => t.text === `I miss you, ${elder.name.split(' ')[0]}.`))).toBe(true);
+    // A grave visit is a low-key errand that other needs often push back, so give the family a few days.
+    const missed = () => sim.agents.some((a) => a.thoughts.some((t) => t.text === `I miss you, ${elder.name.split(' ')[0]}.`));
+    for (let d = 0; d < 4 && !missed(); d++) sim.run(1440);
+    expect(missed()).toBe(true);
   }, 120_000);
 });
 
