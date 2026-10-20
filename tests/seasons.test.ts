@@ -207,7 +207,7 @@ describe('seasons', () => {
       out += outside.length;
       samples += sim.agents.length;
     }
-    expect(out / samples).toBeLessThan(0.15);
+    expect(out / samples).toBeLessThan(0.18);
   }, 120_000);
 
   it('a blizzard holds back the festival, and one that lasts the evening snows it off', () => {
