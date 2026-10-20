@@ -6,7 +6,7 @@ import { FOOD_PER_CROP } from './economy';
 import { birthdayNames } from './events';
 import { CARRY, laborPlan } from './labor';
 import { buildCap, completeProject, shortOf, supplied } from './planner';
-import { chill, HEARTH_FULL, snowing } from './seasons';
+import { chill, HEARTH_FULL, snowing, SPLIT } from './seasons';
 import { clamp } from './rng';
 import {
   addMemory, bondNearby, converse, expireMemories, first, FRIEND, kinship, moodTarget, rel, RIVAL, say, shiftOpinion, socialGain, think,
@@ -1141,9 +1141,9 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       if (Math.floor(sim.time * 2) % 4 === 0) say(sim, a, 'thwack', 'neutral', 1);
       act.timer -= dt * (laborRate(a) - 1);
       if (tick()) {
-        if (sim.stock.wood >= 4) {
-          sim.stock.wood -= 4;
-          sim.stock.firewood += 6;
+        if (sim.stock.wood >= SPLIT.wood) {
+          sim.stock.wood -= SPLIT.wood;
+          sim.stock.firewood += SPLIT.firewood;
         }
         finish(sim, a);
       }

@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { triggerWorldEvent } from '../src/sim/events';
 import { loadSim, saveSim } from '../src/sim/save';
-import { chill, tickSeasons, winterReadiness } from '../src/sim/seasons';
+import { BURN_PER_HOUR, chill, HEARTH_FULL, tickSeasons, winterReadiness } from '../src/sim/seasons';
 import { Sim } from '../src/sim/sim';
 import { winterLine } from '../src/ui/townPanel';
 
@@ -52,6 +52,36 @@ describe('seasons', () => {
     expect(winterLine(sim)).toContain('Winter starts in 1.0 days');
     sim.time = 7 * 1440;
     expect(winterLine(sim)).toContain('Winter ends in 1.0 days');
+  });
+
+  it("the Town view's firewood counts logs still to split, and goes red only short of what the town keeps in", () => {
+    const sim = new Sim(7, { agents: false });
+    const homes = sim.town.households.filter((h) => h.building >= 0);
+    expect(homes.length).toBeGreaterThan(0);
+    const firewood = () => /class="(\w+)">[\d.]+ of firewood/.exec(winterLine(sim))![1];
+    const stock = (wood: number, firewood: number, hearth: number) => {
+      sim.stock.wood = wood;
+      sim.stock.firewood = firewood;
+      for (const h of sim.town.households) sim.fuel[h.id] = h.building >= 0 ? hearth : 0;
+    };
+    // Early autumn, with every hearth stocked to what the town keeps in for winter: no warning.
+    sim.time = 4 * 1440 + 60;
+    stock(0, 0, HEARTH_FULL * 1.2);
+    expect(firewood()).toBe('pos');
+    stock(0, 0, HEARTH_FULL);
+    expect(firewood()).toBe('pos');
+    // Nothing split yet, but plenty of logs in the store: they count, 4 wood to 6 firewood.
+    stock(Math.ceil((homes.length * HEARTH_FULL * 1.2 * 4) / 6) + 4, 0, 0);
+    expect(firewood()).toBe('pos');
+    // Really short: red.
+    stock(8, 0, 2);
+    expect(firewood()).toBe('neg');
+    // Late winter needs only the days left.
+    sim.time = 7 * 1440 + 18 * 60;
+    stock(0, 0, BURN_PER_HOUR * 24 * 0.5);
+    expect(firewood()).toBe('pos');
+    stock(0, 0, BURN_PER_HOUR * 24 * 0.1);
+    expect(firewood()).toBe('neg');
   });
 
   it('the first frost clears the fields, and nothing grows until spring', () => {
