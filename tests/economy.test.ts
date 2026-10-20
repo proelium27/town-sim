@@ -77,6 +77,15 @@ describe('the trader', () => {
     expect(last().text).toMatch(/^The trader stopped at the market: sold \d+ stone/);
     expect(last().tone).toBe('good');
   });
+
+  it('counts a single tool as "1 tool"', () => {
+    const sim = new Sim(7, { agents: false });
+    for (const g of GOOD_KEYS) sim.stock[g] = Math.ceil(wantOf(sim, g));
+    sim.stock.tools = 0;
+    // Enough for one tool at the trader's markup, not two.
+    sim.treasury = price(sim, 'tools') * 1.3 * 1.5;
+    expect(trade(sim)).toBe('bought 1 tool');
+  });
 });
 
 describe('the treasury', () => {

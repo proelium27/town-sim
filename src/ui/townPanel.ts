@@ -1,5 +1,5 @@
 import { ageOf } from '../sim/agents';
-import { ADULT_AGE, billText, MIN_PER_DAY, SEASON_DAYS, SEASONS, YEAR_DAYS, GOOD_KEYS, GOODS, PRIORITY_KEYS, PRIORITY_LABEL, type PriorityKey } from '../sim/defs';
+import { ADULT_AGE, billText, MIN_PER_DAY, SEASON_DAYS, SEASONS, YEAR_DAYS, GOOD_KEYS, GOODS, plural, PRIORITY_KEYS, PRIORITY_LABEL, type PriorityKey } from '../sim/defs';
 import { foodBalance } from '../sim/economy';
 import { winterReadiness } from '../sim/seasons';
 import { BASE_PRICE, price, TRADER_EVERY } from '../sim/market';
@@ -160,8 +160,8 @@ export class TownPanel {
     this.root.innerHTML = `
       <section class="tp-sec">
         <dl class="tp-stats">
-          <div><dt>People</dt><dd class="num">${pop.length}</dd><span>${kids} kids, ${elders} retired</span></div>
-          <div><dt>Homes</dt><dd class="num">${homes.length}</dd><span>${beds} beds${homeless ? `, <b class="neg">${homeless} homeless</b>` : ''}</span></div>
+          <div><dt>People</dt><dd class="num">${pop.length}</dd><span>${plural(kids, 'kid')}, ${elders} retired</span></div>
+          <div><dt>Homes</dt><dd class="num">${homes.length}</dd><span>${plural(beds, 'bed')}${homeless ? `, <b class="neg">${homeless} homeless</b>` : ''}</span></div>
           <div><dt>Buildings</dt><dd class="num">${sim.map.buildings.length}</dd><span>${sim.projects.length} going up</span></div>
         </dl>
       </section>

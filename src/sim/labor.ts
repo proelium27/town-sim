@@ -1,5 +1,5 @@
 import type { Prop } from '../world/map';
-import { billGoods, type Good, GOODS, PRIORITY_WEIGHT } from './defs';
+import { billGoods, type Good, GOODS, goodNoun, PRIORITY_WEIGHT } from './defs';
 import { buildCap, clutter, shortOf, stageOf } from './planner';
 import { chill, HEARTH_FULL } from './seasons';
 import { canMake, CRAFT_ROLES, hasWorkshop, RECIPES, shortfall, stationProps } from './workshop';
@@ -174,7 +174,7 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
         add(0.95 * mult, () => {
           const d = storehouse();
           if (!d) return null;
-          return { kind: 'haul', label: `Hauling ${mat} to ${pr.name}`, reason: `${pr.name} needs ${Math.ceil(short)} more ${mat}`, dest: d.cell, path: d.path, projectId: pr.id, leg: 'pickup', material: mat, timer: 2, score: 0.95 * mult };
+          return { kind: 'haul', label: `Hauling ${mat} to ${pr.name}`, reason: `${pr.name} needs ${Math.ceil(short)} more ${goodNoun(Math.ceil(short), mat)}`, dest: d.cell, path: d.path, projectId: pr.id, leg: 'pickup', material: mat, timer: 2, score: 0.95 * mult };
         });
       }
     }

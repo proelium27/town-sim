@@ -1,4 +1,4 @@
-import { type Good, GOOD_KEYS, GOODS, MIN_PER_DAY, ROLES, SEASON_DAYS } from './defs';
+import { type Good, GOOD_KEYS, goodNoun, MIN_PER_DAY, ROLES, SEASON_DAYS } from './defs';
 import { addMemory, first, kinship, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
 import type { Agent } from './types';
@@ -128,7 +128,7 @@ export function trade(sim: Sim): string {
   for (const [g, n, p] of sell) {
     sim.stock[g] -= n;
     earned += n * p;
-    parts.push(`sold ${n} ${GOODS[g].label.toLowerCase()}`);
+    parts.push(`sold ${n} ${goodNoun(n, g)}`);
   }
   sim.treasury += earned;
   sim.ledger.trade += earned;
@@ -138,7 +138,7 @@ export function trade(sim: Sim): string {
     sim.stock[g] += afford;
     sim.treasury -= afford * p;
     sim.ledger.trade -= afford * p;
-    parts.push(`bought ${afford} ${GOODS[g].label.toLowerCase()}`);
+    parts.push(`bought ${afford} ${goodNoun(afford, g)}`);
   }
   return parts.length ? parts.join(', ') : NO_TRADE;
 }

@@ -73,7 +73,7 @@ export function tickSeasons(sim: Sim, dt: number): void {
       p.growth = 0;
     }
     const lost = [ripe && `${ripe} ripe`, green && `${green} unripe`].filter(Boolean).join(' and ');
-    sim.log(lost ? `First frost: ${lost} crops froze in the fields` : 'First frost. The fields are bare until spring', 'event', lost ? 'bad' : 'neutral');
+    sim.log(lost ? `First frost: ${lost} ${ripe + green === 1 ? 'crop' : 'crops'} froze in the fields` : 'First frost. The fields are bare until spring', 'event', lost ? 'bad' : 'neutral');
     for (const a of sim.agents) {
       if (a.role === 'child') {
         addMemory(sim, a, 'snowDay');

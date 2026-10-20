@@ -1,5 +1,5 @@
 import { ageOf } from './agents';
-import { MIN_PER_DAY, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
+import { MIN_PER_DAY, plural, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
 import { TRADER_EVERY } from './market';
 import { FESTIVALS, snowing } from './seasons';
 import { spawnTrader } from './traffic';
@@ -173,7 +173,7 @@ export function tickEvents(sim: Sim, dt: number): void {
     ev.festival = null;
     for (const a of people) addMemory(sim, a, 'festival');
     for (const a of people) for (const b of people) if (a.id !== b.id && Math.abs(a.x - b.x) < 8) shiftOpinion(sim, a, b, sim.rng.range(0, 3));
-    sim.log(`The festival is over. ${people.length} townsfolk ${sim.season === 3 ? 'warmed up together' : 'danced the night away'}`, 'event', 'good');
+    sim.log(`The festival is over. ${plural(people.length, 'person', 'townsfolk')} ${sim.season === 3 ? 'warmed up together' : 'danced the night away'}`, 'event', 'good');
   }
   if (ev.rain && sim.time >= ev.rain.until) {
     ev.rain = null;
@@ -257,7 +257,7 @@ function endBirthday(sim: Sim, b: Birthday): void {
   const names = andList(hosts.map(first));
   const family = guests.filter((g) => hosts.some((h) => kinship(sim, h, g))).length;
   const friends = guests.length - family;
-  const who = [family && `${family} family`, friends && `${friends} friend${friends === 1 ? '' : 's'}`].filter(Boolean).join(' and ');
+  const who = [family && `${family} family`, friends && plural(friends, 'friend')].filter(Boolean).join(' and ');
   const text = guests.length
     ? `${names}'s birthday wound down: ${who} came to celebrate`
     : hosts.length > 1
@@ -306,7 +306,7 @@ function endParty(sim: Sim): void {
   const people = [...p.attendees].map((id) => sim.agent(id)!).filter(Boolean);
   for (const a of people) addMemory(sim, a, 'party');
   for (const a of people) for (const b of people) if (a.id !== b.id) shiftOpinion(sim, a, b, sim.rng.range(1, 5));
-  sim.log(people.length ? `The party wound down. ${people.length} people had a good time` : 'Nobody showed up to the party', 'event', people.length ? 'good' : 'bad');
+  sim.log(people.length ? `The party wound down. ${plural(people.length, 'person', 'people')} had a good time` : 'Nobody showed up to the party', 'event', people.length ? 'good' : 'bad');
 }
 
 export type WorldEventKey = 'festival' | 'harvest' | 'newcomers' | 'trader' | 'drought' | 'storm' | 'snowstorm';
@@ -368,7 +368,8 @@ export function triggerWorldEvent(sim: Sim, key: WorldEventKey): void {
         fallen++;
       }
       for (const a of sim.agents) addMemory(sim, a, 'storm');
-      sim.log(`A storm rolled through${hit ? `, flattening ${hit.name}` : ''} and toppling ${fallen} trees`, 'event', 'bad');
+      const damage = [hit && `flattening ${hit.name}`, fallen && `toppling ${plural(fallen, 'tree')}`].filter(Boolean).join(' and ');
+      sim.log(`A storm rolled through${damage ? `, ${damage}` : ''}`, 'event', 'bad');
       break;
     }
   }
