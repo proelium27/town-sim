@@ -33,11 +33,13 @@ export function newHousehold(sim: Sim, name: string): Household {
   return h;
 }
 
-/** Moves people into another household, bringing a few groceries with them. */
+/** Moves people into another household, bringing a few groceries with them. Children are never left behind without a grown-up. */
 export function moveTo(sim: Sim, people: Agent[], hh: number): void {
+  const left = new Set<number>();
   for (const a of people) {
     if (a.household === hh) continue;
     const from = a.household;
+    left.add(from);
     a.household = hh;
     if (sim.pantry[from] > 1) {
       sim.pantry[from]--;
@@ -45,6 +47,10 @@ export function moveTo(sim: Sim, people: Agent[], hh: number): void {
     }
     // Release any bed they had reserved at the old place.
     if (a.action.kind === 'sleep' && a.action.propId !== undefined) sim.reserved.delete(a.action.propId);
+  }
+  for (const from of left) {
+    const rest = members(sim, from);
+    if (rest.length && rest.every((x) => ageOf(sim, x) < ADULT_AGE)) moveTo(sim, rest, hh);
   }
 }
 
@@ -399,6 +405,10 @@ export function completeProject(sim: Sim, pr: Project): void {
   let hhId: number | undefined;
   const residents = pr.forAgents.map((id) => sim.agent(id)).filter((a): a is Agent => !!a);
   if (pr.blueprint === 'house') {
+    // Kids born (or who moved in) since the house was proposed come along with their parents.
+    for (const r of [...residents]) {
+      for (const k of familyOf(sim, r)) if (!residents.includes(k) && k.household === r.household && ageOf(sim, k) < ADULT_AGE) residents.push(k);
+    }
     const homeless = residents.length && sim.town.households[residents[0].household].building < 0 && residents.every((r) => r.household === residents[0].household);
     hhId = homeless ? residents[0].household : newHousehold(sim, pr.name).id;
   }

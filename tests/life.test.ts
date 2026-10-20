@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createAgent, surnameOf } from '../src/sim/agents';
-import { birthdayOf, milestoneFor } from '../src/sim/events';
+import { ageOf, createAgent, surnameOf } from '../src/sim/agents';
+import { birthdayOf, milestoneFor, triggerWorldEvent } from '../src/sim/events';
 import { die } from '../src/sim/life';
+import { completeProject, moveTo, newHousehold } from '../src/sim/planner';
 import { loadSim, saveSim } from '../src/sim/save';
 import { Sim } from '../src/sim/sim';
 import { kinship } from '../src/sim/social';
@@ -26,6 +27,51 @@ describe('birthdays', () => {
     at(sim, day + 1, 21);
     // (Seed 7's host shares the day with a housemate, so the log names both.)
     expect(sim.activity.filter((e) => /^It's .*'s birthday/.test(e.text) && e.text.includes(host.name.split(' ')[0])).length).toBe(1);
+  }, 60_000);
+});
+
+describe('festival on office-party night', () => {
+  it('festival-goers count toward the festival, not the office party', () => {
+    const sim = new Sim(7);
+    at(sim, 0, 17);
+    // A Friday: the office party in the lounge and the festival in the park at once.
+    sim.events.party = { until: sim.time + 120, attendees: new Set() };
+    triggerWorldEvent(sim, 'festival');
+    const went = { 'Town festival': new Set<number>(), 'Office party': new Set<number>() } as Record<string, Set<number>>;
+    let atParty = new Set<number>();
+    let atFestival = new Set<number>();
+    for (let t = 0; t < 179; t++) {
+      sim.run(1);
+      for (const a of sim.agents) if (a.action.kind === 'party' && a.action.stage === 'perform') went[a.action.reason]?.add(a.id);
+      if (sim.events.party) atParty = new Set(sim.events.party.attendees);
+      if (sim.events.festival) atFestival = new Set(sim.events.festival.attendees);
+    }
+    expect(went['Town festival'].size).toBeGreaterThan(5);
+    for (const id of went['Town festival']) expect(atFestival.has(id)).toBe(true);
+    for (const id of atParty) expect(went['Office party'].has(id)).toBe(true);
+    sim.run(2);
+    expect(sim.activity.some((e) => e.text === `The festival is over. ${atFestival.size} townsfolk danced the night away`)).toBe(true);
+  }, 60_000);
+});
+
+describe('birthday on a festival evening', () => {
+  it('the party waits for the festival to end, and the family comes', () => {
+    const sim = new Sim(7);
+    const homed = sim.agents.filter((a) => sim.town.households[a.household].building >= 0);
+    // A host with family, born on day 3: summer's second day, festival night.
+    const host = homed.find((a) => sim.agents.some((o) => o !== a && kinship(sim, a, o)))!;
+    host.birth = 3 * 1440 + 720 - 2 * 8 * 1440;
+    for (const x of sim.agents) if (x !== host) x.lastBirthday = 1;
+    at(sim, 3, 18.5);
+    expect(sim.events.festival).not.toBeNull();
+    expect(sim.events.birthdays).toHaveLength(0);
+    at(sim, 3, 20.25);
+    expect(sim.events.birthdays.map((b) => b.hosts)).toEqual([[host.id]]);
+    at(sim, 3, 22.6);
+    expect(sim.events.birthdays).toHaveLength(0);
+    const end = sim.activity.find((e) => e.text.startsWith(`${host.name.split(' ')[0]}'s birthday wound down`))?.text;
+    expect(end).toMatch(/: \d+ relatives? /);
+    expect(sim.agents.some((o) => kinship(sim, o, host) && o.memories.some((m) => m.kind === 'birthday' && m.about === host.id))).toBe(true);
   }, 60_000);
 });
 
@@ -124,8 +170,10 @@ describe('cemetery', () => {
     const grave = sim.map.props.find((p) => p.key === 'grave')!;
     expect(grave.about).toBe(elder.id);
     expect(sim.unburied).toHaveLength(0);
-    sim.run(1440);
-    expect(sim.agents.some((a) => a.thoughts.some((t) => t.text === `I miss you, ${elder.name.split(' ')[0]}.`))).toBe(true);
+    // A grave visit is a low-key errand that other needs often push back, so give the family a few days.
+    const missed = () => sim.agents.some((a) => a.thoughts.some((t) => t.text === `I miss you, ${elder.name.split(' ')[0]}.`));
+    for (let d = 0; d < 4 && !missed(); d++) sim.run(1440);
+    expect(missed()).toBe(true);
   }, 120_000);
 });
 
@@ -167,5 +215,77 @@ describe('names', () => {
     const named = babies.filter((b) => b.namedAfter === gp.id);
     expect(named.length).toBeGreaterThan(0);
     for (const b of named) expect(b.name).toBe(`${gp.name.split(' ')[0]} ${surname} III`);
+  });
+});
+
+describe('moving house', () => {
+  it('a baby born after the new home was proposed moves in with the parents', () => {
+    const sim = new Sim(7);
+    const proposed = () => sim.projects.find((p) => p.blueprint === 'house' && p.forAgents.length >= 2);
+    while (!proposed() && sim.time < 6 * 1440) sim.run(60);
+    const pr = proposed()!;
+    expect(pr).toBeDefined();
+    const [a, b] = pr.forAgents.map((id) => sim.agent(id)!);
+    expect(a.partner).toBe(b.id);
+    const oldHome = a.household;
+    const baby = createAgent(sim, { role: 'child', household: oldHome, age: 0, parents: [a, b], cell: a.at });
+    sim.agents.push(baby);
+    completeProject(sim, pr);
+    expect(a.household).not.toBe(oldHome);
+    expect(baby.household).toBe(a.household);
+    expect(sim.activity.some((e) => / moved in$/.test(e.text) && e.text.includes(baby.name.split(' ')[0]))).toBe(true);
+  }, 60_000);
+
+  it('a child is never left in a house with no grown-up when the adults move out', () => {
+    const sim = new Sim(7);
+    const kid = sim.agents.find((x) => ageOf(sim, x) < 18)!;
+    const home = kid.household;
+    const adults = sim.agents.filter((x) => x.household === home && ageOf(sim, x) >= 18);
+    expect(adults.length).toBeGreaterThan(0);
+    const dest = newHousehold(sim, 'Test house').id;
+    moveTo(sim, adults, dest);
+    expect(sim.agents.filter((x) => x.household === home)).toHaveLength(0);
+    expect(kid.household).toBe(dest);
+  });
+});
+
+describe('orphans', () => {
+  /** A child in seed 7, the grown-ups they live with, and a grown-up in another home. */
+  const scene = () => {
+    const sim = new Sim(7);
+    const kid = sim.agents.find((x) => ageOf(sim, x) < 18)!;
+    const adults = sim.agents.filter((x) => x.household === kid.household && ageOf(sim, x) >= 18);
+    const other = sim.agents.find((x) => x.household !== kid.household && ageOf(sim, x) >= 18)!;
+    return { sim, kid, adults, other };
+  };
+  const fn = (x: { name: string }) => x.name.split(' ')[0];
+
+  it('when the last grown-up at home dies, the children go to live with a grandparent', () => {
+    const { sim, kid, adults, other: gran } = scene();
+    // Make someone in another home the grandparent, through one of the kid's parents.
+    const parent = sim.agent(kid.parents.find((id) => adults.some((a) => a.id === id))!)!;
+    parent.parents.push(gran.id);
+    gran.children.push(parent.id);
+    const siblings = sim.agents.filter((x) => x.household === kid.household && ageOf(sim, x) < 18);
+    for (const a of adults) die(sim, a, 'a test');
+    for (const k of siblings) expect(k.household).toBe(gran.household);
+    expect(sim.activity.some((e) => e.text.startsWith(`${siblings.map(fn).join(' and ')} went to live with their grandparent ${fn(gran)}`))).toBe(true);
+  });
+
+  it('with no family left, the children go to the home with the most room', () => {
+    const { sim, kid, adults } = scene();
+    // Nobody else in town is kin.
+    for (const a of adults) {
+      for (const o of sim.agents) if (o.household !== kid.household) {
+        o.parents = o.parents.filter((id) => id !== a.id);
+        o.children = o.children.filter((id) => id !== a.id);
+      }
+      a.parents = [];
+    }
+    for (const a of adults) die(sim, a, 'a test');
+    const home = sim.town.households[kid.household];
+    expect(home.building).toBeGreaterThanOrEqual(0);
+    expect(sim.agents.some((x) => x.household === kid.household && ageOf(sim, x) >= 18)).toBe(true);
+    expect(sim.activity.some((e) => e.text.endsWith(`went to live at ${home.name}`) && e.text.includes(fn(kid)))).toBe(true);
   });
 });

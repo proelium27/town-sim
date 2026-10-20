@@ -6,6 +6,10 @@ import type { Sim } from './sim';
 export const BURN_PER_HOUR = 0.25;
 /** Firewood a household keeps by the hearth before it stops asking for more. */
 export const HEARTH_FULL = 14;
+/** Firewood the town keeps in for each home, as a share of a full hearth, spring to winter. */
+export const FIREWOOD_STOCK = [0.4, 0.15, 1.2, 1];
+/** Splitting turns 4 wood into 6 firewood. */
+export const SPLIT = { wood: 4, firewood: 6 };
 /** Each season's festival, held on its second evening. */
 export const FESTIVALS = ['Spring fair', 'Midsummer night', 'Harvest festival', 'Winter lights'];
 
@@ -35,11 +39,18 @@ export function cropSeason(sim: Sim): number {
 }
 
 
-/** Days the stores would last through winter: food at today's appetite, firewood at full burn. */
+/** Days of full burn the firewood the town keeps in through winter lasts: a home's share against its hearth. */
+export const WINTER_STOCK_DAYS = (HEARTH_FULL * FIREWOOD_STOCK[3]) / (BURN_PER_HOUR * 24);
+
+/**
+ * Days the stores would last through winter: food at today's appetite, firewood at full burn. Logs in
+ * the store count as the firewood they'd split into.
+ */
 export function winterReadiness(sim: Sim): { food: number; firewood: number } {
   const eat = Math.max(1, sim.agents.length * 2.6);
   const homes = sim.town.households.filter((h) => h.building >= 0).length || 1;
-  const fuel = sim.stock.firewood + sim.fuel.reduce((s, f) => s + f, 0);
+  const logs = Math.floor(sim.stock.wood / SPLIT.wood) * SPLIT.firewood;
+  const fuel = sim.stock.firewood + logs + sim.fuel.reduce((s, f) => s + f, 0);
   return { food: sim.stock.food / eat, firewood: fuel / (homes * BURN_PER_HOUR * 24) };
 }
 

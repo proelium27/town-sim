@@ -1,7 +1,7 @@
 import { ageOf } from '../sim/agents';
 import { ADULT_AGE, billText, MIN_PER_DAY, SEASON_DAYS, SEASONS, YEAR_DAYS, GOOD_KEYS, GOODS, plural, PRIORITY_KEYS, PRIORITY_LABEL, type PriorityKey } from '../sim/defs';
 import { foodBalance } from '../sim/economy';
-import { winterReadiness } from '../sim/seasons';
+import { winterReadiness, WINTER_STOCK_DAYS } from '../sim/seasons';
 import { BASE_PRICE, price, TRADER_EVERY } from '../sim/market';
 import { chains, hasWorkshop } from '../sim/workshop';
 import { WORLD_EVENTS, type WorldEventKey, triggerWorldEvent } from '../sim/events';
@@ -27,8 +27,12 @@ export function winterLine(sim: Sim): string {
   const toGo = (1 - sim.seasonProgress) * SEASON_DAYS;
   const need = sim.season === 2 ? toGo + SEASON_DAYS : toGo;
   const cold = sim.town.households.filter((h) => h.building >= 0 && sim.fuel[h.id] < 1).length;
-  const ok = (d: number) => (d >= need ? 'pos' : 'neg');
-  return `<p class="winter-line">Winter ${sim.season === 3 ? 'ends' : 'starts'} in ${toGo.toFixed(1)} days. Stores last: <b class="${ok(r.food)}">${r.food.toFixed(1)} days of food</b>, <b class="${ok(r.firewood)}">${r.firewood.toFixed(1)} of firewood</b>${cold ? ` · <b class="neg">${cold} cold hearth${cold === 1 ? '' : 's'}</b>` : ''}</p>`;
+  // Firewood is split and carried to hearths all winter: the stores only need what the town keeps in
+  // through winter (autumn stocks a little more), or the days left if that's less.
+  const fuelNeed = Math.min(need, WINTER_STOCK_DAYS);
+  // Judged at the precision shown, so stores exactly on target read as enough.
+  const ok = (d: number, want = need) => (d >= want - 0.05 ? 'pos' : 'neg');
+  return `<p class="winter-line">Winter ${sim.season === 3 ? 'ends' : 'starts'} in ${toGo.toFixed(1)} days. Stores last: <b class="${ok(r.food)}">${r.food.toFixed(1)} days of food</b>, <b class="${ok(r.firewood, fuelNeed)}">${r.firewood.toFixed(1)} of firewood</b>${cold ? ` · <b class="neg">${cold} cold hearth${cold === 1 ? '' : 's'}</b>` : ''}</p>`;
 }
 
 /** Left-sidebar Town tab: stores, the player's priorities and world events, live projects, history. */

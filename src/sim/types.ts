@@ -121,6 +121,8 @@ export interface Agent {
   mealReady: boolean;
   /** Day index of the last coffee, for the morning-coffee habit. */
   coffeeDay: number;
+  /** Game minute a cook last found the cupboard bare, so they eat out or shop instead of retrying. */
+  bareAt?: number;
   /** Game minute of the last near-miss with a car, to avoid repeat scares. */
   lastScare: number;
 
@@ -166,6 +168,8 @@ export interface Project {
   builders: Set<number>;
   /** When the build began waiting on workshop goods that aren't coming (see unstick). */
   stalled?: number;
+  /** No one fetches goods for it before this time: the last load found no way onto the site. */
+  haulPause?: number;
 }
 
 export type ActivityKind = 'work' | 'social' | 'life' | 'event' | 'build' | 'family';

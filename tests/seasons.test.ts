@@ -4,7 +4,7 @@ import { triggerWorldEvent } from '../src/sim/events';
 import { gatherKind, laborPlan } from '../src/sim/labor';
 import type { Agent } from '../src/sim/types';
 import { loadSim, saveSim } from '../src/sim/save';
-import { chill, tickSeasons, winterReadiness } from '../src/sim/seasons';
+import { BURN_PER_HOUR, chill, HEARTH_FULL, tickSeasons, winterReadiness } from '../src/sim/seasons';
 import { Sim } from '../src/sim/sim';
 import { winterLine } from '../src/ui/townPanel';
 
@@ -57,6 +57,36 @@ describe('seasons', () => {
     expect(winterLine(sim)).toContain('Winter ends in 1.0 days');
   });
 
+  it("the Town view's firewood counts logs still to split, and goes red only short of what the town keeps in", () => {
+    const sim = new Sim(7, { agents: false });
+    const homes = sim.town.households.filter((h) => h.building >= 0);
+    expect(homes.length).toBeGreaterThan(0);
+    const firewood = () => /class="(\w+)">[\d.]+ of firewood/.exec(winterLine(sim))![1];
+    const stock = (wood: number, firewood: number, hearth: number) => {
+      sim.stock.wood = wood;
+      sim.stock.firewood = firewood;
+      for (const h of sim.town.households) sim.fuel[h.id] = h.building >= 0 ? hearth : 0;
+    };
+    // Early autumn, with every hearth stocked to what the town keeps in for winter: no warning.
+    sim.time = 4 * 1440 + 60;
+    stock(0, 0, HEARTH_FULL * 1.2);
+    expect(firewood()).toBe('pos');
+    stock(0, 0, HEARTH_FULL);
+    expect(firewood()).toBe('pos');
+    // Nothing split yet, but plenty of logs in the store: they count, 4 wood to 6 firewood.
+    stock(Math.ceil((homes.length * HEARTH_FULL * 1.2 * 4) / 6) + 4, 0, 0);
+    expect(firewood()).toBe('pos');
+    // Really short: red.
+    stock(8, 0, 2);
+    expect(firewood()).toBe('neg');
+    // Late winter needs only the days left.
+    sim.time = 7 * 1440 + 18 * 60;
+    stock(0, 0, BURN_PER_HOUR * 24 * 0.5);
+    expect(firewood()).toBe('pos');
+    stock(0, 0, BURN_PER_HOUR * 24 * 0.1);
+    expect(firewood()).toBe('neg');
+  });
+
   it('the first frost clears the fields, and nothing grows until spring', () => {
     const sim = winterTown();
     sim.run(10);
@@ -69,12 +99,14 @@ describe('seasons', () => {
     expect(crops.every((p, i) => (p.growth ?? 0) <= (before[i] ?? 0))).toBe(true);
   }, 120_000);
 
-  it('with default priorities, a town gets through its first winter warm and fed', () => {
+  it('with default priorities, a town gets through its first winter, blizzard and all, warm and fed', () => {
     const sim = winterTown();
     let freezing = 0;
     let hungriest = Infinity;
     at(sim, 6, 0);
     for (let k = 0; k < 4 * 12; k++) {
+      // A blizzard on the first winter morning.
+      if (k === 9) triggerWorldEvent(sim, 'snowstorm');
       sim.run(60);
       freezing = Math.max(freezing, sim.agents.filter((a) => a.needs.warmth < 15).length);
       hungriest = Math.min(hungriest, sim.stock.food);
@@ -96,14 +128,17 @@ describe('seasons', () => {
         sim.run(60);
         min = Math.min(min, sim.stock.food);
       }
-      return min;
+      const frost = sim.activity.find((e) => e.text.startsWith('First frost'))!.text;
+      return { min, ripeLost: Number(/(\d+) ripe/.exec(frost)?.[1] ?? 0) };
     };
     const normal = lowest(winterTown());
     const low = loadSim(autumn);
     low.priorities.food = 0;
     // Fewer hands bring in the autumn harvest, so more of it freezes in the fields. With the
-    // economy in, the gap on this seed is about a fifth rather than a half.
-    expect(lowest(low)).toBeLessThan(normal * 0.85);
+    // economy in, the gap in the stores on this seed is about a fifth rather than a half.
+    const short = lowest(low);
+    expect(short.ripeLost).toBeGreaterThan(normal.ripeLost * 1.5);
+    expect(short.min).toBeLessThan(normal.min * 0.85);
   }, 300_000);
 
   it('firewood carried to a hearth gets there', () => {
@@ -162,6 +197,64 @@ describe('seasons', () => {
     expect(outside).toBeLessThanOrEqual(Math.ceil(sim.agents.length * 0.25));
     // Anyone arriving mid-storm missed the start of it.
     expect(there.every((a) => a.memories.some((m) => m.kind === 'blizzard'))).toBe(true);
+  }, 120_000);
+
+  it('a blizzard stops the outdoor work: builders, woodcutters and all come inside', () => {
+    const sim = winterTown();
+    at(sim, 6, 10);
+    expect(sim.projects.some((p) => p.builders.size > 0)).toBe(true);
+    triggerWorldEvent(sim, 'snowstorm');
+    sim.run(30);
+    let out = 0;
+    let samples = 0;
+    for (let k = 0; k < 12; k++) {
+      sim.run(10);
+      const outside = sim.agents.filter((a) => !sim.roomOf(a));
+      // Nobody stays out working or idling in the snow; the few outdoors are on their way somewhere.
+      expect(outside.filter((a) => ['build', 'chop', 'mine', 'farm', 'split', 'haul'].includes(a.action.kind) && a.action.leg !== 'deliver')).toEqual([]);
+      expect(outside.filter((a) => !a.moving).length).toBeLessThanOrEqual(1);
+      out += outside.length;
+      samples += sim.agents.length;
+    }
+    expect(out / samples).toBeLessThan(0.18);
+  }, 120_000);
+
+  it('a blizzard holds back the festival, and one that lasts the evening snows it off', () => {
+    const sim = winterTown();
+    at(sim, 7, 16);
+    triggerWorldEvent(sim, 'snowstorm');
+    const from = sim.time;
+    sim.run(7 * 60);
+    const feed = sim.activity.filter((e) => e.t >= from).map((e) => e.text);
+    expect(feed).toContain('The blizzard snowed off the winter lights');
+    expect(feed).not.toContain('Winter lights in the park tonight!');
+  }, 120_000);
+
+  it('a cold worker warms up at home even with the seat by the fire taken, and stays in until warm', () => {
+    const sim = winterTown();
+    at(sim, 6, 11);
+    const a = sim.agents.find((x) => !sim.roomOf(x) && ['builder', 'laborer', 'woodcutter'].includes(x.role) && sim.town.households[x.household].building >= 0 && sim.fuel[x.household] > 1)!;
+    expect(a).toBeDefined();
+    const hh = sim.town.households[a.household];
+    sim.fuel[hh.id] = 12;
+    const seat = sim.map.props.find((p) => p.use === 'sit' && p.household === hh.id)!;
+    expect(seat).toBeDefined();
+    a.needs.warmth = 5;
+    a.thinkIn = 0;
+    let entered = -1;
+    let leftCold = 0;
+    for (let t = 0; t < 120; t++) {
+      // A housemate has the seat by the fire the whole time.
+      sim.reserved.set(seat.id, -1);
+      sim.fuel[hh.id] = Math.max(sim.fuel[hh.id], 5);
+      sim.run(1);
+      const home = sim.roomOf(a)?.id === hh.room;
+      if (home && entered < 0) entered = t;
+      if (entered >= 0 && !home && a.needs.warmth < 55) leftCold++;
+    }
+    expect(entered).toBeGreaterThanOrEqual(0);
+    expect(leftCold).toBe(0);
+    expect(a.needs.warmth).toBeGreaterThanOrEqual(55);
   }, 120_000);
 
   it('an empty hearth in winter makes for a cold, unhappy home', () => {
