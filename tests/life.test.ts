@@ -53,6 +53,27 @@ describe('festival on office-party night', () => {
   }, 60_000);
 });
 
+describe('birthday on a festival evening', () => {
+  it('the party waits for the festival to end, and the family comes', () => {
+    const sim = new Sim(7);
+    const homed = sim.agents.filter((a) => sim.town.households[a.household].building >= 0);
+    // A host with family, born on day 3: summer's second day, festival night.
+    const host = homed.find((a) => sim.agents.some((o) => o !== a && kinship(sim, a, o)))!;
+    host.birth = 3 * 1440 + 720 - 2 * 8 * 1440;
+    for (const x of sim.agents) if (x !== host) x.lastBirthday = 1;
+    at(sim, 3, 18.5);
+    expect(sim.events.festival).not.toBeNull();
+    expect(sim.events.birthdays).toHaveLength(0);
+    at(sim, 3, 20.25);
+    expect(sim.events.birthdays.map((b) => b.hosts)).toEqual([[host.id]]);
+    at(sim, 3, 22.6);
+    expect(sim.events.birthdays).toHaveLength(0);
+    const end = sim.activity.find((e) => e.text.startsWith(`${host.name.split(' ')[0]}'s birthday wound down`))?.text;
+    expect(end).toMatch(/: \d+ relatives? /);
+    expect(sim.agents.some((o) => kinship(sim, o, host) && o.memories.some((m) => m.kind === 'birthday' && m.about === host.id))).toBe(true);
+  }, 60_000);
+});
+
 describe('joint birthdays', () => {
   /** Two housemates born the same day (day 1 of the calendar), and nobody else celebrating. */
   const twins = () => {

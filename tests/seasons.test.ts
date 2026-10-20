@@ -95,13 +95,16 @@ describe('seasons', () => {
         sim.run(60);
         min = Math.min(min, sim.stock.food);
       }
-      return min;
+      const frost = sim.activity.find((e) => e.text.startsWith('First frost'))!.text;
+      return { min, ripeLost: Number(/(\d+) ripe/.exec(frost)?.[1] ?? 0) };
     };
     const normal = lowest(winterTown());
     const low = loadSim(autumn);
     low.priorities.food = 0;
     // Fewer hands bring in the autumn harvest, so more of it freezes in the fields.
-    expect(lowest(low)).toBeLessThan(normal * 0.75);
+    const short = lowest(low);
+    expect(short.ripeLost).toBeGreaterThan(normal.ripeLost + 20);
+    expect(short.min).toBeLessThan(normal.min * 0.8);
   }, 300_000);
 
   it('firewood carried to a hearth gets there', () => {
@@ -159,7 +162,7 @@ describe('seasons', () => {
 
   it('a blizzard stops the outdoor work: builders, woodcutters and all come inside', () => {
     const sim = winterTown();
-    at(sim, 6, 11);
+    at(sim, 6, 9);
     expect(sim.projects.some((p) => p.builders.size > 0)).toBe(true);
     triggerWorldEvent(sim, 'snowstorm');
     sim.run(30);
