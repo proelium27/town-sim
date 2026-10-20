@@ -40,9 +40,10 @@ function noise(x: number, y: number, scale: number): number {
  * Baked depth for the town: lawn texture and flowers, building shadows cast to the south-east,
  * ambient occlusion where floors meet walls, and contact shadows under props. Sits between the
  * ground and the walls. The town changes as people chop and build, so each part rebuilds only
- * when its own inputs change: the lawn and building shadows when ground or walls do (rare),
- * prop shadows when trees fall or furniture appears (often, and cheap). Footsteps wearing grass
- * into trails happen all the time, so those redraw only the lawn chunks they touch.
+ * when its own inputs change: the whole lawn and building shadows when walls do (rare) or the map
+ * asks for a full lawn repaint (lawnVersion), prop shadows when trees fall or furniture appears
+ * (often, and cheap). Ground changes, from paving a road to footsteps wearing grass into a trail,
+ * redraw only the lawn chunks they touch.
  */
 export class Shading {
   readonly layer = new Container();
@@ -63,7 +64,7 @@ export class Shading {
     this.sync();
   }
 
-  /** The ground under cell i changed (grass worn to a trail, say): redraw its patch of lawn. */
+  /** The ground under cell i changed (paved, or grass worn to a trail): redraw its patch of lawn. */
   touch(i: number): void {
     const m = this.map;
     this.lawnDirty.add(Math.floor(m.cy(i) / CHUNK) * this.chunksW + Math.floor(m.cx(i) / CHUNK));

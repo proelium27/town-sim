@@ -8,6 +8,7 @@ import { Cell } from '../world/map';
 import { Exteriors, wallTone } from './exteriors';
 import { Lighting } from './lighting';
 import { Smoke } from './particles';
+import { Puddles } from './puddles';
 import { Shading } from './shading';
 
 const WALL_TOP = 0xddd0b8;
@@ -44,12 +45,7 @@ export class WorldView {
   /** Chimney smoke, above roofs. */
   readonly smoke = new Smoke();
   /** Rain puddles on paths and pavement; faded in by how wet the ground is. */
-  readonly puddles = new Graphics();
-  /** The lawnVersion and groundVersion the puddles were drawn for. */
-  private puddleVersion = -1;
-  private puddleGround = -1;
-  /** Real seconds before wear alone (trails coming and going) may redraw the puddles again. */
-  private puddleWait = 0;
+  readonly puddles: Puddles;
   private sprites = new Map<number, Sprite>();
   private keys = new Map<number, string>();
   private propVersion = -1;
@@ -69,8 +65,9 @@ export class WorldView {
     this.groundTex = Texture.from(this.groundCanvas);
     this.groundTex.source.scaleMode = 'nearest';
     this.shading = new Shading(m);
+    this.puddles = new Puddles(m);
     this.lighting = new Lighting(m);
-    this.root.addChild(new Sprite(this.groundTex), this.puddles, this.shading.layer, this.walls, this.flat, this.sites, this.entities, this.smoke.layer, this.lighting.layer, this.overlay);
+    this.root.addChild(new Sprite(this.groundTex), this.puddles.layer, this.shading.layer, this.walls, this.flat, this.sites, this.entities, this.smoke.layer, this.lighting.layer, this.overlay);
     this.parkCars();
     this.exteriors = new Exteriors(art, m, this.entities);
     this.sync();
@@ -194,33 +191,10 @@ export class WorldView {
     }
     this.smoke.update(dt, this.exteriors.chimneys().filter((c) => fires.has(c.id)));
     const wet = sim.events.wet ?? 0;
-    this.puddles.visible = wet > 0.02;
-    this.puddles.alpha = Math.min(1, wet * 1.2);
-    if (!this.puddles.visible) return;
-    const m = this.map;
-    this.puddleWait -= dt;
-    if (this.puddleVersion !== m.lawnVersion || (this.puddleGround !== m.groundVersion && this.puddleWait <= 0)) this.drawPuddles();
-  }
-
-  private drawPuddles(): void {
-    const m = this.map;
-    this.puddleVersion = m.lawnVersion;
-    this.puddleGround = m.groundVersion;
-    this.puddleWait = 5;
-    const g = this.puddles.clear();
-    const WET = new Set(['dirt', 'trail', 'worn', 'sidewalk', 'plaza', 'asphalt']);
-    for (let i = 0; i < m.ground.length; i++) {
-      if (!WET.has(m.ground[i]) || m.room[i] >= 0) continue;
-      const x = m.cx(i);
-      const y = m.cy(i);
-      const h = vhash(x * 3 + 1, y * 5 + 2);
-      if (h % 100 >= (m.ground[i] === 'asphalt' ? 3 : 9)) continue;
-      const X = x * TILE + 3 + (h % 5);
-      const Y = y * TILE + 5 + ((h >> 3) % 6);
-      const w = 6 + ((h >> 6) % 5);
-      g.ellipse(X + w / 2, Y + 2, w / 2, 2).fill({ color: 0x6f8fa8, alpha: 0.55 });
-      g.rect(X + 2, Y + 1, Math.max(2, w - 5), 1).fill({ color: 0xc9dbe8, alpha: 0.6 });
-    }
+    const layer = this.puddles.layer;
+    layer.visible = wet > 0.02;
+    layer.alpha = Math.min(1, wet * 1.2);
+    if (layer.visible) this.puddles.sync();
   }
 
   /** Bring the scene in line with the map. Cheap when nothing changed. */
@@ -230,6 +204,7 @@ export class WorldView {
       for (const i of m.groundDirty) {
         this.paintGround(i);
         this.shading.touch(i);
+        this.puddles.touch(i);
       }
       m.groundDirty.length = 0;
       this.groundTex.source.update();
