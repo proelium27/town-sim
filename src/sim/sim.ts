@@ -51,6 +51,8 @@ export class Sim {
   tier = 0;
   /** The elected mayor and what they ran on. */
   mayor: number | null = null;
+  /** Terms the sitting mayor has won in a row. */
+  mayorTerms = 0;
   agenda: PriorityKey | null = null;
   election: import('./politics').ElectionState | null = null;
   lastElection: import('./politics').ElectionResult | null = null;

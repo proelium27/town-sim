@@ -297,6 +297,17 @@ function escort(sim: Sim, adult: Agent, kid: Agent, school: { door: { x: number;
   return true;
 }
 
+/** The hungriest kid in a grown-up's household who can't shop for themselves, if any is hungry. */
+function hungriestKid(sim: Sim, a: Agent): Agent | undefined {
+  let best: Agent | undefined;
+  for (const p of sim.agents) {
+    if (p.id === a.id || p.household !== a.household || p.needs.hunger >= 50) continue;
+    const st = stageOf(sim, p);
+    if ((st === 'toddler' || st === 'child') && (!best || p.needs.hunger < best.needs.hunger)) best = p;
+  }
+  return best;
+}
+
 /** A young kid setting off for school gets walked there by a grown-up from home, if one is free. */
 function askForEscort(sim: Sim, kid: Agent): void {
   if (!isYoungScholar(sim, kid) || kid.path.length < 8 || escorting(sim, kid)) return;
@@ -693,8 +704,12 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   const housemateShopping = sim.agents.some((p) => p.id !== a.id && p.household === a.household && p.action.kind === 'shop');
   // Skip the trip if it can't buy anything, and for a few hours after coming home empty-handed.
   const turnedAway = a.memories.some((m) => m.kind === 'broke' && sim.time - m.created < BROKE_RETRY);
-  if (homed && pantry <= 1 && !housemateShopping && !workTime && !evening && sim.stock.food >= 6 && !little && !turnedAway && canAffordGroceries(sim, a)) {
-    o.push(spotOption(sim, a, 'shop', 0.85, 'Fridge is empty', ['shop'], () => 'Shopping for groceries', 14));
+  // A hungry little one at home makes the trip urgent; a starving one is worth leaving work for.
+  const hungryKid = pantry <= 1 ? hungriestKid(sim, a) : undefined;
+  const kidNeed = hungryKid ? 1 - hungryKid.needs.hunger / 100 : 0;
+  const forKid = kidNeed > 0.7;
+  if (homed && pantry <= 1 && !housemateShopping && (!workTime || kidNeed > 0.8) && !evening && sim.stock.food >= 6 && !little && !turnedAway && canAffordGroceries(sim, a)) {
+    o.push(spotOption(sim, a, 'shop', 0.85 + (forKid ? kidNeed * 1.2 : 0), forKid ? `Nothing at home for ${first(hungryKid!)}` : 'Fridge is empty', ['shop'], () => 'Shopping for groceries', 14));
   }
 
   // ---- go home at night / stay near home when small

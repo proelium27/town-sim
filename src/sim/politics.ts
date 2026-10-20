@@ -58,10 +58,13 @@ export function concernsOf(sim: Sim, a: Agent): PriorityKey[] {
       (mem('broke') || mem('starving') ? 1.4 : 0) + (a.needs.hunger < 40 ? 0.4 : 0) + (FOOD_ROLES.includes(a.role) ? 0.8 : 0) +
       (sim.stock.food < pop * 4 ? 0.5 : 0) + (fb.produce < fb.eat ? 0.4 : 0),
     materials: (mem('coldHome') ? 1.2 : 0) + (TRADE_ROLES.includes(a.role) ? 0.8 : 0) + (sim.stock.wood < 60 || sim.stock.stone < 40 ? 0.4 : 0),
-    community: 0.1 + (a.needs.fun < 40 ? 0.5 : 0) + (a.children.length ? 0.3 : 0) + (CIVIC_ROLES.includes(a.role) ? 0.6 : 0),
+    community: (a.needs.fun < 40 ? 0.5 : 0) + (a.children.length ? 0.3 : 0) + (CIVIC_ROLES.includes(a.role) ? 0.6 : 0),
   };
   for (const t of a.traits) if (TRAIT_CONCERN[t]) score[TRAIT_CONCERN[t]] += 0.3;
-  return (Object.keys(score) as PriorityKey[]).sort((x, y) => score[y] - score[x]);
+  // With nothing pressing, everyone still has a pet issue, spread evenly so no platform wins by default.
+  const keys = Object.keys(score) as PriorityKey[];
+  score[keys[a.id % keys.length]] += 0.1;
+  return keys.sort((x, y) => score[y] - score[x]);
 }
 
 export function concernOf(sim: Sim, a: Agent): PriorityKey {
@@ -136,13 +139,21 @@ export const OPINION_SCALE = 25;
 /** Vote score for a platform that matches the voter's first or second concern. */
 export const PLATFORM_PULL = [0.3, 0.15];
 const KIN_PULL = 0.3;
+/** Vote score a sitting mayor loses for each term served past the first: the town's appetite for a change. */
+export const TERM_FATIGUE = 0.15;
+/** How far a campaign can swing the whole town toward or away from a candidate, so no race is a foregone conclusion. */
+export const CAMPAIGN_SWING = 0.15;
 
-/** How much a voter warms to a candidate: how well they like them, whether the platform speaks to them, and family. */
+/**
+ * How much a voter warms to a candidate: how well they like them, whether the platform speaks to them, family, and
+ * for a sitting mayor, how long they have held the office.
+ */
 export function voteScore(sim: Sim, v: Agent, c: Candidate, wants: PriorityKey[] = concernsOf(sim, v)): number {
   if (c.id === v.id) return 9;
   const cand = sim.agent(c.id);
   const rank = wants.indexOf(c.platform);
-  return (v.relations.get(c.id)?.opinion ?? 0) / OPINION_SCALE + (PLATFORM_PULL[rank] ?? 0) + (cand && kinship(sim, v, cand) ? KIN_PULL : 0);
+  const fatigue = c.id === sim.mayor ? TERM_FATIGUE * Math.max(0, sim.mayorTerms - 1) : 0;
+  return (v.relations.get(c.id)?.opinion ?? 0) / OPINION_SCALE + (PLATFORM_PULL[rank] ?? 0) + (cand && kinship(sim, v, cand) ? KIN_PULL : 0) - fatigue;
 }
 
 /** Each adult backs the candidate they like best, weighed by whether the platform speaks to them. */
@@ -158,13 +169,15 @@ function vote(sim: Sim, e: ElectionState): void {
       if (cand && c.id !== id) shiftOpinion(sim, a, cand, sim.rng.range(-2, 4));
     }
   }
+  // Some campaigns catch on and some fall flat, for everyone at once.
+  const swing = new Map(e.candidates.map((c) => [c.id, sim.rng.range(-CAMPAIGN_SWING, CAMPAIGN_SWING)]));
   for (const v of sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE)) {
     const wants = concernsOf(sim, v);
     let best = e.candidates[0];
     let bestScore = -Infinity;
     for (const c of e.candidates) {
       if (!sim.agent(c.id)) continue;
-      const s = voteScore(sim, v, c, wants) + sim.rng.range(0, 0.15);
+      const s = voteScore(sim, v, c, wants) + swing.get(c.id)! + sim.rng.range(0, 0.15);
       if (s > bestScore) {
         bestScore = s;
         best = c;
@@ -178,6 +191,7 @@ function vote(sim: Sim, e: ElectionState): void {
   const winner = sim.agent(winnerId)!;
   const platform = e.candidates.find((c) => c.id === winnerId)!.platform;
   const was = sim.mayor;
+  sim.mayorTerms = was === winnerId ? sim.mayorTerms + 1 : 1;
   sim.mayor = winnerId;
   sim.agenda = platform;
   e.stage = 'done';

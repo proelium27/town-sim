@@ -216,6 +216,8 @@ describe('walking together', () => {
     }
     adult.thinkIn = 999;
     sim.run(30);
-    expect(adult.action.kind === 'escort' || adult.thoughts.some((t) => t.text.startsWith('Dropped '))).toBe(true);
+    // Whichever grown-up of the house is free takes them; a second one may be home too.
+    const grownUps = sim.agents.filter((p) => p.household === kid.household && p.role !== 'child');
+    expect(grownUps.some((p) => (p.action.kind === 'escort' && p.action.partnerId === kid.id) || p.thoughts.some((t) => t.text.startsWith('Dropped ')))).toBe(true);
   }, 120_000);
 });

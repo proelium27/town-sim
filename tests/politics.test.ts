@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ageOf } from '../src/sim/agents';
 import { ADULT_AGE, PRIORITY_KEYS } from '../src/sim/defs';
 import { die } from '../src/sim/life';
-import { agendaWeight, AGENDA_WEIGHT, concernOf, concernsOf, voteScore } from '../src/sim/politics';
+import { agendaWeight, AGENDA_WEIGHT, concernOf, concernsOf, TERM_FATIGUE, voteScore } from '../src/sim/politics';
 import { Sim } from '../src/sim/sim';
 import { kinship } from '../src/sim/social';
 
@@ -97,6 +97,21 @@ describe('elections', () => {
     expect(voteScore(sim, v, { id: liked.id, platform: wants[3] })).toBeCloseTo(10 / 25);
   });
 
+  it('a long-serving mayor wears on the town: each term past the first costs a few points of goodwill', () => {
+    const sim = new Sim(7);
+    const adults = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE);
+    const v = adults[0];
+    const mayor = adults.find((a) => a !== v && !kinship(sim, v, a))!;
+    v.relations.set(mayor.id, { opinion: 20, familiarity: 50, lastTalk: 0 });
+    const c = { id: mayor.id, platform: concernsOf(sim, v)[3] };
+    const fresh = voteScore(sim, v, c);
+    sim.mayor = mayor.id;
+    sim.mayorTerms = 1;
+    expect(voteScore(sim, v, c)).toBeCloseTo(fresh);
+    sim.mayorTerms = 3;
+    expect(voteScore(sim, v, c)).toBeCloseTo(fresh - 2 * TERM_FATIGUE);
+  });
+
   it('a well-liked sitting mayor on a platform few voters put first is re-elected', () => {
     const sim = new Sim(7);
     at(sim, 2, 8);
@@ -143,8 +158,7 @@ describe('elections across towns', () => {
     }, 300_000);
   }
 
-  it('races are close, platforms vary, and sitting mayors can be re-elected', () => {
-    expect(results).toHaveLength(8);
+  it('races are close, platforms vary, and sitting mayors can be re-elected', () => {    expect(results).toHaveLength(8);
     expect(new Set(results.map((r) => r.platform)).size).toBeGreaterThanOrEqual(3);
     expect(results.filter((r) => r.reelected).length).toBeGreaterThanOrEqual(2);
     expect(results.filter((r) => r.landslide).length).toBeLessThanOrEqual(2);

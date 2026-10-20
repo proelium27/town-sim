@@ -94,6 +94,7 @@ export function loadSim(text: string): Sim {
   }
   sim.tier ??= 0;
   sim.hardDays ??= [];
+  sim.mayorTerms ??= sim.mayor === null ? 0 : 1;
   sim.ledger = { ...emptyLedger(), ...sim.ledger };
   sim.lastLedger = { ...emptyLedger(), ...sim.lastLedger };
   return sim;
