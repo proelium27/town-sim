@@ -136,7 +136,7 @@ describe('seasons', () => {
     low.priorities.food = 0;
     // Fewer hands bring in the autumn harvest, so more of it freezes in the fields.
     const short = lowest(low);
-    expect(short.ripeLost).toBeGreaterThan(normal.ripeLost + 20);
+    expect(short.ripeLost).toBeGreaterThan(normal.ripeLost * 1.5);
     expect(short.min).toBeLessThan(normal.min * 0.8);
   }, 300_000);
 
@@ -198,7 +198,7 @@ describe('seasons', () => {
 
   it('a blizzard stops the outdoor work: builders, woodcutters and all come inside', () => {
     const sim = winterTown();
-    at(sim, 6, 9);
+    at(sim, 6, 10);
     expect(sim.projects.some((p) => p.builders.size > 0)).toBe(true);
     triggerWorldEvent(sim, 'snowstorm');
     sim.run(30);
