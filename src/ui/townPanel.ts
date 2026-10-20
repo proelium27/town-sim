@@ -104,7 +104,9 @@ export class TownPanel {
     let d = (1 - (sim.day % TRADER_EVERY) + TRADER_EVERY) % TRADER_EVERY;
     if (d === 0 && sim.hour >= 10) d = TRADER_EVERY;
     const when = sim.cars.some((c) => c.trader) ? 'in town now' : d === 0 ? 'due at 10:00' : `in ${d} day${d === 1 ? '' : 's'}`;
-    const priced = (['food', 'firewood', 'tools'] as const).map((g) => {
+    // Tools only get a quote once the town has some or a workshop to make them; before that it's a price for nothing.
+    const quoted = (['food', 'firewood', 'tools'] as const).filter((g) => g !== 'tools' || sim.stock.tools > 0 || hasWorkshop(sim));
+    const priced = quoted.map((g) => {
       const p = price(sim, g);
       const cls = p > BASE_PRICE[g] * 1.4 ? 'neg' : p < BASE_PRICE[g] * 0.8 ? 'pos' : '';
       return `<span class="price"><span>${GOODS[g].label}</span><b class="num ${cls}">$${p.toFixed(p < 10 ? 2 : 0)}</b></span>`;
@@ -148,7 +150,7 @@ export class TownPanel {
     const sig = JSON.stringify([
       pop.length, kids, elders, beds, homeless, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
       sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
-      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), this.resetArmed, Math.round(sim.treasury / 5), sim.lastLedger, (['food', 'firewood', 'tools'] as const).map((g) => price(sim, g)), chains(sim).map((c) => [c.have, c.target, c.stuck]), sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
+      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), this.resetArmed, Math.round(sim.treasury / 5), sim.lastLedger, (['food', 'firewood', 'tools'] as const).map((g) => price(sim, g)), hasWorkshop(sim), chains(sim).map((c) => [c.have, c.target, c.stuck]), sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
       sim.season >= 2 && Math.round((1 - sim.seasonProgress) * SEASON_DAYS * 10),
     ]);
     if (sig === this.sig) return;

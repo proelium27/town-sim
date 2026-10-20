@@ -38,3 +38,28 @@ describe('New town button', () => {
     expect(reset).toHaveBeenCalledOnce();
   });
 });
+
+describe('Treasury prices', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("doesn't quote tools before the town has any or a workshop to make them", () => {
+    vi.stubGlobal('document', { createElement: () => ({ addEventListener: () => {} }) });
+    const root = { innerHTML: '', after: () => {}, addEventListener: () => {} };
+    const saves = { enabled: true, canSave: true, hasBackup: false, status: () => '', notice: () => '', reset: () => {} } as unknown as Saves;
+    const sim = new Sim(7, { agents: false });
+    const panel = new TownPanel(root as unknown as HTMLElement, sim, () => {}, () => {}, saves);
+    const quotes = () => [...root.innerHTML.matchAll(/<span class="price"><span>(\w+)<\/span>/g)].map((m) => m[1]);
+
+    sim.stock.tools = 0;
+    panel.update();
+    expect(quotes()).toEqual(['Food', 'Firewood']);
+    sim.stock.tools = 2;
+    panel.update();
+    expect(quotes()).toEqual(['Food', 'Firewood', 'Tools']);
+    // A workshop can make them, so the price means something even with none in stock.
+    sim.stock.tools = 0;
+    sim.map.buildings.push({ ...sim.map.buildings[0], kind: 'workshop' });
+    panel.update();
+    expect(quotes()).toEqual(['Food', 'Firewood', 'Tools']);
+  });
+});
