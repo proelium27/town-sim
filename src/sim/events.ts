@@ -147,8 +147,10 @@ export function tickEvents(sim: Sim, dt: number): void {
     ev.drought = null;
     sim.log('The drought broke. The crops can grow again', 'event', 'good');
   }
-  if (ev.seasonal && sim.time >= ev.seasonal.at) {
-    if (!ev.festival) {
+  // A blizzard holds the festival back until it blows over; one that lasts the evening snows it off.
+  if (ev.seasonal && sim.time >= ev.seasonal.at && !ev.snowstorm) {
+    if (!ev.festival && sim.time - ev.seasonal.at > 4 * 60) sim.log(`The blizzard snowed off the ${ev.seasonal.name.toLowerCase()}`, 'event', 'bad');
+    else if (!ev.festival) {
       ev.festival = { until: sim.time + 180, attendees: new Set(), name: ev.seasonal.name };
       lightBonfire(sim);
       sim.log(`${ev.seasonal.name} in the park tonight!`, 'event', 'good');
