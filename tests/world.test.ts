@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Puddles, puddleAt } from '../src/render/puddles';
 import { Shading } from '../src/render/shading';
 import { hasUmbrella } from '../src/sim/agents';
 import { invitePartner } from '../src/sim/ai';
 import { Sim } from '../src/sim/sim';
 import type { Agent } from '../src/sim/types';
-import { TownMap } from '../src/world/map';
+import { Cell, TownMap } from '../src/world/map';
 
 describe('desire paths', () => {
   it('busy shortcuts wear into trails, and abandoned ones grass over', () => {
@@ -37,17 +38,74 @@ describe('desire paths', () => {
     m.groundDirty.length = 0;
     sh.sync();
     expect(lawn).toHaveBeenCalledTimes(1);
-    // A real ground change (a new path) still rebuilds the lot.
+    // Walls still rebuild the lot: rooms and doors change what counts as open lawn.
     lawn.mockClear();
-    m.setGround(5, 5, 'dirt');
-    expect(m.lawnVersion).toBe(v + 1);
+    m.setCell(5, 5, Cell.Wall);
     sh.sync();
     expect(lawn).toHaveBeenCalledTimes(16);
+    lawn.mockRestore();
+  });
+
+  it('paving and building paths redraw only the lawn chunks they touch, never the whole lawn', () => {
+    const m = new TownMap(64, 64);
+    const sh = new Shading(m);
+    const lawn = vi.spyOn(Shading.prototype as unknown as { lawn: (c: number) => void }, 'lawn');
+    const flush = () => {
+      for (const d of m.groundDirty) sh.touch(d);
+      m.groundDirty.length = 0;
+      sh.sync();
+    };
+    const v = m.lawnVersion;
+    // A sidewalk across the map (row 40, chunk row 2) and a dirt path down one column (x 3, chunk column 0).
+    for (let x = 0; x < 64; x++) m.setGround(x, 40, 'sidewalk');
+    for (let y = 0; y < 64; y++) m.setGround(3, y, 'dirt');
+    expect(m.lawnVersion).toBe(v);
+    flush();
+    const drawn = new Set(lawn.mock.calls.map(([c]) => c));
+    expect(drawn).toEqual(new Set([8, 9, 10, 11, 0, 4, 12]));
+    expect(lawn).toHaveBeenCalledTimes(drawn.size);
+    // Wear on a chunk edge marks both chunks it touches, and only those.
+    lawn.mockClear();
+    const i = m.idx(16, 20);
+    for (let k = 0; k < 30; k++) m.step(i);
+    expect(m.ground[i]).toBe('trail');
+    expect(m.lawnVersion).toBe(v);
+    flush();
+    expect(new Set(lawn.mock.calls.map(([c]) => c))).toEqual(new Set([4, 5]));
     lawn.mockRestore();
   });
 });
 
 describe('rain', () => {
+  it('paving redraws only the puddle chunks that gain or lose a puddle', () => {
+    const m = new TownMap(64, 64);
+    const pz = new Puddles(m);
+    pz.sync();
+    const draw = vi.spyOn(Puddles.prototype as unknown as { draw: (c: number) => void }, 'draw');
+    const v = m.lawnVersion;
+    const want = new Set<number>();
+    for (let x = 0; x < 64; x++) {
+      m.setGround(x, 40, 'sidewalk');
+      if (puddleAt(m, m.idx(x, 40))) want.add(8 + (x >> 4));
+    }
+    expect(m.lawnVersion).toBe(v);
+    expect(want.size).toBeGreaterThan(0);
+    for (const d of m.groundDirty) pz.touch(d);
+    m.groundDirty.length = 0;
+    expect(pz.dirty).toEqual(want);
+    pz.sync();
+    expect(draw).toHaveBeenCalledTimes(want.size);
+    // Nothing changed: nothing redraws.
+    draw.mockClear();
+    pz.sync();
+    expect(draw).not.toHaveBeenCalled();
+    // Walls move rooms, so they redraw every chunk.
+    m.setCell(2, 2, Cell.Wall);
+    pz.sync();
+    expect(draw).toHaveBeenCalledTimes(16);
+    draw.mockRestore();
+  });
+
   it('the ground gets wet in rain and dries afterwards', () => {
     const sim = new Sim(7);
     sim.run(0.05);

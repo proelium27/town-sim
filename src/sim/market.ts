@@ -1,4 +1,4 @@
-import { type Good, GOOD_KEYS, GOODS, MIN_PER_DAY, ROLES, SEASON_DAYS } from './defs';
+import { type Good, GOOD_KEYS, goodNoun, MIN_PER_DAY, ROLES, SEASON_DAYS } from './defs';
 import { addMemory, first, kinship, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
 import type { Agent } from './types';
@@ -119,6 +119,9 @@ function tradeList(sim: Sim): { sell: [Good, number, number][]; buy: [Good, numb
   return { sell, buy };
 }
 
+/** What trade() reports when the town had nothing to sell and bought nothing. */
+export const NO_TRADE = 'nothing changed hands';
+
 /**
  * The trader buys the town's surplus and sells what it's short of, as far as the treasury allows.
  * Like a new building, the shopping has to leave a day's payroll behind.
@@ -130,7 +133,7 @@ export function trade(sim: Sim): string {
   for (const [g, n, p] of sell) {
     sim.stock[g] -= n;
     earned += n * p;
-    parts.push(`sold ${n} ${GOODS[g].label.toLowerCase()}`);
+    parts.push(`sold ${n} ${goodNoun(n, g)}`);
   }
   sim.treasury += earned;
   sim.ledger.trade += earned;
@@ -141,9 +144,17 @@ export function trade(sim: Sim): string {
     sim.stock[g] += afford;
     sim.treasury -= afford * p;
     sim.ledger.trade -= afford * p;
-    parts.push(`bought ${afford} ${GOODS[g].label.toLowerCase()}`);
+    parts.push(`bought ${afford} ${goodNoun(afford, g)}`);
   }
-  return parts.length ? parts.join(', ') : 'nothing changed hands';
+  return parts.length ? parts.join(', ') : NO_TRADE;
+}
+
+/** The trader's stop at the market, for the activity log: what changed hands, or a quiet note on why nothing did. */
+export function traderVisit(sim: Sim): void {
+  const short = tradeList(sim).buy.length > 0;
+  const done = trade(sim);
+  if (done !== NO_TRADE) sim.log(`The trader stopped at the market: ${done}`, 'event', 'good');
+  else sim.log(`The trader came by, but the town had nothing to sell and ${short ? 'no money to spare' : 'needed nothing'}`, 'event', 'neutral');
 }
 
 export type Ledger = { sales: number; taxes: number; wages: number; trade: number; projects: number; pensions: number; bonuses: number };
