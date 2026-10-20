@@ -43,6 +43,8 @@ export const SEASON_DAYS = 2;
 export const SEASONS = ['Spring', 'Summer', 'Autumn', 'Winter'] as const;
 export type Season = (typeof SEASONS)[number];
 export const YEAR_DAYS = SEASON_DAYS * SEASONS.length;
+/** Elections fall on the first day of summer: the campaign opens at 9, the rally is at 17, the vote at 19. */
+export const ELECTION_DAY = SEASON_DAYS;
 
 // ------------------------------------------------------------------ goods
 

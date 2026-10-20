@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { ageOf } from '../src/sim/agents';
-import { ADULT_AGE } from '../src/sim/defs';
+import { ADULT_AGE, PRIORITY_KEYS } from '../src/sim/defs';
 import { die } from '../src/sim/life';
-import { agendaWeight, AGENDA_WEIGHT } from '../src/sim/politics';
+import { agendaWeight, AGENDA_WEIGHT, concernOf, concernsOf, voteScore } from '../src/sim/politics';
 import { Sim } from '../src/sim/sim';
+import { kinship } from '../src/sim/social';
 
 const at = (sim: Sim, day: number, hour: number) => sim.run(day * 1440 + hour * 60 - sim.time);
 
@@ -60,5 +61,74 @@ describe('elections', () => {
     die(sim, m, 'old age');
     expect(sim.mayor).toBeNull();
     expect(agendaWeight(sim, 'community')).toBe(1);
+  });
+
+  it('a voter backs a clearly better-liked candidate on their second concern over a stranger on their first', () => {
+    const sim = new Sim(7);
+    const adults = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE);
+    const v = adults[0];
+    const [liked, other] = adults.filter((a) => a !== v && !kinship(sim, v, a));
+    const wants = concernsOf(sim, v);
+    const rel = (id: number, opinion: number) => v.relations.set(id, { opinion, familiarity: 50, lastTalk: 0 });
+    rel(liked.id, 22);
+    rel(other.id, 10);
+    expect(voteScore(sim, v, { id: liked.id, platform: wants[1] })).toBeGreaterThan(voteScore(sim, v, { id: other.id, platform: wants[0] }));
+    // Opinions level, the platform decides; a platform they barely hold counts for nothing.
+    rel(liked.id, 10);
+    expect(voteScore(sim, v, { id: other.id, platform: wants[0] })).toBeGreaterThan(voteScore(sim, v, { id: liked.id, platform: wants[1] }));
+    expect(voteScore(sim, v, { id: liked.id, platform: wants[3] })).toBeCloseTo(10 / 25);
+  });
+
+  it('a well-liked sitting mayor on a platform few voters put first is re-elected', () => {
+    const sim = new Sim(7);
+    at(sim, 2, 8);
+    const adults = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE && a.role !== 'retired');
+    const mayor = adults[adults.length - 1];
+    sim.mayor = mayor.id;
+    at(sim, 2, 9.5);
+    const race = sim.election!;
+    const me = race.candidates.find((c) => c.id === mayor.id)!;
+    expect(me).toBeDefined();
+    // Put them on the platform the fewest voters hold as their top concern.
+    const voters = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE);
+    const firsts = (k: string) => voters.filter((v) => concernOf(sim, v) === k).length;
+    me.platform = [...PRIORITY_KEYS].sort((x, y) => firsts(x) - firsts(y))[0];
+    // Everyone likes the mayor a dozen points better than whoever they like best among the rest.
+    at(sim, 2, 16.9);
+    for (const v of voters) {
+      if (v === mayor) continue;
+      const best = Math.max(...race.candidates.filter((c) => c.id !== mayor.id).map((c) => v.relations.get(c.id)?.opinion ?? 0));
+      v.relations.set(mayor.id, { ...(v.relations.get(mayor.id) ?? { familiarity: 50, lastTalk: 0 }), opinion: best + 12 });
+    }
+    at(sim, 2, 19.5);
+    expect(sim.mayor).toBe(mayor.id);
+    expect(sim.activity.some((e) => /was re-elected mayor/.test(e.text))).toBe(true);
+  }, 120_000);
+});
+
+describe('elections across towns', () => {
+  // Two elections in each of a few untouched towns. They used to go to the same few platforms in landslides,
+  // and a sitting mayor almost never kept the job.
+  const results: { platform: string; reelected: boolean; landslide: boolean }[] = [];
+  const record = (L: NonNullable<Sim['lastElection']>, reelected: boolean) =>
+    results.push({ platform: L.platform, reelected, landslide: L.votes[0][1] > 2 * (L.votes[1]?.[1] ?? 0) });
+  for (const seed of [1, 3, 5, 7]) {
+    it(`seed ${seed} holds two elections`, () => {
+      const sim = new Sim(seed);
+      at(sim, 2, 19.5);
+      const first = sim.lastElection!;
+      record(first, false);
+      at(sim, 10, 19.5);
+      const second = sim.lastElection!;
+      expect(second.year).toBe(first.year + 1);
+      record(second, second.winner === first.winner);
+    }, 300_000);
+  }
+
+  it('races are close, platforms vary, and sitting mayors can be re-elected', () => {
+    expect(results).toHaveLength(8);
+    expect(new Set(results.map((r) => r.platform)).size).toBeGreaterThanOrEqual(3);
+    expect(results.filter((r) => r.reelected).length).toBeGreaterThanOrEqual(2);
+    expect(results.filter((r) => r.landslide).length).toBeLessThanOrEqual(2);
   });
 });

@@ -1,5 +1,5 @@
 import { ageOf } from './agents';
-import { ADULT_AGE, PRIORITY_LABEL, type PriorityKey, SEASON_DAYS, YEAR_DAYS } from './defs';
+import { ADULT_AGE, ELECTION_DAY, PRIORITY_LABEL, type PriorityKey, type TraitKey, YEAR_DAYS } from './defs';
 import { foodBalance } from './economy';
 import { addMemory, first, kinship, say, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
@@ -7,8 +7,6 @@ import type { Agent } from './types';
 
 /** How much the mayor's agenda leans the town meetings, on top of the player's priorities. */
 export const AGENDA_WEIGHT = 1.25;
-/** Elections fall on the first day of summer: the campaign opens at 9, the rally is at 17, the vote at 19. */
-const ELECTION_DAY = SEASON_DAYS;
 
 export interface Candidate {
   id: number;
@@ -30,21 +28,39 @@ export interface ElectionResult {
   votes: [number, number][];
 }
 
-/** What someone wants from the town, most pressing first, from where they stand. */
+const FOOD_ROLES = ['farmer', 'cook'];
+const TRADE_ROLES = ['builder', 'woodcutter', 'carpenter', 'mason', 'laborer', 'toolmaker'];
+const CIVIC_ROLES = ['teacher', 'librarian', 'barista', 'doctor'];
+/** The cause each temperament leans toward. */
+const TRAIT_CONCERN: Partial<Record<TraitKey, PriorityKey>> = {
+  extrovert: 'community', creative: 'community', slacker: 'community',
+  foodie: 'food', earlyBird: 'food',
+  workaholic: 'materials', competitive: 'materials',
+  introvert: 'housing', neatFreak: 'housing', grumpy: 'housing',
+};
+
+/**
+ * What someone wants from the town, most pressing first, from where they stand.
+ * Their own home, trade, family and hardships weigh more than the town's stores, so neighbours don't all want the same thing.
+ */
 export function concernsOf(sim: Sim, a: Agent): PriorityKey[] {
   const pop = Math.max(1, sim.agents.length);
   const hh = sim.town.households[a.household];
   const beds = sim.map.props.filter((p) => p.use === 'sleep' && p.household === a.household).length;
   const crowded = hh.building < 0 || sim.agents.filter((o) => o.household === a.household).length > beds;
   const homeless = sim.agents.filter((o) => sim.town.households[o.household].building < 0).length;
+  const withParents = ageOf(sim, a) >= ADULT_AGE && a.parents.some((id) => sim.agent(id)?.household === a.household);
   const fb = foodBalance(sim, true);
   const mem = (k: string) => a.memories.some((m) => m.kind === k);
   const score: Record<PriorityKey, number> = {
-    housing: (crowded ? 2 : 0) + (homeless / pop) * 5,
-    food: (mem('broke') || mem('starving') ? 2 : 0) + (sim.stock.food < pop * 4 ? 1 : 0) + (fb.produce < fb.eat ? 0.8 : 0) + (a.role === 'farmer' ? 0.5 : 0),
-    materials: (mem('coldHome') ? 1.5 : 0) + (sim.stock.wood < 60 || sim.stock.stone < 40 ? 0.8 : 0) + (['builder', 'woodcutter', 'carpenter', 'mason'].includes(a.role) ? 0.7 : 0),
-    community: 0.3 + (a.needs.fun < 50 ? 0.8 : 0) + (a.traits.includes('extrovert') || a.traits.includes('creative') ? 0.4 : 0) + (a.children.length ? 0.3 : 0),
+    housing: (crowded ? 1.4 : 0) + (withParents ? 0.7 : 0) + (homeless / pop) * 1.5,
+    food:
+      (mem('broke') || mem('starving') ? 1.4 : 0) + (a.needs.hunger < 40 ? 0.4 : 0) + (FOOD_ROLES.includes(a.role) ? 0.8 : 0) +
+      (sim.stock.food < pop * 4 ? 0.5 : 0) + (fb.produce < fb.eat ? 0.4 : 0),
+    materials: (mem('coldHome') ? 1.2 : 0) + (TRADE_ROLES.includes(a.role) ? 0.8 : 0) + (sim.stock.wood < 60 || sim.stock.stone < 40 ? 0.4 : 0),
+    community: 0.1 + (a.needs.fun < 40 ? 0.5 : 0) + (a.children.length ? 0.3 : 0) + (CIVIC_ROLES.includes(a.role) ? 0.6 : 0),
   };
+  for (const t of a.traits) if (TRAIT_CONCERN[t]) score[TRAIT_CONCERN[t]] += 0.3;
   return (Object.keys(score) as PriorityKey[]).sort((x, y) => score[y] - score[x]);
 }
 
@@ -97,10 +113,13 @@ function openCampaign(sim: Sim): void {
   const field = ranked.slice(0, 3);
   const incumbent = sim.agent(sim.mayor ?? undefined);
   if (incumbent && !field.includes(incumbent)) field[field.length - 1] = incumbent;
-  // Each runs on what matters most to them that nobody else is already running on.
+  // A sitting mayor picks first and runs on what matters most to them; the rest run on their own first or second
+  // concern, whichever nobody has claimed yet, or share a platform rather than run on something they don't hold.
+  const order = incumbent ? [incumbent, ...field.filter((a) => a !== incumbent)] : field;
   const taken = new Set<PriorityKey>();
-  const candidates = field.map((a) => {
-    const platform = concernsOf(sim, a).find((k) => !taken.has(k)) ?? concernOf(sim, a);
+  const candidates = order.map((a) => {
+    const wants = concernsOf(sim, a);
+    const platform = wants.slice(0, 2).find((k) => !taken.has(k)) ?? wants[0];
     taken.add(platform);
     return { id: a.id, platform };
   });
@@ -110,6 +129,20 @@ function openCampaign(sim: Sim): void {
     think(sim, a, `I'm standing for mayor. This town needs ${PITCH[c.platform]}.`, 'good');
   }
   sim.log(`Election day! Standing for mayor: ${candidates.map((c) => `${first(sim.agent(c.id)!)} (${PRIORITY_LABEL[c.platform].toLowerCase()})`).join(', ')}. Rally at 17:00, votes at 19:00`, 'event', 'good');
+}
+
+/** Opinion points worth one unit of vote score: a candidate liked 10 points better is worth about a platform match. */
+export const OPINION_SCALE = 25;
+/** Vote score for a platform that matches the voter's first or second concern. */
+export const PLATFORM_PULL = [0.3, 0.15];
+const KIN_PULL = 0.3;
+
+/** How much a voter warms to a candidate: how well they like them, whether the platform speaks to them, and family. */
+export function voteScore(sim: Sim, v: Agent, c: Candidate, wants: PriorityKey[] = concernsOf(sim, v)): number {
+  if (c.id === v.id) return 9;
+  const cand = sim.agent(c.id);
+  const rank = wants.indexOf(c.platform);
+  return (v.relations.get(c.id)?.opinion ?? 0) / OPINION_SCALE + (PLATFORM_PULL[rank] ?? 0) + (cand && kinship(sim, v, cand) ? KIN_PULL : 0);
 }
 
 /** Each adult backs the candidate they like best, weighed by whether the platform speaks to them. */
@@ -126,13 +159,12 @@ function vote(sim: Sim, e: ElectionState): void {
     }
   }
   for (const v of sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE)) {
-    const want = concernOf(sim, v);
+    const wants = concernsOf(sim, v);
     let best = e.candidates[0];
     let bestScore = -Infinity;
     for (const c of e.candidates) {
-      const cand = sim.agent(c.id);
-      if (!cand) continue;
-      const s = c.id === v.id ? 9 : (v.relations.get(c.id)?.opinion ?? 0) / 100 + (c.platform === want ? 0.4 : 0) + (kinship(sim, v, cand) ? 0.3 : 0) + sim.rng.range(0, 0.1);
+      if (!sim.agent(c.id)) continue;
+      const s = voteScore(sim, v, c, wants) + sim.rng.range(0, 0.15);
       if (s > bestScore) {
         bestScore = s;
         best = c;
