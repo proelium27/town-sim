@@ -50,6 +50,8 @@ export type Good = 'food' | 'wood' | 'stone' | 'firewood' | 'planks' | 'bricks' 
 
 export interface GoodDef {
   label: string;
+  /** One unit, for counts: "1 plank". Goods counted as a mass ("1 food") leave it out. */
+  one?: string;
   /** CSS color for store bars. */
   color: string;
   /** Store bar fills at this amount. */
@@ -64,14 +66,19 @@ export const GOODS: Record<Good, GoodDef> = {
   wood: { label: 'Wood', color: 'oklch(0.55 0.09 60)', cap: 200, hud: true },
   stone: { label: 'Stone', color: 'oklch(0.6 0.01 80)', cap: 200, hud: true },
   firewood: { label: 'Firewood', color: 'oklch(0.66 0.13 45)', cap: 150, hud: true },
-  planks: { label: 'Planks', color: 'oklch(0.74 0.1 70)', cap: 80, hud: false },
-  bricks: { label: 'Bricks', color: 'oklch(0.6 0.13 35)', cap: 60, hud: false },
+  planks: { label: 'Planks', one: 'plank', color: 'oklch(0.74 0.1 70)', cap: 80, hud: false },
+  bricks: { label: 'Bricks', one: 'brick', color: 'oklch(0.6 0.13 35)', cap: 60, hud: false },
   furniture: { label: 'Furniture', color: 'oklch(0.62 0.09 55)', cap: 10, hud: false },
-  tools: { label: 'Tools', color: 'oklch(0.7 0.03 240)', cap: 20, hud: false },
-  herbs: { label: 'Herbs', color: 'oklch(0.7 0.13 140)', cap: 30, hud: false },
+  tools: { label: 'Tools', one: 'tool', color: 'oklch(0.7 0.03 240)', cap: 20, hud: false },
+  herbs: { label: 'Herbs', one: 'herb', color: 'oklch(0.7 0.13 140)', cap: 30, hud: false },
   medicine: { label: 'Medicine', color: 'oklch(0.72 0.1 175)', cap: 20, hud: false },
 };
 export const GOOD_KEYS = Object.keys(GOODS) as Good[];
+
+/** A count with its noun in the right form: "1 person", "3 people", "2 trees". */
+export const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
+/** How a good reads after a count of it: "1 plank", "40 planks", "1 food". */
+export const goodNoun = (n: number, g: Good): string => (n === 1 && GOODS[g].one) || GOODS[g].label.toLowerCase();
 export type Stock = Record<Good, number>;
 /** A list of goods and amounts: a building's materials, a delivery so far. */
 export type Bill = Partial<Record<Good, number>>;
@@ -178,6 +185,8 @@ export const PRIORITY_LABEL: Record<PriorityKey, string> = {
 };
 /** Low / Normal / High multipliers. */
 export const PRIORITY_WEIGHT = [0.4, 1, 1.9];
+/** The most of the flexible workforce a lever can put into its own trade, at Low / Normal / High. */
+export const PRIORITY_SHARE = [0.3, 0.5, 0.7];
 
 // ------------------------------------------------------------------ traits
 

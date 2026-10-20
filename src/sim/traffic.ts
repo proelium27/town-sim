@@ -1,5 +1,5 @@
 import type { CarColor } from '../assets/manifest';
-import { trade } from './market';
+import { traderVisit } from './market';
 import { addMemory, say, think } from './social';
 import type { Sim } from './sim';
 
@@ -107,7 +107,7 @@ export function tickTraffic(sim: Sim, dt: number): void {
       if (!c.traded && Math.abs(pos - TRADER_STOP) < 0.15 && c.speed < 0.5) {
         c.traded = true;
         c.stopUntil = sim.time + 75;
-        sim.log(`The trader stopped at the market: ${trade(sim)}`, 'event', 'good');
+        traderVisit(sim);
       }
       const parked = c.stopUntil !== undefined && sim.time < c.stopUntil;
       if (parked) target = 0;

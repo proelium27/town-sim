@@ -131,7 +131,10 @@ export class TownMap {
   groundDirty: number[] = [];
   /** Bumped on any ground change (paths, fields), for baked layers. */
   groundVersion = 0;
-  /** Like groundVersion, but ignores grass wearing to a trail and back (which happens constantly). */
+  /**
+   * Bumps when the lawn needs a full repaint. Per-tile ground changes (paving, paths, wear) never
+   * bump it: they reach the renderer through groundDirty and redraw only their own chunks.
+   */
   lawnVersion = 0;
 
   constructor(
@@ -192,8 +195,6 @@ export class TownMap {
     if (!this.inBounds(x, y)) return;
     const i = this.idx(x, y);
     if (this.ground[i] === g) return;
-    const wear = (k: GroundKey) => k === 'grass' || k === 'worn' || k === 'trail';
-    if (!wear(this.ground[i]) || !wear(g)) this.lawnVersion++;
     this.ground[i] = g;
     this.groundDirty.push(i);
     // Neighbours too: a trail's grassy edges depend on what's next to it.
