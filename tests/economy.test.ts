@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GOOD_KEYS, SEASON_DAYS } from '../src/sim/defs';
-import { BASE_PRICE, BROKE_RETRY, canAffordGroceries, HARD_DAYS, HARDSHIP_FLOOR, HARDSHIP_KEEP, price, RESERVE_MIN, tickMarket, townPaid, trade, traderVisit, NO_TRADE, wantOf } from '../src/sim/market';
+import { BASE_PRICE, BROKE_RETRY, canAffordGroceries, HARD_DAYS, HARDSHIP_FLOOR, HARDSHIP_KEEP, price, projectCushion, RESERVE_MIN, tickMarket, townPaid, trade, traderVisit, NO_TRADE, wantOf } from '../src/sim/market';
 import { Sim } from '../src/sim/sim';
 import { addMemory, kinship } from '../src/sim/social';
 import type { Agent } from '../src/sim/types';
@@ -49,10 +49,28 @@ describe('the trader', () => {
     expect(sim.treasury).not.toBe(before);
   });
 
+  it("doesn't spend the day's payroll on its wares", () => {
+    const sim = new Sim(7);
+    sim.stock.firewood = 0;
+    sim.stock.tools = 0;
+    sim.time = 6 * 1440 + 12 * 60;
+    sim.lastLedger.wages = 320;
+    sim.treasury = 370;
+    expect(trade(sim)).toMatch(/bought \d+ firewood/);
+    expect(sim.treasury).toBeGreaterThanOrEqual(projectCushion(sim));
+    expect(sim.treasury).toBeLessThan(370);
+    sim.treasury = 200;
+    expect(trade(sim)).toBe(NO_TRADE);
+    expect(sim.treasury).toBe(200);
+  });
+
   it('turns up by road every few days and trades at the market', () => {
     const sim = new Sim(7);
     sim.run(1440 + 13 * 60 - sim.time);
-    expect(sim.activity.some((e) => e.text.startsWith('The trader stopped at the market'))).toBe(true);
+    const visit = sim.activity.find((e) => e.text.startsWith('The trader'));
+    expect(visit).toBeDefined();
+    // Keeping a day's payroll back, the town may have had nothing to buy with: a quiet note, not news.
+    if (!visit!.text.startsWith('The trader stopped at the market')) expect(visit!.tone).toBe('neutral');
   }, 60_000);
 
   it('logs a visit where nothing changed hands as a neutral note that says why, not good news', () => {
@@ -82,8 +100,8 @@ describe('the trader', () => {
     const sim = new Sim(7, { agents: false });
     for (const g of GOOD_KEYS) sim.stock[g] = Math.ceil(wantOf(sim, g));
     sim.stock.tools = 0;
-    // Enough for one tool at the trader's markup, not two.
-    sim.treasury = price(sim, 'tools') * 1.3 * 1.5;
+    // Enough for one tool at the trader's markup, not two, over the day's payroll the town keeps back.
+    sim.treasury = projectCushion(sim) + price(sim, 'tools') * 1.3 * 1.5;
     expect(trade(sim)).toBe('bought 1 tool');
   });
 });
