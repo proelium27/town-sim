@@ -801,6 +801,15 @@ function urgent(sim: Sim, a: Agent): boolean {
 
 // ------------------------------------------------------------------ performing
 
+/**
+ * The gathering a party-goer is at, by what they set out for: a birthday, the town festival or the
+ * office party. Both of the last two can be on at once (a festival on a Friday evening).
+ */
+function gathering(sim: Sim, act: Action) {
+  if (act.partnerId !== undefined) return sim.events.birthdays.find((b) => b.hosts.includes(act.partnerId!));
+  return act.reason === 'Town festival' ? sim.events.festival : act.reason === 'Office party' ? sim.events.party : null;
+}
+
 function arrive(sim: Sim, a: Agent): void {
   const act = a.action;
   act.stage = 'perform';
@@ -837,10 +846,12 @@ function arrive(sim: Sim, a: Agent): void {
       }
       break;
     }
-    case 'party':
-      if (a.action.partnerId !== undefined) sim.events.birthdays.find((b) => b.hosts.includes(a.action.partnerId!))?.guests.add(a.id);
-      else (sim.events.party ?? sim.events.festival)?.attendees.add(a.id);
+    case 'party': {
+      const ev = gathering(sim, act);
+      if (ev && 'guests' in ev) ev.guests.add(a.id);
+      else ev?.attendees.add(a.id);
       break;
+    }
     case 'meet':
       sim.events.standup?.attendees.add(a.id);
       break;
@@ -1070,14 +1081,14 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       }
       return;
     case 'party': {
-      const festival = !!sim.events.festival;
       n.fun = Math.min(100, n.fun + 0.9 * dt);
       n.social = Math.min(100, n.social + socialGain(a, 0.7) * dt);
       n.hunger = Math.min(100, n.hunger + 0.6 * dt);
       for (const o of sim.agents) if (o.id !== a.id && o.action.kind === 'party' && Math.abs(o.x - a.x) < 6 && Math.abs(o.y - a.y) < 6) bondNearby(sim, a, o, dt * 2);
       if (sim.rng.chance(0.02 * dt)) say(sim, a, sim.rng.pick(['woo!', '♪', 'ha!', 'cheers']), 'good', 3);
-      const bday = act.partnerId !== undefined ? sim.events.birthdays.find((b) => b.hosts.includes(act.partnerId!)) : undefined;
-      if (act.partnerId !== undefined ? !bday : !sim.events.party && !festival) finish(sim, a);
+      const ev = gathering(sim, act);
+      const bday = ev && 'guests' in ev ? ev : undefined;
+      if (!ev) finish(sim, a);
       else if (bday && sim.rng.chance(0.015 * dt)) say(sim, a, bday.hosts.includes(a.id) ? 'thank you!' : sim.rng.pick(['happy birthday!', '♪', 'cake!']), 'good', 3);
       return;
     }

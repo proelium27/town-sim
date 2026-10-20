@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createAgent, surnameOf } from '../src/sim/agents';
-import { birthdayOf, milestoneFor } from '../src/sim/events';
+import { birthdayOf, milestoneFor, triggerWorldEvent } from '../src/sim/events';
 import { die } from '../src/sim/life';
 import { loadSim, saveSim } from '../src/sim/save';
 import { Sim } from '../src/sim/sim';
@@ -26,6 +26,30 @@ describe('birthdays', () => {
     at(sim, day + 1, 21);
     // (Seed 7's host shares the day with a housemate, so the log names both.)
     expect(sim.activity.filter((e) => /^It's .*'s birthday/.test(e.text) && e.text.includes(host.name.split(' ')[0])).length).toBe(1);
+  }, 60_000);
+});
+
+describe('festival on office-party night', () => {
+  it('festival-goers count toward the festival, not the office party', () => {
+    const sim = new Sim(7);
+    at(sim, 0, 17);
+    // A Friday: the office party in the lounge and the festival in the park at once.
+    sim.events.party = { until: sim.time + 120, attendees: new Set() };
+    triggerWorldEvent(sim, 'festival');
+    const went = { 'Town festival': new Set<number>(), 'Office party': new Set<number>() } as Record<string, Set<number>>;
+    let atParty = new Set<number>();
+    let atFestival = new Set<number>();
+    for (let t = 0; t < 179; t++) {
+      sim.run(1);
+      for (const a of sim.agents) if (a.action.kind === 'party' && a.action.stage === 'perform') went[a.action.reason]?.add(a.id);
+      if (sim.events.party) atParty = new Set(sim.events.party.attendees);
+      if (sim.events.festival) atFestival = new Set(sim.events.festival.attendees);
+    }
+    expect(went['Town festival'].size).toBeGreaterThan(5);
+    for (const id of went['Town festival']) expect(atFestival.has(id)).toBe(true);
+    for (const id of atParty) expect(went['Office party'].has(id)).toBe(true);
+    sim.run(2);
+    expect(sim.activity.some((e) => e.text === `The festival is over. ${atFestival.size} townsfolk danced the night away`)).toBe(true);
   }, 60_000);
 });
 
