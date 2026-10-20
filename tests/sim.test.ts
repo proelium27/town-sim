@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ROLES } from '../src/sim/defs';
+import { goodNoun, plural, ROLES } from '../src/sim/defs';
+import { tickEvents } from '../src/sim/events';
 import { Sim } from '../src/sim/sim';
 
 /** Advance to a given day index and hour. */
@@ -82,4 +83,31 @@ describe('events', () => {
     const partied = sim.agents.filter((a) => a.memories.some((m) => m.kind === 'party'));
     expect(partied.length).toBeGreaterThanOrEqual(4);
   }, 30_000);
+
+  it('a party with one guest says "1 person", not "1 people"', () => {
+    const sim = new Sim(5);
+    sim.events.party = { until: sim.time, attendees: new Set([sim.agents[0].id]) };
+    tickEvents(sim, 0);
+    expect(sim.activity.map((e) => e.text)).toContain('The party wound down. 1 person had a good time');
+  });
+});
+
+describe('counts in player-facing text', () => {
+  it('pluralise their nouns', () => {
+    expect(plural(1, 'person', 'people')).toBe('1 person');
+    expect(plural(3, 'person', 'people')).toBe('3 people');
+    expect(plural(0, 'person', 'people')).toBe('0 people');
+    expect(plural(1, 'friend')).toBe('1 friend');
+    expect(plural(2, 'friend')).toBe('2 friends');
+    expect(plural(1, 'tree')).toBe('1 tree');
+  });
+
+  it('count goods as units or as a mass', () => {
+    expect(goodNoun(1, 'planks')).toBe('plank');
+    expect(goodNoun(5, 'planks')).toBe('planks');
+    expect(goodNoun(1, 'tools')).toBe('tool');
+    expect(goodNoun(1, 'bricks')).toBe('brick');
+    expect(goodNoun(1, 'food')).toBe('food');
+    expect(goodNoun(1, 'firewood')).toBe('firewood');
+  });
 });

@@ -1,7 +1,7 @@
 import type { Art } from '../assets/loader';
 import { ageOf } from '../sim/agents';
 import { xpToNext } from '../sim/ai';
-import { ADULT_AGE, billText, MIN_PER_DAY, NEED_KEYS, NEEDS, ROLES, SEASON_DAYS, SEASONS, SKILL_KEYS, SKILL_LABEL, TRAITS } from '../sim/defs';
+import { ADULT_AGE, billText, MIN_PER_DAY, NEED_KEYS, NEEDS, plural, ROLES, SEASON_DAYS, SEASONS, SKILL_KEYS, SKILL_LABEL, TRAITS } from '../sim/defs';
 import { APT_LABEL, APTITUDES } from '../sim/careers';
 import { chill } from '../sim/seasons';
 import { kinship, moodParts, moodTarget, moodWord, relationLabel, type Kin } from '../sim/social';
@@ -171,7 +171,7 @@ export class Inspector {
     fb.setAttribute('aria-pressed', String(following));
     fb.textContent = following ? 'Following' : 'Follow';
     const tools = role.station === 'labor' ? (a.tool > 0 ? ` · tools ${Math.round(a.tool * 100)}%` : ' · no tools') : '';
-    set('money', a.role === 'child' ? `${duration(a.workedToday)} of chores today` : `$${Math.round(a.money)} · ${a.tasksDone} tasks done · ${duration(a.workedToday)} worked today${tools}`);
+    set('money', a.role === 'child' ? `${duration(a.workedToday)} of chores today` : `$${Math.round(a.money)} · ${plural(a.tasksDone, 'task')} done · ${duration(a.workedToday)} worked today${tools}`);
     set('doing', a.action.stage === 'travel' && a.action.kind !== 'wander' && a.action.kind !== 'stroll' ? `→ ${a.action.label}` : a.action.label);
     set('why', a.action.reason || 'Just going with the flow');
     const th = a.thoughts[a.thoughts.length - 1];
