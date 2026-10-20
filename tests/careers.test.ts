@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { laborRate } from '../src/sim/ai';
-import { freeStations } from '../src/sim/agents';
+import { ageOf, freeStations } from '../src/sim/agents';
 import { APTITUDES, chooseCareer, finishApprenticeships, FIT, learnBoost } from '../src/sim/careers';
 import { ROLES } from '../src/sim/defs';
 import { allocateRoles, openSlots, setRole } from '../src/sim/planner';
+import { CRAFT_ROLES } from '../src/sim/workshop';
 import { Sim } from '../src/sim/sim';
 import type { Agent } from '../src/sim/types';
 
@@ -99,6 +100,45 @@ describe('career openings', () => {
     expect(roles(sim)).toEqual(before);
     expect(sim.activityVersion).toBe(v);
   }, 120_000);
+
+  it('people settle into their jobs instead of being rotated every few hours', () => {
+    const sim = new Sim(7);
+    const days = 14;
+    const was = new Map(sim.agents.map((a) => [a.id, { role: a.role, since: sim.time, from: '' }]));
+    let moves = 0;
+    let flips = 0;
+    let backs = 0;
+    while (sim.time < days * 1440) {
+      sim.run(10);
+      for (const a of sim.agents) {
+        const w = was.get(a.id);
+        if (!w) was.set(a.id, { role: a.role, since: sim.time, from: '' });
+        if (!w || w.role === a.role) continue;
+        if (ageOf(sim, a) >= 18 && ROLES[w.role].flexible && ROLES[a.role].flexible) moves++;
+        const back = w.from === a.role && sim.time - w.since < 1440;
+        if (back) backs++;
+        if (back && [w.role, a.role].includes('laborer') && [w.role, a.role].some((r) => CRAFT_ROLES.includes(r))) flips++;
+        was.set(a.id, { role: a.role, since: sim.time, from: w.role });
+      }
+    }
+    // Before, about four and a half moves a day, with crafters stood down to labor and taken back within hours.
+    expect(sim.map.buildings.some((b) => b.kind === 'workshop')).toBe(true);
+    expect(flips).toBe(0);
+    expect(backs).toBeLessThanOrEqual(2);
+    expect(moves / days).toBeLessThan(2.5);
+  }, 300_000);
+
+  it('swapping one outdoor trade for another keeps their own hours', () => {
+    const sim = new Sim(7);
+    const a = sim.agents.find((x) => x.role !== 'child')!;
+    setRole(sim, a, 'builder', null);
+    const hours = { ...a.schedule };
+    setRole(sim, a, 'woodcutter', null);
+    setRole(sim, a, 'toolmaker', null);
+    expect(a.schedule).toEqual(hours);
+    setRole(sim, a, 'teacher', null);
+    expect(a.schedule.workStart).toBe(8);
+  });
 
   it('a kid whose family trade is full picks one with an opening, and keeps it', () => {
     const sim = new Sim(7);

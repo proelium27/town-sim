@@ -47,6 +47,14 @@ function pickTraits(sim: Sim, inherit: TraitKey[] = []): TraitKey[] {
   return out;
 }
 
+/** The kind of hours a role keeps; moving between roles of the same kind keeps a person's own schedule. */
+export function hoursOf(role: RoleKey): string {
+  const def = ROLES[role];
+  if (def.workplace === 'cafe' || def.workplace === 'market' || def.workplace === 'library') return def.workplace;
+  if (def.station === 'labor') return 'labor';
+  return role === 'child' || role === 'retired' || role === 'teacher' || role === 'cook' ? role : 'desk';
+}
+
 export function makeSchedule(sim: Sim, role: RoleKey, traits: TraitKey[]): Schedule {
   const r = sim.rng;
   const shift = traits.includes('earlyBird') ? -1 : traits.includes('nightOwl') ? 1.5 : 0;

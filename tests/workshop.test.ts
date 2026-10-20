@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { triggerWorldEvent } from '../src/sim/events';
 import { allocateRoles, billFor, buildCap, clutter, findSite, setRole, shortOf, unstick } from '../src/sim/planner';
+import { ageOf } from '../src/sim/agents';
+import { ROLES } from '../src/sim/defs';
 import { Sim } from '../src/sim/sim';
 import { chains, CRAFT_ROLES, hasWorkshop, targetOf } from '../src/sim/workshop';
 import { BLUEPRINTS } from '../src/world/blueprints';
@@ -44,6 +46,38 @@ describe('workshop', () => {
     expect(sim.stock.furniture + sim.agents.filter((a) => a.action.material === 'furniture').length).toBeGreaterThan(0);
     // Workers pick up the tools as they're made.
     expect(sim.agents.filter((a) => a.tool > 0).length).toBeGreaterThanOrEqual(2);
+  }, 120_000);
+
+  it('a crafter who starts a batch keeps the job, and nobody flips between a trade and laboring', () => {
+    const sim = townWithWorkshop();
+    const toolmaker = sim.agents.find((a) => a.role === 'toolmaker') ?? sim.agents.find((a) => a.role === 'laborer')!;
+    setRole(sim, toolmaker, 'toolmaker', null);
+    sim.stock.tools = 0;
+    // Every tool the town wants is already on the bench.
+    toolmaker.action = { ...toolmaker.action, kind: 'craft', label: 'Making tools', material: 'tools', timer: 30 };
+    sim.stock.tools = targetOf(sim, 'tools') - 2;
+    allocateRoles(sim);
+    expect(toolmaker.role).toBe('toolmaker');
+
+    // Three days of the workshop running: count everyone's moves between the town's flexible jobs.
+    const days = 3;
+    const was = new Map(sim.agents.map((a) => [a.id, { role: a.role, since: sim.time, from: '' }]));
+    let moves = 0;
+    let flips = 0;
+    for (let t = 0; t < days * 1440; t += 10) {
+      sim.run(10);
+      for (const a of sim.agents) {
+        const w = was.get(a.id);
+        if (!w || w.role === a.role) continue;
+        if (ageOf(sim, a) >= 18 && ROLES[w.role as keyof typeof ROLES].flexible && ROLES[a.role].flexible) moves++;
+        const pair = [w.role, a.role];
+        if (w.from === a.role && pair.includes('laborer') && pair.some((r) => CRAFT_ROLES.includes(r as never)) && sim.time - w.since < 1440) flips++;
+        was.set(a.id, { role: a.role, since: sim.time, from: w.role });
+      }
+    }
+    expect(flips).toBe(0);
+    // Before, the workshop's trades turned over a few times a day.
+    expect(moves).toBeLessThanOrEqual(days * 3);
   }, 120_000);
 
   it('new homes need furniture once there is a workshop', () => {

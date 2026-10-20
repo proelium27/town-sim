@@ -148,6 +148,8 @@ export interface Agent {
   /** Who they're apprenticed to, and until when. */
   mentor?: number;
   apprenticeUntil?: number;
+  /** When they last changed jobs (unset: since before anyone kept track). */
+  roleSince?: number;
 }
 
 export interface Project {
