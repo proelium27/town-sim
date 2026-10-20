@@ -240,7 +240,7 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
   }
 
   // A town paves its dirt paths, spreading out from the streets, a stone a tile.
-  if (sim.tier >= 1 && builderish && sim.stock.stone >= 20) {
+  if (!storm && sim.tier >= 1 && builderish && sim.stock.stone >= 20) {
     const frontier = paveFrontier(sim);
     if (frontier.length) {
       add(0.5, () => {

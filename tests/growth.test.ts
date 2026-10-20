@@ -3,6 +3,7 @@ import { createAgent } from '../src/sim/agents';
 import { triggerWorldEvent } from '../src/sim/events';
 import { MIN_PER_DAY } from '../src/sim/defs';
 import { CHARTER_HOURS, checkTier, extensionSite, paveFrontier, stampExtension, TIER_AT } from '../src/sim/growth';
+import { laborPlan } from '../src/sim/labor';
 import { capacity, completeProject, findSite, members, newHousehold, tickPlanner } from '../src/sim/planner';
 import { BLUEPRINTS } from '../src/world/blueprints';
 import { Cell } from '../src/world/map';
@@ -285,5 +286,31 @@ describe('town tiers', () => {
       sim.run(60);
     }
     expect(paved()).toBeGreaterThan(before);
+  }, 60_000);
+
+  it('nobody paves in a blizzard', () => {
+    const sim = new Sim(7);
+    sim.run(60);
+    sim.tier = 1;
+    sim.projects = [];
+    sim.stock.stone = 500;
+    sim.stock.wood = 500;
+    const frontier = paveFrontier(sim);
+    const a = sim.agents.find((x) => x.role === 'builder')!;
+    a.carry = null;
+    expect(frontier.length).toBeGreaterThan(0);
+    expect(laborPlan(sim, a)?.kind).toBe('pave');
+    // One already out paving when the storm hits puts it down and gets inside.
+    const cell = frontier[0];
+    a.at = cell;
+    a.x = a.px = sim.map.cx(cell);
+    a.y = a.py = sim.map.cy(cell);
+    a.path = [];
+    a.action = { kind: 'pave', label: 'Paving the path', reason: '', stage: 'perform', dest: cell, timer: 999, started: sim.time, score: 0.5 };
+    a.thinkIn = 999;
+    triggerWorldEvent(sim, 'snowstorm');
+    expect(laborPlan(sim, a)?.kind).not.toBe('pave');
+    sim.run(2);
+    expect(a.action.kind).not.toBe('pave');
   }, 60_000);
 });
