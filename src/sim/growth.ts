@@ -105,21 +105,31 @@ export const TIERS = ['Village', 'Town', 'City'] as const;
 export const TIER_AT: [number, number][] = [[0, 0], [30, 18], [50, 30]];
 
 const CHARTER_DAY = 'Charter day';
+/** Charters are proclaimed on an evening planner tick, while people are up to celebrate. */
+export const CHARTER_HOURS: [number, number] = [16, 19];
 
-/** Promote the settlement when it's grown enough, with a Charter Day in the park. */
+/** Promote the settlement when it's grown enough, with a Charter Day in the park that evening. */
 export function checkTier(sim: Sim): void {
   const next = sim.tier + 1;
   if (next >= TIERS.length) return;
   const [pop, blds] = TIER_AT[next];
   if (sim.agents.length < pop || sim.map.buildings.length < blds) return;
+  // Hold the charter for the evening: planner ticks are 2 h apart, so the 3 h window always gets one.
+  if (sim.hour < CHARTER_HOURS[0] || sim.hour >= CHARTER_HOURS[1]) return;
   sim.tier = next;
   const tier = TIERS[next].toLowerCase();
   sim.milestone(`Northwind became a ${tier}`);
   for (const a of sim.agents) addMemory(sim, a, 'proudTown');
-  const fest = sim.events.festival;
+  const ev = sim.events;
+  const fest = ev.festival;
   if (!fest) {
     startFestival(sim, CHARTER_DAY);
-    sim.log(`Northwind is now a ${tier}! There's a charter day in the park`, 'event', 'good');
+    const seasonal = ev.seasonal;
+    if (seasonal && seasonal.at < ev.festival!.until) {
+      // Tonight's seasonal festival would land mid-charter: fold it in rather than drop it.
+      ev.seasonal = null;
+      sim.log(`Northwind is now a ${tier}! Tonight's ${seasonal.name.toLowerCase()} in the park becomes a charter day`, 'event', 'good');
+    } else sim.log(`Northwind is now a ${tier}! There's a charter day in the park`, 'event', 'good');
   } else if (fest.name === CHARTER_DAY) {
     sim.log(`Northwind is now a ${tier}! The charter day in the park goes on`, 'event', 'good');
   } else {

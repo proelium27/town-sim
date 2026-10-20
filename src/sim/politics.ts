@@ -1,5 +1,5 @@
 import { ageOf } from './agents';
-import { ADULT_AGE, ELECTION_DAY, PRIORITY_LABEL, type PriorityKey, type TraitKey, YEAR_DAYS } from './defs';
+import { ADULT_AGE, ELECTION_DAY, PRIORITY_LABEL, type PriorityKey, RALLY_HOUR, RALLY_LENGTH, type TraitKey, YEAR_DAYS } from './defs';
 import { foodBalance } from './economy';
 import { addMemory, first, kinship, say, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
@@ -84,9 +84,9 @@ export function tickPolitics(sim: Sim): void {
   const cur = sim.election;
   if (!cur || cur.year !== sim.year || cur.stage === 'done') return;
   if (!dropAbsent(sim, cur)) return;
-  if (cur.stage === 'campaign' && h >= 17) {
+  if (cur.stage === 'campaign' && h >= RALLY_HOUR) {
     cur.stage = 'rally';
-    cur.rallyUntil = sim.time + 120;
+    cur.rallyUntil = sim.time + RALLY_LENGTH;
     sim.log(`The election rally is on in the park: ${cur.candidates.map((c) => first(sim.agent(c.id)!)).join(', ')} make their case`, 'event', 'neutral');
   }
   if (cur.stage === 'rally' && sim.time >= cur.rallyUntil) vote(sim, cur);

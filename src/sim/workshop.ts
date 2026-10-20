@@ -47,10 +47,15 @@ export function targetOf(sim: Sim, g: Good): number {
   return (base[g] ?? 0) + owed + downstream;
 }
 
+/** Units of a recipe's good the town wants made, batches already at a station included: what keeps its trade staffed. */
+export function wanted(sim: Sim, r: Recipe): number {
+  return Math.max(0, targetOf(sim, r.good) - sim.stock[r.good]);
+}
+
 /** Units of a recipe's good still to make, counting batches already at a station (none if stocked). */
 export function shortfall(sim: Sim, r: Recipe): number {
   const making = sim.agents.filter((a) => a.action.kind === 'craft' && a.action.material === r.good).length * r.out;
-  return Math.max(0, targetOf(sim, r.good) - sim.stock[r.good] - making);
+  return Math.max(0, wanted(sim, r) - making);
 }
 
 export function canMake(sim: Sim, r: Recipe): boolean {
