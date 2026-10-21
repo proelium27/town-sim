@@ -1,6 +1,6 @@
 import type { Prop } from '../world/map';
-import { PRIORITY_WEIGHT } from './defs';
-import { buildCap, clutter, stageOf } from './planner';
+import { billGoods, type Good, PRIORITY_WEIGHT } from './defs';
+import { buildCap, clutter, shortOf, stageOf } from './planner';
 import type { ActionKind, Agent, Project } from './types';
 import type { Sim } from './sim';
 
@@ -14,7 +14,7 @@ export interface LaborPlan {
   propId?: number;
   projectId?: number;
   leg?: 'pickup' | 'deliver';
-  material?: 'wood' | 'stone';
+  material?: Good;
   timer: number;
   score: number;
 }
@@ -81,7 +81,7 @@ function siteCell(sim: Sim, a: Agent, pr: Project): { cell: number; path: number
   return null;
 }
 
-function inFlight(sim: Sim, pr: Project, mat: 'wood' | 'stone'): number {
+function inFlight(sim: Sim, pr: Project, mat: Good): number {
   return sim.agents.filter((o) => o.action.kind === 'haul' && o.action.projectId === pr.id && o.action.material === mat).length * CARRY;
 }
 
@@ -120,8 +120,8 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
       });
     }
     if (!builderish) continue;
-    for (const mat of ['wood', 'stone'] as const) {
-      const short = pr.need[mat] - pr.delivered[mat] - inFlight(sim, pr, mat);
+    for (const mat of billGoods(pr.need)) {
+      const short = shortOf(pr, mat) - inFlight(sim, pr, mat);
       if (short > 0 && sim.stock[mat] >= 1) {
         plans.push(() => {
           const d = depositSpot(sim, a);

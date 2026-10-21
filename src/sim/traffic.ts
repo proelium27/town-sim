@@ -25,7 +25,6 @@ const LANES: Record<Lane, { axis: 'x' | 'y'; fixed: number; dir: 1 | -1 }> = {
 };
 const CRUISE = 7;
 const COLORS: CarColor[] = ['green', 'gray', 'orange'];
-let nextId = 1;
 
 function along(c: Car): number {
   return LANES[c.lane].axis === 'x' ? c.x : c.y;
@@ -47,7 +46,7 @@ function spawn(sim: Sim, lane: Lane): void {
   if (sim.cars.some((c) => c.lane === lane && Math.abs(along(c) - pos) < 4)) return;
   const x = L.axis === 'x' ? pos : L.fixed;
   const y = L.axis === 'x' ? L.fixed : pos;
-  sim.cars.push({ id: nextId++, color: sim.rng.pick(COLORS), lane, x, y, px: x, py: y, speed: CRUISE });
+  sim.cars.push({ id: sim.nextCarId++, color: sim.rng.pick(COLORS), lane, x, y, px: x, py: y, speed: CRUISE });
 }
 
 export function tickTraffic(sim: Sim, dt: number): void {

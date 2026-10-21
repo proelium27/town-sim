@@ -385,3 +385,11 @@ body.inspecting .activity { width: min(620px, calc(100vw - var(--roster-w) - var
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Town view: saving */
+.save-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.save-row .btn { font: 500 12px/1 var(--font); padding: 7px 10px; border-radius: 6px; border: 1.5px solid var(--edge); background: var(--panel-2); color: var(--text); cursor: pointer; }
+.save-row .btn:hover:not([disabled]) { background: var(--panel-3); }
+.save-row .btn[disabled] { opacity: 0.5; cursor: default; }
+.save-row .btn.danger { color: var(--bad); }
+.save-row .btn.armed { background: var(--bad); color: var(--panel); border-color: var(--edge); }

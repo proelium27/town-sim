@@ -1,25 +1,41 @@
 import { ageOf } from '../sim/agents';
-import { ADULT_AGE, PRIORITY_KEYS, PRIORITY_LABEL, type PriorityKey } from '../sim/defs';
+import { ADULT_AGE, billText, MIN_PER_DAY, SEASON_DAYS, SEASONS, YEAR_DAYS, GOOD_KEYS, GOODS, PRIORITY_KEYS, PRIORITY_LABEL, type PriorityKey } from '../sim/defs';
 import { foodBalance } from '../sim/economy';
 import { WORLD_EVENTS, type WorldEventKey, triggerWorldEvent } from '../sim/events';
 import { allocateRoles, buildCap, capacity, stageOf } from '../sim/planner';
 import { first } from '../sim/social';
 import type { Sim } from '../sim/sim';
+import type { Saves } from './saves';
 import { esc, hhmm } from './util';
 
 const STAGE_LABEL = { clearing: 'Clearing the site', supplying: 'Waiting for materials', building: 'Under construction' } as const;
 const LEVELS = ['Low', 'Normal', 'High'];
+/** Short calendar date for a game minute: "Spr 2, Y1". */
+const dateOf = (t: number) => {
+  const day = Math.floor(t / MIN_PER_DAY);
+  return `${SEASONS[Math.floor(day / SEASON_DAYS) % SEASONS.length].slice(0, 3)} ${(day % SEASON_DAYS) + 1}, Y${Math.floor(day / YEAR_DAYS) + 1}`;
+};
 
 /** Left-sidebar Town tab: stores, the player's priorities and world events, live projects, history. */
 export class TownPanel {
   private sig = '';
+  /** New town takes two clicks: the first arms it for a few seconds. */
+  private resetArmed = false;
 
   constructor(
     private root: HTMLElement,
     private sim: Sim,
     private onFocus: (x: number, y: number) => void,
     private onPerson: (id: number) => void,
+    private saves: Saves,
   ) {
+    const picker = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json', hidden: true });
+    picker.addEventListener('change', async () => {
+      const f = picker.files?.[0];
+      picker.value = '';
+      if (f) this.saves.importFile(f).catch(() => {});
+    });
+    root.after(picker);
     root.addEventListener('click', (e) => {
       const el = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
       if (!el) return;
@@ -35,6 +51,28 @@ export class TownPanel {
       } else if (act === 'person') {
         this.onPerson(Number(el.dataset.id));
         return;
+      } else if (act === 'save') {
+        this.saves.save();
+      } else if (act === 'export') {
+        this.saves.exportFile();
+      } else if (act === 'export-backup') {
+        this.saves.exportBackup();
+      } else if (act === 'import') {
+        picker.click();
+        return;
+      } else if (act === 'reset') {
+        // Two clicks: the first arms it, so a stray click can't wipe a town.
+        // The armed look is rendered from this field, so a re-render can't show an armed button as safe.
+        if (!this.resetArmed) {
+          this.resetArmed = true;
+          setTimeout(() => {
+            this.resetArmed = false;
+            this.update();
+          }, 4000);
+        } else {
+          this.saves.reset();
+          return;
+        }
       }
       this.sig = '';
       this.update();
@@ -53,9 +91,9 @@ export class TownPanel {
     const net = fb.produce - fb.eat;
     const projects = sim.projects.map((p) => ({ p, stage: stageOf(sim, p) }));
     const sig = JSON.stringify([
-      pop.length, kids, elders, beds, homeless, Math.round(sim.stock.food), Math.round(sim.stock.wood), Math.round(sim.stock.stone), Math.round(net),
+      pop.length, kids, elders, beds, homeless, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
       sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
-      sim.history.length, !!sim.events.drought, !!sim.events.festival,
+      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), this.resetArmed,
     ]);
     if (sig === this.sig) return;
     this.sig = sig;
@@ -72,9 +110,10 @@ export class TownPanel {
       <section class="tp-sec">
         <h3>Stores</h3>
         <div class="stores">
-          <div class="store"><span class="lbl">Food</span>${bar(sim.stock.food, 300, 'var(--n-hunger)')}<span class="num">${Math.round(sim.stock.food)}</span><span class="rate num ${net >= 0 ? 'pos' : 'neg'}">${net >= 0 ? '+' : ''}${Math.round(net)}/day</span></div>
-          <div class="store"><span class="lbl">Wood</span>${bar(sim.stock.wood, 200, 'oklch(0.55 0.09 60)')}<span class="num">${Math.round(sim.stock.wood)}</span><span class="rate"></span></div>
-          <div class="store"><span class="lbl">Stone</span>${bar(sim.stock.stone, 200, 'oklch(0.6 0.01 80)')}<span class="num">${Math.round(sim.stock.stone)}</span><span class="rate"></span></div>
+          ${GOOD_KEYS.map((g) => {
+            const rate = g === 'food' ? `<span class="rate num ${net >= 0 ? 'pos' : 'neg'}">${net >= 0 ? '+' : ''}${Math.round(net)}/day</span>` : '<span class="rate"></span>';
+            return `<div class="store"><span class="lbl">${GOODS[g].label}</span>${bar(sim.stock[g], GOODS[g].cap, GOODS[g].color)}<span class="num">${Math.round(sim.stock[g])}</span>${rate}</div>`;
+          }).join('')}
         </div>
         ${ev.drought ? '<p class="warn-line">Drought: nothing is growing.</p>' : ''}
       </section>
@@ -100,15 +139,26 @@ export class TownPanel {
             return `<li><button class="proj" data-act="site" data-id="${p.id}">
               <span class="proj-top"><b>${esc(p.name)}</b><span class="num">${pct}%</span></span>
               <span class="proj-bar"><i class="cap" style="width:${cap}%"></i><i style="width:${pct}%"></i></span>
-              <span class="proj-meta">${STAGE_LABEL[stage]} · wood ${Math.floor(Math.min(p.delivered.wood, p.need.wood))}/${p.need.wood} · stone ${Math.floor(Math.min(p.delivered.stone, p.need.stone))}/${p.need.stone} · ${p.builders.size} working</span>
+              <span class="proj-meta">${STAGE_LABEL[stage]} · ${billText(p.need, p.delivered)} · ${p.builders.size} working</span>
               <span class="proj-why">${who ? `${esc(first(who))}: ` : ''}“${esc(p.reason)}”</span>
             </button></li>`;
           }).join('')}
         </ul>
       </section>
       <section class="tp-sec">
+        <h3>Saving <small>${esc(this.saves.status())}</small></h3>
+        <div class="save-row">
+          <button class="btn" data-act="save" ${this.saves.canSave ? '' : 'disabled'}>Save now</button>
+          <button class="btn" data-act="export">Export</button>
+          ${this.saves.hasBackup ? `<button class="btn" data-act="export-backup" title="Download the saved town that couldn't be read">Export backup</button>` : ''}
+          <button class="btn" data-act="import" ${this.saves.enabled ? '' : 'disabled title="Scratch towns from a ?seed= link never touch your saved town. Open the game without ?seed= to import."'}>Import</button>
+          <button class="btn danger${this.resetArmed ? ' armed' : ''}" data-act="reset" ${this.saves.enabled ? '' : 'title="Starts this scratch town over. Your saved town is untouched."'}>${this.resetArmed ? 'Click again to start over' : 'New town'}</button>
+        </div>
+        ${this.saves.notice() ? `<p class="warn-line">${esc(this.saves.notice())}</p>` : ''}
+      </section>
+      <section class="tp-sec">
         <h3>History</h3>
-        <ol class="history">${[...sim.history].reverse().slice(0, 30).map((h) => `<li><time class="num">Day ${Math.floor(h.t / 1440) + 1}<br>${hhmm(h.t)}</time><span>${esc(h.text)}</span></li>`).join('')}</ol>
+        <ol class="history">${[...sim.history].reverse().slice(0, 30).map((h) => `<li><time class="num">${dateOf(h.t)}<br>${hhmm(h.t)}</time><span>${esc(h.text)}</span></li>`).join('')}</ol>
       </section>`;
 
   }

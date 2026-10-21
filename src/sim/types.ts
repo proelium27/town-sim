@@ -1,7 +1,7 @@
 import type { Outfit } from '../assets/loader';
 import type { Facing } from '../assets/manifest';
 import type { UseKind } from '../world/map';
-import type { MemoryKind, NeedKey, RoleKey, SkillKey, TraitKey } from './defs';
+import type { Bill, Good, MemoryKind, NeedKey, RoleKey, SkillKey, TraitKey } from './defs';
 
 export type Tone = 'neutral' | 'good' | 'bad' | 'alert';
 
@@ -51,7 +51,7 @@ export interface Action {
   projectId?: number;
   /** Haul: 'pickup' at the storehouse, then 'deliver' at the site. */
   leg?: 'pickup' | 'deliver';
-  material?: 'wood' | 'stone';
+  material?: Good;
 }
 
 export interface Task {
@@ -128,7 +128,7 @@ export interface Agent {
   parents: number[];
   children: number[];
   /** What they're carrying back to the storehouse or to a build site. */
-  carry: { kind: 'wood' | 'stone' | 'food'; amount: number } | null;
+  carry: { kind: Good; amount: number } | null;
   /** Building they work at, for teacher/cook roles. */
   workBuilding: number | null;
 }
@@ -144,8 +144,8 @@ export interface Project {
   doorTop: boolean;
   /** Grass cells that become a dirt path from the door to the street on completion. */
   path: number[];
-  need: { wood: number; stone: number };
-  delivered: { wood: number; stone: number };
+  need: Bill;
+  delivered: Bill;
   work: number;
   progress: number;
   reason: string;

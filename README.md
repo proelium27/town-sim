@@ -46,6 +46,11 @@ npm run build      # typecheck + production bundle
 
 - **Priorities** (Town view, `T`): Housing, Food, Wood & stone, Community, each Low / Normal / High. They weight what town meetings choose and how many people work each job.
 - **World events** (Town view): hold a festival, a bumper harvest, send newcomers (even if there's no room, which forces a housing push), a drought, a storm.
+- **Saving** (Town view): the town autosaves to your browser every game hour and reopens where you left off. Export downloads a save file, Import loads one, New town starts over (click twice). A `?seed=N` link opens a scratch town that is never saved.
+
+## Calendar
+
+A season lasts two days and a year eight (Spring, Summer, Autumn, Winter); the top bar shows the weekday and season ("Tue · Spring 2"), with the year on hover. Ages run on their own faster clock, two years per day, so families turn over within a few in-game years.
 
 ## What's simulated
 
@@ -64,14 +69,15 @@ public/assets/kenney/   Kenney CC0 sheets (city, urban, indoors) with their lice
 src/assets/             manifest.ts: every frame by sheet+cell; loader.ts: textures, outfit recolouring, avatars
 src/world/              map.ts: mutable tile grid, rooms, buildings, props; town.ts: starting town + wilderness;
                         blueprints.ts / stamp.ts: building templates the townsfolk construct
-src/sim/                sim.ts (clock, step), ai.ts, planner.ts, labor.ts, life.ts, economy.ts, agents.ts,
-                        social.ts, events.ts, traffic.ts, nav.ts, defs.ts
+src/sim/                sim.ts (clock, calendar, step), ai.ts, planner.ts, labor.ts, life.ts, economy.ts, agents.ts,
+                        social.ts, events.ts, traffic.ts, nav.ts, save.ts (save/load),
+                        defs.ts (needs, goods, roles, traits and memories as data tables)
 src/render/             worldView.ts (live ground/walls/props, construction sites), agentsView.ts (people, cars, badges, rain),
                         shading.ts (lawn detail, cast shadows, ambient occlusion), lighting.ts (time-of-day grade, night lights)
 src/engine/camera.ts    smoothed camera with viewport-aware clamping
 src/ui/                 hud (top), tracker + town panel (left), activity (bottom), inspector (right, tabbed), relationship graph
 PRODUCT.md, DESIGN.md   design context: who it's for, tokens, layout and rendering rules for new UI
-tests/                  nav + town connectivity, daily routine and event tests
+tests/                  nav + town connectivity, daily routines and events, the self-building town, save/load
 ```
 
 The sim has no rendering dependencies, so it runs headless in tests (two simulated weeks of a growing town take about 13 seconds).
