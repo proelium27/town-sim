@@ -81,6 +81,9 @@ export function loadSim(text: string): Sim {
   }
   sim.events.birthdays ??= [];
   sim.events.wet ??= 0;
+  sim.events.seasonal ??= null;
+  sim.events.snowstorm ??= null;
+  if (sim.fuel.length < sim.town.households.length) sim.fuel = sim.town.households.map((_, i) => sim.fuel[i] ?? 8);
   // Parties saved before joint birthdays had a single host.
   for (const b of sim.events.birthdays as (typeof sim.events.birthdays[number] & { host?: number; age?: number })[]) {
     if (!b.hosts) b.hosts = b.host !== undefined ? [b.host] : [];

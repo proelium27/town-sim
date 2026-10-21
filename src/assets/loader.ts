@@ -192,6 +192,18 @@ export class Art {
         r(10, 0, 1, 2, '#f2c14e');
         r(4, 7, 9, 1, '#c9bfae');
         break;
+      case 'bonfire':
+        // Crossed logs, flames, a few embers.
+        r(3, 12, 10, 2, '#5e3d24');
+        r(4, 11, 8, 1, '#7a5531');
+        r(5, 6, 6, 5, '#e8642a');
+        r(6, 4, 4, 3, '#f2a33a');
+        r(7, 2, 2, 3, '#f7d26a');
+        r(6, 8, 4, 3, '#f7d26a');
+        r(4, 9, 1, 2, '#e8642a');
+        r(11, 9, 1, 2, '#e8642a');
+        r(2, 14, 12, 1, 'rgba(0,0,0,0.25)');
+        break;
       case 'grave':
         // Rounded headstone on a low grassy mound.
         r(3, 12, 10, 3, '#4f7d3a');

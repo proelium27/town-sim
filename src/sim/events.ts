@@ -1,6 +1,7 @@
 import { ageOf } from './agents';
 import { MIN_PER_DAY, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
-import { kinship } from './social';
+import { FESTIVALS, snowing } from './seasons';
+import { FRIEND, kinship } from './social';
 import { newcomers } from './life';
 import { addMemory, first, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
@@ -13,14 +14,18 @@ export interface EventState {
   rain: { until: number } | null;
   coffeeBroken: boolean;
   drought: { until: number } | null;
-  festival: { until: number; attendees: Set<number> } | null;
+  festival: { until: number; attendees: Set<number>; name?: string } | null;
+  /** The season's festival, scheduled when the season turns. */
+  seasonal: { at: number; name: string } | null;
+  /** A blizzard: bitter cold and heavy snow; people stay in. */
+  snowstorm: { until: number } | null;
   /** How wet the ground is, 0..1: rises in rain, dries over a few hours. */
   wet: number;
   /** Birthday parties happening right now, one per household. */
   birthdays: Birthday[];
   /** Day the schedule below was planned for. */
   plannedDay: number;
-  plan: { at: number; kind: 'standup' | 'pizza' | 'party' | 'coffee' | 'rain' | 'birthday'; length: number; host?: number }[];
+  plan: { at: number; kind: 'standup' | 'pizza' | 'party' | 'coffee' | 'rain' | 'birthday' | 'storm' | 'snowstorm'; length: number; host?: number }[];
 }
 
 export interface Birthday {
@@ -32,6 +37,33 @@ export interface Birthday {
   until: number;
   guests: Set<number>;
   cake?: number;
+  /** Someone invited was up and about during the party, so an empty one means nobody came. */
+  around?: boolean;
+}
+
+/** How long a festival runs, in minutes. */
+export const FESTIVAL_LENGTH = 180;
+/** Birthday parties start at 18:00, or after the evening's park event if it ends by 21:00. */
+const BIRTHDAY_HOUR = 18;
+const BIRTHDAY_LATEST = 21;
+
+/**
+ * When this evening's park event ends, if one is on or still to come today; else 0. Birthday parties
+ * wait for it, so the family isn't split between the two.
+ */
+export function parkEventUntil(sim: Sim): number {
+  const ev = sim.events;
+  let until = ev.festival?.until ?? 0;
+  const s = ev.seasonal;
+  if (s && Math.floor(s.at / MIN_PER_DAY) === sim.day) until = Math.max(until, Math.max(s.at, sim.time) + FESTIVAL_LENGTH);
+  return until;
+}
+
+/** Asked to this party: family of a host, and friends too for a milestone. */
+export function invitedTo(sim: Sim, b: Birthday, a: Agent): boolean {
+  if (b.hosts.includes(a.id)) return false;
+  const hosts = b.hosts.map((id) => sim.agent(id)).filter((h): h is Agent => !!h);
+  return hosts.some((h) => kinship(sim, a, h) || (b.milestone && (a.relations.get(h.id)?.opinion ?? 0) >= FRIEND));
 }
 
 /** Not 18: growing up already marks it, and with parties 16 years of age apart nearly every first adult party would pass it. */
@@ -50,7 +82,7 @@ export function birthdayOf(birth: number): number {
 }
 
 export function initialEvents(): EventState {
-  return { standup: null, pizza: null, party: null, rain: null, coffeeBroken: false, drought: null, festival: null, wet: 0, birthdays: [], plannedDay: -1, plan: [] };
+  return { standup: null, pizza: null, party: null, rain: null, coffeeBroken: false, drought: null, festival: null, seasonal: null, snowstorm: null, wet: 0, birthdays: [], plannedDay: -1, plan: [] };
 }
 
 /** Lays out the day's happenings at midnight (or on the first tick). */
@@ -66,12 +98,15 @@ function planDay(sim: Sim): void {
     if (sim.weekday === 4) ev.plan.push({ at: base + 17 * 60 + 15, kind: 'party', length: 120 });
     if (r.chance(0.25)) ev.plan.push({ at: base + r.range(9, 15) * 60, kind: 'coffee', length: 0 });
   }
-  if (r.chance(0.35)) ev.plan.push({ at: base + r.range(7, 19) * 60, kind: 'rain', length: r.range(60, 220) });
+  if (r.chance(sim.season === 3 ? 0.5 : 0.35)) ev.plan.push({ at: base + r.range(7, 19) * 60, kind: 'rain', length: r.range(60, 220) });
+  // Autumn brings storms; winter, the odd blizzard.
+  if (sim.season === 2 && sim.seasonProgress > 0.2 && r.chance(0.18)) ev.plan.push({ at: base + r.range(10, 20) * 60, kind: 'storm', length: 0 });
+  if (sim.season === 3 && r.chance(0.22)) ev.plan.push({ at: base + r.range(2, 16) * 60, kind: 'snowstorm', length: 0 });
   // Birthdays follow the calendar: once a year, on the day of the year someone was born.
   const today = sim.day % YEAR_DAYS;
   for (const a of sim.agents) {
     if (birthdayOf(a.birth) !== today || a.lastBirthday >= sim.year || sim.time - a.birth < YEAR_DAYS * MIN_PER_DAY * 0.75) continue;
-    ev.plan.push({ at: base + 18 * 60, kind: 'birthday', length: 150, host: a.id });
+    ev.plan.push({ at: base + BIRTHDAY_HOUR * 60, kind: 'birthday', length: 150, host: a.id });
   }
   ev.plan.sort((x, y) => x.at - y.at);
   ev.plan.sort((a, b) => a.at - b.at);
@@ -81,7 +116,8 @@ const officeStaff = (sim: Sim) => sim.agents.filter((a) => ROLES[a.role].workpla
 
 export function tickEvents(sim: Sim, dt: number): void {
   const ev = sim.events;
-  ev.wet = Math.max(0, Math.min(1, ev.wet + (ev.rain ? dt / 45 : -dt / 240)));
+  // Rain wets the ground; snow doesn't.
+  ev.wet = Math.max(0, Math.min(1, ev.wet + (ev.rain && !snowing(sim) ? dt / 45 : -dt / 240)));
   if (ev.plannedDay !== sim.day) planDay(sim);
   while (ev.plan.length && ev.plan[0].at <= sim.time) {
     const e = ev.plan.shift()!;
@@ -105,6 +141,13 @@ export function tickEvents(sim: Sim, dt: number): void {
         }
         break;
       case 'birthday': {
+        // A festival in the park this evening goes first: the party starts when it ends.
+        const after = parkEventUntil(sim);
+        if (after > sim.time && after <= sim.day * MIN_PER_DAY + BIRTHDAY_LATEST * 60) {
+          ev.plan.push({ ...e, at: after });
+          ev.plan.sort((x, y) => x.at - y.at);
+          break;
+        }
         // Housemates born on the same day share the party: gather their entries too.
         const hh = sim.agent(e.host!)?.household;
         const hosts = [e.host!];
@@ -116,10 +159,14 @@ export function tickEvents(sim: Sim, dt: number): void {
         startBirthday(sim, hosts, e.length);
         break;
       }
+      case 'storm':
+      case 'snowstorm':
+        triggerWorldEvent(sim, e.kind);
+        break;
       case 'rain':
         if (!ev.rain) {
           ev.rain = { until: sim.time + e.length };
-          sim.log('It started raining', 'event', 'neutral');
+          sim.log(snowing(sim) ? 'It started snowing' : 'It started raining', 'event', 'neutral');
         }
         break;
     }
@@ -134,18 +181,49 @@ export function tickEvents(sim: Sim, dt: number): void {
     ev.drought = null;
     sim.log('The drought broke. The crops can grow again', 'event', 'good');
   }
+  // A blizzard holds the festival back until it blows over; one that lasts the evening snows it off.
+  if (ev.seasonal && sim.time >= ev.seasonal.at && !ev.snowstorm) {
+    if (!ev.festival && sim.time - ev.seasonal.at > 4 * 60) sim.log(`The blizzard snowed off the ${ev.seasonal.name.toLowerCase()}`, 'event', 'bad');
+    else if (!ev.festival) {
+      ev.festival = { until: sim.time + FESTIVAL_LENGTH, attendees: new Set(), name: ev.seasonal.name };
+      lightBonfire(sim);
+      sim.log(`${ev.seasonal.name} in the park tonight!`, 'event', 'good');
+    }
+    ev.seasonal = null;
+  }
+  const snow = snowing(sim);
+  const blizzardOver = !!ev.snowstorm && sim.time >= ev.snowstorm.until;
+  if (blizzardOver) {
+    ev.snowstorm = null;
+    sim.log('The blizzard blew itself out', 'event', 'neutral');
+  }
   if (ev.festival && sim.time >= ev.festival.until) {
     const people = [...ev.festival.attendees].map((id) => sim.agent(id)!).filter(Boolean);
     ev.festival = null;
     for (const a of people) addMemory(sim, a, 'festival');
     for (const a of people) for (const b of people) if (a.id !== b.id && Math.abs(a.x - b.x) < 8) shiftOpinion(sim, a, b, sim.rng.range(0, 3));
-    sim.log(`The festival is over. ${people.length} townsfolk danced the night away`, 'event', 'good');
+    sim.log(`The festival is over. ${people.length} townsfolk ${sim.season === 3 ? 'warmed up together' : 'danced the night away'}`, 'event', 'good');
   }
   if (ev.rain && sim.time >= ev.rain.until) {
     ev.rain = null;
-    sim.log('The rain cleared up', 'event', 'neutral');
+    if (!blizzardOver) sim.log(snow ? 'It stopped snowing' : 'The rain cleared up', 'event', 'neutral');
   }
-  for (const b of ev.birthdays) if (sim.time >= b.until) endBirthday(sim, b);
+  for (const b of ev.birthdays) {
+    noteGuests(sim, b);
+    if (sim.time >= b.until) endBirthday(sim, b);
+  }
+}
+
+/** Invited family (and friends) in the house while the party's on are guests, however they got there. */
+function noteGuests(sim: Sim, b: Birthday): void {
+  const room = sim.town.households[b.household].room;
+  for (const a of sim.agents) {
+    const up = a.action.kind !== 'sleep' || a.action.stage !== 'perform';
+    const here = sim.map.room[a.at] === room;
+    if (!up || b.guests.has(a.id) || (b.around && !here) || !invitedTo(sim, b, a)) continue;
+    b.around = true;
+    if (here) b.guests.add(a.id);
+  }
 }
 
 /** "Oskar", "Oskar and Bo", "Ada, Oskar and Bo". */
@@ -223,13 +301,26 @@ function endBirthday(sim: Sim, b: Birthday): void {
   const names = andList(hosts.map(first));
   const family = guests.filter((g) => hosts.some((h) => kinship(sim, h, g))).length;
   const friends = guests.length - family;
-  const who = [family && `${family} family`, friends && `${friends} friend${friends === 1 ? '' : 's'}`].filter(Boolean).join(' and ');
+  const who = [family && `${family} relative${family === 1 ? '' : 's'}`, friends && `${friends} friend${friends === 1 ? '' : 's'}`].filter(Boolean).join(' and ');
   const text = guests.length
     ? `${names}'s birthday wound down: ${who} came to celebrate`
     : hosts.length > 1
       ? `${names} celebrated their birthday together`
-      : `Nobody came to ${names}'s birthday`;
-  sim.log(text, 'family', company ? 'good' : 'bad', hosts[0], hosts[1]);
+      : b.around
+        ? `Nobody came to ${names}'s birthday`
+        : `${names} had a quiet birthday at home`;
+  sim.log(text, 'family', company ? 'good' : b.around ? 'bad' : 'neutral', hosts[0], hosts[1]);
+}
+
+/** Cold-weather festivals gather round a bonfire in the middle of the park. */
+function lightBonfire(sim: Sim): void {
+  if (sim.season < 2) return;
+  const m = sim.map;
+  for (const [x, y] of [[54, 12], [53, 12], [55, 12], [54, 11], [54, 13]]) {
+    if (!m.walkable(x, y) || m.propsOn(x, y).length) continue;
+    m.addProp({ key: 'bonfire', drawn: true, x, y, w: 1, h: 1, blocks: true, expires: sim.time + FESTIVAL_LENGTH });
+    return;
+  }
 }
 
 /** The birthday party this person is hosting or invited to right now, if any. */
@@ -264,7 +355,7 @@ function endParty(sim: Sim): void {
   sim.log(people.length ? `The party wound down. ${people.length} people had a good time` : 'Nobody showed up to the party', 'event', people.length ? 'good' : 'bad');
 }
 
-export type WorldEventKey = 'festival' | 'harvest' | 'newcomers' | 'drought' | 'storm';
+export type WorldEventKey = 'festival' | 'harvest' | 'newcomers' | 'drought' | 'storm' | 'snowstorm';
 
 export const WORLD_EVENTS: { key: WorldEventKey; label: string; hint: string; tone: 'good' | 'bad' }[] = [
   { key: 'festival', label: 'Hold a festival', hint: 'Everyone gathers in the park for a few hours', tone: 'good' },
@@ -272,6 +363,7 @@ export const WORLD_EVENTS: { key: WorldEventKey; label: string; hint: string; to
   { key: 'newcomers', label: 'Send newcomers', hint: 'Three people arrive, housing or not', tone: 'good' },
   { key: 'drought', label: 'Drought', hint: 'Crops stop growing for two days', tone: 'bad' },
   { key: 'storm', label: 'Storm', hint: 'Rain, flattened crops and fallen trees', tone: 'bad' },
+  { key: 'snowstorm', label: 'Blizzard', hint: 'Heavy snow and bitter cold for six hours', tone: 'bad' },
 ];
 
 /** Player-triggered happenings. The townsfolk react on their own. */
@@ -280,8 +372,16 @@ export function triggerWorldEvent(sim: Sim, key: WorldEventKey): void {
   const m = sim.map;
   switch (key) {
     case 'festival':
-      ev.festival = { until: sim.time + 180, attendees: new Set() };
-      sim.log('A town festival has been called in the park!', 'event', 'good');
+      ev.festival = { until: sim.time + FESTIVAL_LENGTH, attendees: new Set(), name: FESTIVALS[sim.season] };
+      lightBonfire(sim);
+      sim.log(`${FESTIVALS[sim.season]} in the park, called early!`, 'event', 'good');
+      break;
+    case 'snowstorm':
+      if (ev.snowstorm) break;
+      ev.rain = { until: sim.time + 360 };
+      ev.snowstorm = { until: sim.time + 360 };
+      for (const a of sim.agents) addMemory(sim, a, 'blizzard');
+      sim.log('A blizzard is blowing in. Everyone hurries indoors', 'event', 'bad');
       break;
     case 'harvest':
       for (const p of m.props) if (p.use === 'farm') p.growth = 1;

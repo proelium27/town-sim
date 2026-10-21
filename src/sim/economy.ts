@@ -1,11 +1,12 @@
 import type { PropKey } from '../assets/manifest';
 import type { DrawnKey, Prop } from '../world/map';
 import { CORE_H, CORE_W } from '../world/town';
+import { cropSeason } from './seasons';
 import type { Sim } from './sim';
 
 /** Days for a crop to ripen untended. */
 export const CROP_DAYS = 1.5;
-export const FOOD_PER_CROP = 2;
+export const FOOD_PER_CROP = 1.5;
 const TREES: PropKey[] = ['treeGreen', 'treeLime', 'treeOrange', 'treeTall'];
 
 export function cropStage(growth: number): DrawnKey {
@@ -27,7 +28,7 @@ function lists(sim: Sim) {
 export function tickEconomy(sim: Sim, dt: number): void {
   const m = sim.map;
   const ev = sim.events;
-  const rate = (dt / (CROP_DAYS * 1440)) * (ev.drought ? 0 : ev.rain ? 1.3 : 1);
+  const rate = (dt / (CROP_DAYS * 1440)) * (ev.drought ? 0 : ev.rain ? 1.3 : 1) * cropSeason(sim);
   const { crops, temporary } = lists(sim);
   for (const p of crops) {
     if ((p.growth ?? 0) < 1) p.growth = Math.min(1, (p.growth ?? 0) + rate);
@@ -62,11 +63,15 @@ export function cellsOf(sim: Sim, x: number, y: number, w: number, h: number): n
   return out;
 }
 
-/** Rough daily food production and consumption, for the planner and the Town panel. */
-export function foodBalance(sim: Sim): { produce: number; eat: number } {
+/**
+ * Rough daily food production and consumption, for the planner and the Town panel.
+ * With yearRound, production is averaged over the year (nothing grows in winter).
+ */
+export function foodBalance(sim: Sim, yearRound = false): { produce: number; eat: number } {
   const crops = sim.map.props.filter((p) => p.use === 'farm').length;
   const farmers = sim.agents.filter((a) => a.role === 'farmer').length;
   // Crops only turn into food if someone harvests them.
   const harvestable = Math.min(crops, farmers * 30);
-  return { produce: (harvestable * FOOD_PER_CROP) / CROP_DAYS, eat: sim.agents.length * 2.6 };
+  const season = yearRound ? 0.75 : cropSeason(sim);
+  return { produce: ((harvestable * FOOD_PER_CROP) / CROP_DAYS) * season, eat: sim.agents.length * 2.6 };
 }

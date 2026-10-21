@@ -28,6 +28,14 @@ describe('saving and loading', () => {
     expect(b.map.propsOn(b.map.props[0].x, b.map.props[0].y)).toContain(b.map.props[0]);
   });
 
+  it('people in saves from before winter start warm', () => {
+    const a = new Sim(3);
+    const file = JSON.parse(saveSim(a));
+    for (const p of file.sim.agents) delete p.needs.warmth;
+    const b = loadSim(JSON.stringify(file));
+    expect(b.agents.every((p) => p.needs.warmth === 100)).toBe(true);
+  });
+
   it('starts a need missing from an old save at its own backfill value, not the generic 80', () => {
     const a = new Sim(3);
     a.run(60);

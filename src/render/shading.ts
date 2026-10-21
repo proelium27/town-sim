@@ -55,6 +55,8 @@ export class Shading {
   private wallG = new Graphics();
   private propG = new Graphics();
   private keys = { lawn: '', walls: '', props: '' };
+  /** Grass tufts and flowers are buried under winter snow. */
+  season = 0;
 
   constructor(readonly map: TownMap) {
     this.chunksW = Math.ceil(map.w / CHUNK);
@@ -81,6 +83,7 @@ export class Shading {
       for (const c of this.lawnDirty) this.lawn(c);
       this.lawnDirty.clear();
     }
+    this.lawnG.visible = this.season !== 3;
     const walls = `${m.wallVersion}`;
     if (walls !== this.keys.walls) {
       this.keys.walls = walls;

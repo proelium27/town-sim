@@ -1,6 +1,7 @@
 import { ageOf } from '../sim/agents';
 import { ADULT_AGE, billText, MIN_PER_DAY, SEASON_DAYS, SEASONS, YEAR_DAYS, GOOD_KEYS, GOODS, PRIORITY_KEYS, PRIORITY_LABEL, type PriorityKey } from '../sim/defs';
 import { foodBalance } from '../sim/economy';
+import { winterReadiness, WINTER_STOCK_DAYS } from '../sim/seasons';
 import { WORLD_EVENTS, type WorldEventKey, triggerWorldEvent } from '../sim/events';
 import { allocateRoles, buildCap, capacity, stageOf } from '../sim/planner';
 import { first } from '../sim/social';
@@ -15,6 +16,22 @@ const dateOf = (t: number) => {
   const day = Math.floor(t / MIN_PER_DAY);
   return `${SEASONS[Math.floor(day / SEASON_DAYS) % SEASONS.length].slice(0, 3)} ${(day % SEASON_DAYS) + 1}, Y${Math.floor(day / YEAR_DAYS) + 1}`;
 };
+
+/** Autumn and winter: how long the stores would last, and which hearths are cold. */
+export function winterLine(sim: Sim): string {
+  if (sim.season < 2) return '';
+  const r = winterReadiness(sim);
+  // Days until winter starts (autumn) or ends (winter); the stores have to last until spring.
+  const toGo = (1 - sim.seasonProgress) * SEASON_DAYS;
+  const need = sim.season === 2 ? toGo + SEASON_DAYS : toGo;
+  const cold = sim.town.households.filter((h) => h.building >= 0 && sim.fuel[h.id] < 1).length;
+  // Firewood is split and carried to hearths all winter: the stores only need what the town keeps in
+  // through winter (autumn stocks a little more), or the days left if that's less.
+  const fuelNeed = Math.min(need, WINTER_STOCK_DAYS);
+  // Judged at the precision shown, so stores exactly on target read as enough.
+  const ok = (d: number, want = need) => (d >= want - 0.05 ? 'pos' : 'neg');
+  return `<p class="winter-line">Winter ${sim.season === 3 ? 'ends' : 'starts'} in ${toGo.toFixed(1)} days. Stores last: <b class="${ok(r.food)}">${r.food.toFixed(1)} days of food</b>, <b class="${ok(r.firewood, fuelNeed)}">${r.firewood.toFixed(1)} of firewood</b>${cold ? ` · <b class="neg">${cold} cold hearth${cold === 1 ? '' : 's'}</b>` : ''}</p>`;
+}
 
 /** Left-sidebar Town tab: stores, the player's priorities and world events, live projects, history. */
 export class TownPanel {
@@ -93,7 +110,8 @@ export class TownPanel {
     const sig = JSON.stringify([
       pop.length, kids, elders, beds, homeless, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
       sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
-      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), this.resetArmed,
+      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), this.resetArmed, sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
+      sim.season >= 2 && Math.round((1 - sim.seasonProgress) * SEASON_DAYS * 10),
     ]);
     if (sig === this.sig) return;
     this.sig = sig;
@@ -116,6 +134,7 @@ export class TownPanel {
           }).join('')}
         </div>
         ${ev.drought ? '<p class="warn-line">Drought: nothing is growing.</p>' : ''}
+        ${winterLine(sim)}
       </section>
       <section class="tp-sec">
         <h3>Priorities <small>what the town meetings lean toward</small></h3>

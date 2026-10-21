@@ -170,6 +170,7 @@ export function createAgent(sim: Sim, o: NewAgentOpts): Agent {
   };
   if (namesake) a.namedAfter = namesake.id;
   a.needs.energy = rng.range(70, 95);
+  a.needs.warmth = 100;
   for (const p of parents) {
     p.children.push(a.id);
     a.relations.set(p.id, { opinion: 60, familiarity: 90, lastTalk: -Infinity });
@@ -272,4 +273,6 @@ export const hasUmbrella = (a: Agent): boolean => ((a.id * 2654435761) >>> 0) % 
 /** Fills fields added since an older save was made. */
 export function backfillAgent(a: Agent): void {
   a.lastBirthday ??= 0;
+  // Saves from before winter: everyone starts warm.
+  a.needs.warmth ??= 100;
 }

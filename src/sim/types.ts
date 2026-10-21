@@ -30,7 +30,7 @@ export interface Thought {
 export type ActionKind =
   | 'idle' | 'wander' | 'stroll' | 'work' | 'meet' | 'eat' | 'snack' | 'coffee' | 'cook'
   | 'sleep' | 'toilet' | 'shower' | 'socialize' | 'play' | 'music' | 'read' | 'relax' | 'shop' | 'party' | 'repair'
-  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach' | 'mourn' | 'escort';
+  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach' | 'mourn' | 'escort' | 'split' | 'stoke';
 
 export interface Action {
   kind: ActionKind;
@@ -52,6 +52,8 @@ export interface Action {
   /** Haul: 'pickup' at the storehouse, then 'deliver' at the site. */
   leg?: 'pickup' | 'deliver';
   material?: Good;
+  /** Firewood delivery: the household it's for. */
+  household?: number;
 }
 
 export interface Task {

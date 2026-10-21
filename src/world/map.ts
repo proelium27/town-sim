@@ -3,7 +3,7 @@ import type { Facing, GroundKey, PropKey } from '../assets/manifest';
 export type DrawnKey =
   | 'monitor' | 'toilet' | 'basin' | 'whiteboard' | 'coffee' | 'shower' | 'net'
   | 'rock' | 'stump' | 'crop0' | 'crop1' | 'crop2' | 'crop3' | 'crate' | 'logs' | 'stones' | 'chalkboard' | 'deskKid'
-  | 'cake' | 'grave';
+  | 'cake' | 'grave' | 'bonfire';
 
 export type RoomKind =
   | 'office' | 'meeting' | 'kitchen' | 'lounge' | 'lobby' | 'restroom'

@@ -27,6 +27,7 @@ export function newHousehold(sim: Sim, name: string): Household {
   const h: Household = { id: sim.town.households.length, name, room: -1, door: { x: 0, y: 0 }, building: -1 };
   sim.town.households.push(h);
   sim.pantry.push(0);
+  sim.fuel.push(4);
   return h;
 }
 
@@ -174,10 +175,11 @@ function proposals(sim: Sim): Proposal[] {
 
   // ---- food
   const fw = weight(sim, 'food');
-  const fb = foodBalance(sim);
+  const fb = foodBalance(sim, true);
   const plannedFarms = sim.projects.filter((p) => p.blueprint === 'farm').length;
   const deficit = fb.eat - fb.produce - plannedFarms * 50;
-  if (deficit > 0 || sim.stock.food < sim.agents.length * 2) {
+  // Nobody breaks new fields in winter; nothing would grow before spring.
+  if (sim.season !== 3 && (deficit > 0 || sim.stock.food < sim.agents.length * 2)) {
     const farmer = sim.agents.find((a) => a.role === 'farmer');
     out.push({ bp: 'farm', score: (0.8 + Math.min(1, deficit / 40) + (sim.stock.food < sim.agents.length * 3 ? 0.6 : 0)) * fw, reason: sim.stock.food < sim.agents.length * 3 ? 'food stores are running low' : 'we will need more food as we grow', forAgents: [], proposer: farmer ?? charismatic(), name: `${['Sunny', 'River', 'Oak', 'Clover', 'Barley', 'Willow'][count('farm') % 6]} Farm` });
   }
@@ -431,7 +433,9 @@ export function allocateRoles(sim: Sim): void {
   const fw = PRIORITY_WEIGHT[sim.priorities.food];
   demand.push(['farmer', Math.max(1, Math.round(farms * 1.5 * fw)), null]);
   demand.push(['builder', Math.max(1, Math.round((1 + sim.projects.length * 0.8) * hw)), null]);
-  demand.push(['woodcutter', Math.max(1, Math.round((sim.stock.wood < 60 || sim.stock.stone < 40 ? 2 : 1) * mw)), null]);
+  // Autumn and winter need firewood split and carried to every hearth.
+  const cold = sim.season >= 2 ? 1 : 0;
+  demand.push(['woodcutter', Math.max(1, Math.round((sim.stock.wood < 60 || sim.stock.stone < 40 ? 2 : 1) * mw) + cold), null]);
 
   const assigned = new Set<number>();
   const changes: string[] = [];

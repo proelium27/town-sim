@@ -244,7 +244,7 @@ async function boot(): Promise<void> {
     world.root.position.set(Math.round(camera.cx - camera.x * camera.zoom), Math.round(camera.cy - camera.y * camera.zoom));
     const alpha = speed > 0 ? acc / STEP_MS : 1;
     people.update(Math.min(1, alpha), dt, speed, camera, app.screen.width, app.screen.height);
-    people.updateWeather(sim.hour, !!sim.events.rain, performance.now(), app.screen.width, app.screen.height);
+    people.updateWeather(sim.hour, !!sim.events.rain, performance.now(), app.screen.width, app.screen.height, sim.season, sim.seasonProgress, !!sim.events.snowstorm);
     uiTimer -= dt;
     if (uiTimer <= 0) {
       uiTimer = 0.25;
