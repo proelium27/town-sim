@@ -243,6 +243,11 @@ export function proposals(sim: Sim): Proposal[] {
   if (sim.agents.length >= 24 && count('diner') < Math.floor(sim.agents.length / 24)) {
     out.push({ bp: 'diner', score: 0.6 * cw, reason: 'the café is packed every lunchtime', forAgents: [], proposer: sim.agents.find((a) => a.traits.includes('foodie')) ?? charismatic(), name: `${['Corner', 'Hilltop', 'Lakeside'][count('diner') % 3]} Diner` });
   }
+  // After a fire, wells: water close at hand is what saves a building. One for every eight homes or so.
+  const homes = sim.map.buildings.filter((b) => b.kind === 'house').length;
+  if (sim.firesEver > 0 && count('well') < Math.max(1, Math.ceil(homes / 8))) {
+    out.push({ bp: 'well', score: 0.95 * cw, reason: 'the fire showed we need water close at hand', forAgents: [], proposer: charismatic(), name: `${['Market', 'Green', 'Hill', 'Corner'][count('well') % 4]} Well` });
+  }
   // A workshop once the town is big enough to keep one busy and has the timber to spare.
   if (sim.agents.length >= 22 && count('workshop') === 0 && sim.stock.wood >= 40) {
     // Its case grows with every few people past that, so a steady run of couples wanting homes can't starve it.
@@ -527,6 +532,7 @@ export function completeProject(sim: Sim, pr: Project): void {
     hhId = homeless ? residents[0].household : newHousehold(sim, pr.name).id;
   }
   const b = bp.stamp(m, pr.x, pr.y, pr.doorTop, pr.name, hhId);
+  if ((pr.need.bricks ?? 0) > 0) b.sturdy = true;
   for (const i of pr.path) if (BUILDABLE.has(m.ground[i])) m.setGround(m.cx(i), m.cy(i), 'dirt');
   m.setGround(b.door.x, b.door.y, 'plaza');
   stepOut(sim, b.door);

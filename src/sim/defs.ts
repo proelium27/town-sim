@@ -238,7 +238,7 @@ export type MemoryKind =
   | 'feelingIll' | 'hurt' | 'recovered' | 'frail' | 'caredFor' | 'lookedAfter' | 'proudTown' | 'roomToBreathe'
   | 'wonElection' | 'lostElection' | 'myCandidateWon'
   | 'engaged' | 'married' | 'wedding' | 'heartbroken' | 'funeral'
-  | 'dreamCameTrue' | 'dreamFaded' | 'skated' | 'lakeside';
+  | 'dreamCameTrue' | 'dreamFaded' | 'skated' | 'lakeside' | 'foughtFire' | 'houseFire';
 
 export interface MemoryDef {
   label: string;
@@ -327,4 +327,6 @@ export const MEMORIES: Record<MemoryKind, MemoryDef> = {
   dreamFaded: { label: 'Let go of a dream', mood: -6, duration: 2 * D, major: false, maxStack: 1 },
   skated: { label: 'Went skating on the lake', mood: 7, duration: D, major: false, maxStack: 1 },
   lakeside: { label: 'An afternoon by the lake', mood: 5, duration: D, major: false, maxStack: 1 },
+  foughtFire: { label: 'Helped fight a fire', mood: 7, duration: 2 * D, major: true, maxStack: 1 },
+  houseFire: { label: 'Our home caught fire', mood: -12, duration: 2 * D, major: true, maxStack: 1 },
 };

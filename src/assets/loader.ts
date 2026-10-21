@@ -253,6 +253,20 @@ export class Art {
         r(11, 4, 1, 8, '#4f4a45');
         r(5, 2, 6, 1, '#4f4a45');
         break;
+      case 'well':
+        // A stone well with a little roof and a winch.
+        r(3, 9, 10, 5, '#8d877f');
+        r(3, 9, 10, 1, '#b3ada4');
+        r(5, 10, 6, 2, '#3f6f8f');
+        r(3, 13, 10, 1, '#5f5a54');
+        r(4, 3, 1, 7, '#6b4a2e');
+        r(11, 3, 1, 7, '#6b4a2e');
+        r(2, 2, 12, 2, '#a8574a');
+        r(3, 1, 10, 1, '#c76a5a');
+        r(6, 6, 4, 1, '#8a5f37');
+        r(7, 7, 2, 2, '#7a5230');
+        r(2, 14, 12, 1, 'rgba(0,0,0,0.25)');
+        break;
       case 'bucket':
         // A wooden pail with a fishing rod leaning on it.
         r(4, 9, 6, 5, '#7a5230');

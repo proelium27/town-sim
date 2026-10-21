@@ -12,6 +12,7 @@ import { emptyLedger, tickMarket } from './market';
 import { tickPolitics } from './politics';
 import { tickRites } from './rites';
 import { tickLake } from './lake';
+import { type Fire, tickFires } from './fire';
 import { type Annal, type ChronicleEntry, tickChronicle } from './chronicle';
 import { tickSeasons } from './seasons';
 import { Rng } from './rng';
@@ -94,7 +95,11 @@ export class Sim {
   tasksCompleted = 0;
   nextCarId = 1;
   /** Countdown timers (game minutes) for periodic systems. */
-  timers = { plan: 30, roles: 0, regrow: 0, life: 60, arrival: 1.5 * 1440 };
+  timers = { plan: 30, roles: 0, regrow: 0, life: 60, arrival: 1.5 * 1440, fire: 60 };
+  /** Fires burning right now. */
+  fires: Fire[] = [];
+  /** Fires the town has ever had. */
+  firesEver = 0;
 
   constructor(seed = 7, opts: { agents?: boolean } = {}) {
     this.seed = seed;
@@ -205,6 +210,7 @@ export class Sim {
     tickRites(this);
     tickSeasons(this, STEP);
     tickLake(this);
+    tickFires(this, STEP);
     tickMarket(this);
     tickPolitics(this);
     tickLife(this, STEP);

@@ -85,6 +85,9 @@ export function loadSim(text: string): Sim {
   // The chronicle starts from whatever headlines the saved feed still holds.
   if (!('chronicle' in rest)) sim.chronicle = sim.activity.filter((e) => (e.weight ?? 0) >= HEADLINE).map(({ t, text, agentId, otherId }) => ({ t, text, agentId, otherId }));
   if (!('chronicleSeen' in rest)) sim.chronicleSeen = sim.activityVersion;
+  sim.fires ??= [];
+  sim.firesEver ??= 0;
+  sim.timers.fire ??= 60;
   sim.events.birthdays ??= [];
   sim.events.weddings ??= [];
   sim.events.funerals ??= [];

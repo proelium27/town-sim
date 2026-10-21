@@ -217,6 +217,14 @@ function stampDock(m: TownMap, x: number, y: number, doorTop: boolean, name: str
   return b;
 }
 
+/** A town well: a paved square with the well in the middle. Firefighters near one work much faster. */
+function stampWell(m: TownMap, x: number, y: number, doorTop: boolean, name: string, time = 0): Building {
+  const [s, b] = begin(m, 'well', name, x, y, 3, 3, 1, doorTop, time);
+  s.fill(0, 0, 3, 3, 'plaza');
+  s.drawn('well', 1, 1, 1, 1);
+  return b;
+}
+
 /** Headstone tiles in a cemetery, in burial order: three rows either side of the center path. */
 export function graveSlots(b: Building): { x: number; y: number }[] {
   const out: { x: number; y: number }[] = [];
@@ -224,7 +232,7 @@ export function graveSlots(b: Building): { x: number; y: number }[] {
   return out;
 }
 
-export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park' | 'cemetery' | 'workshop' | 'clinic' | 'extension' | 'dock', Blueprint> = {
+export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park' | 'cemetery' | 'workshop' | 'clinic' | 'extension' | 'dock' | 'well', Blueprint> = {
   house: {
     kind: 'house', noun: 'a new home', coins: 40, w: 11, h: 8, cost: { wood: 40, stone: 20 }, refined: { wood: 16, stone: 10, planks: 16, bricks: 8, furniture: 2 }, work: 300, doorX: 4, outdoor: false,
     stamp: (m, x, y, top, name, hh) => stampHouse(m, x, y, top, name, hh ?? 0, true),
@@ -244,6 +252,7 @@ export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'di
     },
   },
   cemetery: { kind: 'cemetery', noun: 'a cemetery', coins: 15, w: 9, h: 7, cost: { wood: 4, stone: 10 }, work: 100, doorX: 4, outdoor: true, stamp: (m, x, y, top, name) => stampCemetery(m, x, y, top, name) },
+  well: { kind: 'well', noun: 'a well', coins: 10, w: 3, h: 3, cost: { wood: 4, stone: 12 }, work: 70, doorX: 1, outdoor: true, stamp: (m, x, y, top, name) => stampWell(m, x, y, top, name) },
   dock: { kind: 'dock', noun: 'a fishing dock', coins: 20, w: 5, h: 3, cost: { wood: 18, stone: 0 }, work: 120, doorX: 2, outdoor: true, stamp: (m, x, y, top, name) => stampDock(m, x, y, top, name) },
 };
 

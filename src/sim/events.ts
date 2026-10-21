@@ -1,5 +1,6 @@
 import { ageOf } from './agents';
 import { deeds } from './aspirations';
+import { burns, fireAt, lightning, startFire } from './fire';
 import { BIRTHDAY_HOUR, ELECTION_DAY, MIN_PER_DAY, plural, RALLY_HOUR, RALLY_LENGTH, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
 import { fallIll } from './health';
 import { TRADER_EVERY } from './market';
@@ -381,7 +382,7 @@ function endParty(sim: Sim): void {
   sim.log(people.length ? `The party wound down. ${plural(people.length, 'person', 'people')} had a good time` : 'Nobody showed up to the party', 'event', people.length ? 'good' : 'bad');
 }
 
-export type WorldEventKey = 'festival' | 'harvest' | 'newcomers' | 'trader' | 'drought' | 'storm' | 'snowstorm' | 'outbreak';
+export type WorldEventKey = 'festival' | 'harvest' | 'newcomers' | 'trader' | 'drought' | 'storm' | 'snowstorm' | 'outbreak' | 'fire';
 
 export const WORLD_EVENTS: { key: WorldEventKey; label: string; hint: string; tone: 'good' | 'bad' }[] = [
   { key: 'festival', label: 'Hold a festival', hint: 'Everyone gathers in the park for a few hours', tone: 'good' },
@@ -392,6 +393,7 @@ export const WORLD_EVENTS: { key: WorldEventKey; label: string; hint: string; to
   { key: 'storm', label: 'Storm', hint: 'Rain, flattened crops and fallen trees', tone: 'bad' },
   { key: 'outbreak', label: 'Outbreak', hint: 'A flu starts going around town', tone: 'bad' },
   { key: 'snowstorm', label: 'Blizzard', hint: 'Heavy snow and bitter cold for six hours', tone: 'bad' },
+  { key: 'fire', label: 'Fire', hint: 'A building catches fire; the town comes running with buckets', tone: 'bad' },
 ];
 
 /** Player-triggered happenings. The townsfolk react on their own. */
@@ -450,6 +452,12 @@ export function triggerWorldEvent(sim: Sim, key: WorldEventKey): void {
       for (const a of sim.agents) if (m.room[a.at] < 0 && sim.rng.chance(0.12)) fallIll(sim, a, 'injury', 'caught out in the storm');
       const damage = [hit && `flattening ${hit.name}`, fallen && `toppling ${plural(fallen, 'tree')}`].filter(Boolean).join(' and ');
       sim.log(`A storm rolled through${damage ? `, ${damage}` : ''}`, 'event', 'bad').weight = HEADLINE;
+      lightning(sim);
+      break;
+    }
+    case 'fire': {
+      const homes = m.buildings.filter((b) => burns(b) && !fireAt(sim, b.id));
+      if (homes.length) startFire(sim, sim.rng.pick(homes), 'a lamp knocked over');
       break;
     }
   }

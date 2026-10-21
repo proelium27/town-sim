@@ -99,6 +99,10 @@ export function candidates(sim: Sim, rand: () => number = Math.random): Shot[] {
     if (!at) continue;
     out.push({ key: `wedding:${w.couple[0]}`, kind: 'gathering', x: at[0], y: at[1], span: home ? 16 : 24, caption: `${weddingNames(sim, w)}'s wedding`, score: 28, hold: 15 });
   }
+  for (const f of sim.fires) {
+    const b = sim.building(f.building);
+    if (b) out.push({ key: `fire:${b.id}`, kind: 'gathering', x: b.x + b.w / 2, y: b.y + b.h / 2, span: 22, caption: `Fire at the ${b.name}!`, score: 32, hold: 15 });
+  }
   const cemetery = sim.map.buildings.find((b) => b.kind === 'cemetery');
   for (const f of ev.funerals) {
     const dead = sim.person(f.dead);
