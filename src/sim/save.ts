@@ -3,6 +3,7 @@ import { backfillAgent } from './agents';
 import { emptyLedger } from './market';
 import { Nav } from './nav';
 import { Sim } from './sim';
+import { freshCivic } from './civic';
 import { HEADLINE } from './types';
 
 /** Bump when the saved shape changes, and add a step to MIGRATIONS that upgrades the old shape. */
@@ -81,6 +82,9 @@ export function loadSim(text: string): Sim {
   sim.travelSeen ??= [];
   sim.businesses ??= [];
   sim.dinnerDay ??= -1;
+  sim.civic ??= freshCivic();
+  sim.recalled ??= null;
+  sim.snapElection ??= null;
   sim.ledger.loans ??= 0;
   if (sim.lastLedger) sim.lastLedger.loans ??= 0;
   for (const a of [...sim.agents, ...sim.deceased, ...sim.departed]) {

@@ -2,6 +2,7 @@ import { ageOf } from './agents';
 import { ADULT_AGE, ELECTION_DAY, plural, PRIORITY_LABEL, type PriorityKey, RALLY_HOUR, RALLY_LENGTH, type TraitKey, YEAR_DAYS } from './defs';
 import { foodBalance } from './economy';
 import { addMemory, first, kinship, say, shiftOpinion, think } from './social';
+import { judgePromise, recordPull, takeOffice } from './civic';
 import type { Sim } from './sim';
 import { HEADLINE, type Agent } from './types';
 
@@ -84,6 +85,11 @@ export function tickPolitics(sim: Sim): void {
   const h = sim.hour;
   const e = sim.election;
   if (dayOfYear === ELECTION_DAY && h >= 9 && (!e || e.year !== sim.year)) openCampaign(sim);
+  // A recall leaves the office empty until a special election the next day.
+  if (sim.snapElection !== null && sim.day >= sim.snapElection && h >= 9) {
+    sim.snapElection = null;
+    openCampaign(sim, true);
+  }
   const cur = sim.election;
   if (!cur || cur.year !== sim.year || cur.stage === 'done') return;
   if (!dropAbsent(sim, cur)) return;
@@ -107,8 +113,10 @@ function dropAbsent(sim: Sim, e: ElectionState): boolean {
   return false;
 }
 
-function openCampaign(sim: Sim): void {
-  const adults = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE && a.role !== 'retired');
+function openCampaign(sim: Sim, special = false): void {
+  // The town takes stock of the sitting mayor's promise before it votes.
+  judgePromise(sim);
+  const adults = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE && a.role !== 'retired' && a.id !== sim.recalled);
   if (adults.length < 4) return;
   // The well-liked and the persuasive stand; a sitting mayor stands again.
   const liked = (a: Agent) => sim.agents.reduce((s, o) => s + (o.relations.get(a.id)?.opinion ?? 0), 0) / sim.agents.length;
@@ -131,7 +139,7 @@ function openCampaign(sim: Sim): void {
     const a = sim.agent(c.id)!;
     think(sim, a, `I'm standing for mayor. This town needs ${PITCH[c.platform]}.`, 'good');
   }
-  sim.log(`Election day! Standing for mayor: ${candidates.map((c) => `${first(sim.agent(c.id)!)} (${PRIORITY_LABEL[c.platform].toLowerCase()})`).join(', ')}. Rally at 17:00, votes at 19:00`, 'event', 'good');
+  sim.log(`${special ? 'A special election after the recall!' : 'Election day!'} Standing for mayor: ${candidates.map((c) => `${first(sim.agent(c.id)!)} (${PRIORITY_LABEL[c.platform].toLowerCase()})`).join(', ')}. Rally at 17:00, votes at 19:00`, 'event', 'good');
 }
 
 /** Opinion points worth one unit of vote score: a candidate liked 10 points better is worth about a platform match. */
@@ -153,7 +161,7 @@ export function voteScore(sim: Sim, v: Agent, c: Candidate, wants: PriorityKey[]
   const cand = sim.agent(c.id);
   const rank = wants.indexOf(c.platform);
   const fatigue = c.id === sim.mayor ? TERM_FATIGUE * Math.max(0, sim.mayorTerms - 1) : 0;
-  return (v.relations.get(c.id)?.opinion ?? 0) / OPINION_SCALE + (PLATFORM_PULL[rank] ?? 0) + (cand && kinship(sim, v, cand) ? KIN_PULL : 0) - fatigue;
+  return (v.relations.get(c.id)?.opinion ?? 0) / OPINION_SCALE + (PLATFORM_PULL[rank] ?? 0) + (cand && kinship(sim, v, cand) ? KIN_PULL : 0) - fatigue + recordPull(sim, c.id);
 }
 
 /** Each adult backs the candidate they like best, weighed by whether the platform speaks to them. */
@@ -196,6 +204,8 @@ function vote(sim: Sim, e: ElectionState): void {
   sim.agenda = platform;
   e.stage = 'done';
   sim.lastElection = { year: e.year, winner: winnerId, platform, votes };
+  sim.recalled = null;
+  takeOffice(sim, winner, platform, was === winnerId);
   addMemory(sim, winner, 'wonElection');
   say(sim, winner, `thank you, ${sim.name}!`, 'good', 8);
   for (const c of e.candidates) {

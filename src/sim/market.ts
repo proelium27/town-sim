@@ -3,6 +3,7 @@ import { addMemory, first, kinship, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
 import { depart } from './travel';
 import { settleBusinesses } from './business';
+import { bonusShare, taxRate } from './civic';
 import { HEADLINE, NOTABLE, type Agent } from './types';
 import type { Household } from '../world/town';
 import { targetOf } from './workshop';
@@ -53,9 +54,10 @@ export function payWage(sim: Sim, a: Agent, nominal: number): void {
   // Owners draw their pay from their own till each night.
   if (a.role === 'baker' || a.role === 'innkeeper') return;
   if (ROLES[a.role].workplace === 'office') {
-    a.money += nominal * (1 - TAX);
-    sim.treasury += nominal * TAX;
-    sim.ledger.taxes += nominal * TAX;
+    const tax = taxRate(sim);
+    a.money += nominal * (1 - tax);
+    sim.treasury += nominal * tax;
+    sim.ledger.taxes += nominal * tax;
     return;
   }
   const w = nominal * TOWN_WAGE;
@@ -207,7 +209,7 @@ function payOut(sim: Sim): void {
     think(sim, a, 'The town helped me out while money is tight.', 'good');
   }
   const reserve = Math.max(RESERVE_MIN, RESERVE_DAYS * sim.lastLedger.wages);
-  const pot = Math.floor((sim.treasury - reserve) * BONUS_SHARE);
+  const pot = Math.floor((sim.treasury - reserve) * bonusShare(sim));
   if (pot < 20 || !workers.length) return;
   // Weighted to those with the least: someone down to their last dollar gets several times a saver's share.
   const weight = (a: Agent) => 1 / (Math.max(0, a.money) + 25);

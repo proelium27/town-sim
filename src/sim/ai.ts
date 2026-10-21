@@ -7,6 +7,7 @@ import { dreamLean } from './aspirations';
 import { catchFor, lakeCells } from './lake';
 import { burningAt, gutted, mend } from './fire';
 import { businessAt, priceAt, sell, TAVERN_CLOSE, TAVERN_OPEN, townMeal } from './business';
+import { hallName, protestArea, SLOGANS } from './civic';
 import { birthdayNames } from './events';
 import { funeralOf, mourns, weddingNames, weddingOf, weddingRole } from './rites';
 import { CARRY, HAUL_PAUSE, laborPlan, siteEdges } from './labor';
@@ -662,6 +663,12 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   if (sim.events.festival && !sleepTime && stage !== 'toddler' && !storm) {
     o.push(areaOption(sim, a, 'party', 1.15 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.25 : 0), 'Town festival', `At the ${(sim.events.festival.name ?? 'town festival').toLowerCase()}`, PARK, 9999));
   }
+  // A protest: the unhappy turn out with their slogans (the mayor stays away).
+  const protest = sim.civic.protest;
+  if (protest?.on && !little && !sleepTime && !storm && !offSick(a) && a.id !== sim.mayor) {
+    const ap = sim.civic.approval.get(a.id) ?? 50;
+    if (ap < 45) o.push(areaOption(sim, a, 'protest', 1.0 + (45 - ap) / 40 - (workTime ? 0.3 : 0), 'Protest', `Protesting outside ${hallName(sim)}`, protestArea(sim), 9999));
+  }
   // Election rally: candidates make their case in the park; most grown-ups come and listen.
   const race = sim.election;
   if (race && race.year === sim.year && race.stage === 'rally' && stage !== 'toddler' && !sleepTime && !storm) {
@@ -964,7 +971,7 @@ function decide(sim: Sim, a: Agent, stage: Stage): void {
     const same = opts.find((x) => x.kind === cur.kind);
     currentScore = (same ? same.score : cur.score * 0.8) + INERTIA;
     // Don't abandon things halfway through for marginal gains.
-    if (cur.stage === 'perform' && ['sleep', 'eat', 'shower', 'toilet', 'socialize', 'cook', 'meet', 'play', 'repair', 'party', 'chop', 'mine', 'farm', 'learn', 'drink'].includes(cur.kind)) currentScore += 0.6;
+    if (cur.stage === 'perform' && ['sleep', 'eat', 'shower', 'toilet', 'socialize', 'cook', 'meet', 'play', 'repair', 'party', 'chop', 'mine', 'farm', 'learn', 'drink', 'protest'].includes(cur.kind)) currentScore += 0.6;
     if (cur.kind === 'haul' || cur.kind === 'deposit' || cur.kind === 'stoke') currentScore += 1;
     // Don't wander off from someone you're walking with.
     if (a.walkWith !== undefined && cur.stage === 'travel') currentScore += 0.4;
@@ -1019,6 +1026,7 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
     case 'stoke': return `${o.reason}. I'll bring them some firewood.`;
     case 'build': return `${a.action.label}. Let's get this up.`;
     case 'fish': return 'Off to the pier. The fish should be biting.';
+    case 'protest': return 'Enough is enough. Off to the protest.';
     case 'drink': return o.reason.startsWith('Meeting ') ? `${o.reason}. I hope they save me a seat.` : 'Long day. A drink at the tavern sounds right.';
     case 'firefight': return `${o.reason} Grab a bucket!`;
     case 'mend': return `${o.reason}. Let's get it fixed up.`;
@@ -1044,7 +1052,7 @@ function urgent(sim: Sim, a: Agent): boolean {
 }
 
 /** What someone off sick stops doing at once, whatever stage it's at. */
-const SICK_STOPS: ActionKind[] = ['work', 'teach', 'learn', 'build', 'chop', 'mine', 'farm', 'fish', 'firefight', 'mend', 'haul', 'split', 'stoke', 'craft', 'pave', 'meet'];
+const SICK_STOPS: ActionKind[] = ['work', 'teach', 'learn', 'build', 'chop', 'mine', 'farm', 'fish', 'firefight', 'mend', 'protest', 'haul', 'split', 'stoke', 'craft', 'pave', 'meet'];
 
 // ------------------------------------------------------------------ performing
 
@@ -1090,6 +1098,9 @@ function arrive(sim: Sim, a: Agent): void {
     }
     case 'drink':
       sell(sim, a, sim.map.prop(act.propId)?.building, 'drink');
+      break;
+    case 'protest':
+      sim.civic.protest?.attendees.add(a.id);
       break;
     case 'socialize': {
       const p = sim.agent(act.partnerId);
@@ -1475,6 +1486,13 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       return performFarm(sim, a, dt, tick);
     case 'fish':
       return performFish(sim, a, dt, tick);
+    case 'protest': {
+      const pr = sim.civic.protest;
+      if (!pr || !pr.on) return finish(sim, a);
+      n.social = Math.min(100, n.social + socialGain(a, 0.3) * dt);
+      if (sim.rng.chance(0.03 * dt)) say(sim, a, sim.rng.pick(SLOGANS[pr.grievance]), 'bad', 3);
+      return;
+    }
     case 'drink': {
       n.fun = Math.min(100, n.fun + 0.6 * dt);
       n.social = Math.min(100, n.social + socialGain(a, 0.6) * dt);

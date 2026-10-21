@@ -5,7 +5,7 @@ import type { Building, TownMap } from '../world/map';
 
 type Wall = 'brick' | 'stone' | 'sand' | 'glass' | 'plank';
 type Win = 'wood' | 'wood4' | 'steel' | 'steel4' | 'arch' | 'none';
-type Icon = 'book' | 'bell' | 'bowl' | 'crate' | 'hammer' | 'cross' | 'bread' | 'mug';
+type Icon = 'book' | 'bell' | 'bowl' | 'crate' | 'hammer' | 'cross' | 'bread' | 'mug' | 'flag';
 
 /** How one building looks from outside. */
 interface Look {
@@ -56,6 +56,8 @@ function lookFor(b: Building): Look | null {
       };
     case 'office':
       return { roof: 'flat', roofColor: 0xb4b8bc, wall: 'glass', window: 'none', door: 'glass', ac: 5, facade: 3 };
+    case 'townhall':
+      return { roof: 'pitched', roofColor: 0x4f6b5a, wall: 'stone', window: 'arch', door: 'wood', sign: 'flag', facade: 3 };
     case 'tavern':
       return { roof: 'pitched', roofColor: 0x6e3b32, wall: 'plank', window: 'wood4', door: 'wood', sign: 'mug', chimney: true, facade: 3 };
     case 'cafe':
@@ -478,6 +480,12 @@ export class Exteriors {
         ic(-3, -6, 1, 2, 0x9a9590);
         ic(0, -7, 1, 3, 0x9a9590);
         ic(2, -6, 1, 2, 0x9a9590);
+        break;
+      case 'flag':
+        // A flag on a pole.
+        ic(-3, -8, 1, 8, 0x8a8580);
+        ic(-2, -8, 5, 3, 0xc8473a);
+        ic(-2, -6, 5, 1, 0xa83a2f);
         break;
       case 'bread':
         // A loaf with scored top.

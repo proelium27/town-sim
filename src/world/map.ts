@@ -7,7 +7,7 @@ export type DrawnKey =
 
 export type RoomKind =
   | 'office' | 'meeting' | 'kitchen' | 'lounge' | 'lobby' | 'restroom'
-  | 'home' | 'cafe' | 'shop' | 'library' | 'storehouse' | 'school' | 'workshop' | 'clinic' | 'tavern';
+  | 'home' | 'cafe' | 'shop' | 'library' | 'storehouse' | 'school' | 'workshop' | 'clinic' | 'tavern' | 'hall';
 
 export interface Room {
   id: number;
@@ -59,7 +59,7 @@ export interface Prop {
   label?: string;
 }
 
-export type BuildingKind = 'office' | 'cafe' | 'market' | 'library' | 'house' | 'farm' | 'storehouse' | 'school' | 'park' | 'workshop' | 'cemetery' | 'clinic' | 'dock' | 'well' | 'tavern';
+export type BuildingKind = 'office' | 'cafe' | 'market' | 'library' | 'house' | 'farm' | 'storehouse' | 'school' | 'park' | 'workshop' | 'cemetery' | 'clinic' | 'dock' | 'well' | 'tavern' | 'townhall';
 
 export interface Building {
   id: number;

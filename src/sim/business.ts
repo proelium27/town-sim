@@ -1,6 +1,7 @@
 import { ageOf } from './agents';
 import { ADULT_AGE, MIN_PER_DAY, type RoleKey, SEASON_DAYS } from './defs';
-import { BASE_PRICE, price, spend, TAX } from './market';
+import { BASE_PRICE, price, spend } from './market';
+import { taxRate } from './civic';
 import { setRole } from './planner';
 import { addMemory, first, think } from './social';
 import { Rng } from './rng';
@@ -70,7 +71,8 @@ export function ownedBy(sim: Sim, a: Agent): Business | undefined {
 /** 0.85 in a glut (they undercut the town), 1.25 in a shortage (they charge what it'll bear), else 1. */
 export function priceMood(sim: Sim): number {
   const r = price(sim, 'food') / BASE_PRICE.food;
-  return r < 0.9 ? 0.85 : r > 1.5 ? 1.25 : 1;
+  // The mayor can cap them at the town's own prices.
+  return r < 0.9 ? 0.85 : r > 1.5 && !sim.civic.policies.priceCap ? 1.25 : 1;
 }
 
 /** What a meal costs at the café or a town-run place. */
@@ -96,7 +98,7 @@ export function sell(sim: Sim, a: Agent, building: number | undefined, item: 'me
   }
   const pay = Math.min(Math.max(0, a.money), amount);
   a.money -= pay;
-  const tax = pay * TAX;
+  const tax = pay * taxRate(sim);
   sim.treasury += tax;
   sim.ledger.taxes += tax;
   biz.till += pay - tax;

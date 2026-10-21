@@ -1,6 +1,7 @@
 import { ageOf } from './agents';
 import { deeds } from './aspirations';
 import { burns, fireAt, lightning, startFire } from './fire';
+import { festivalHeld } from './civic';
 import { BIRTHDAY_HOUR, ELECTION_DAY, MIN_PER_DAY, plural, RALLY_HOUR, RALLY_LENGTH, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
 import { fallIll } from './health';
 import { TRADER_EVERY } from './market';
@@ -336,6 +337,7 @@ function endBirthday(sim: Sim, b: Birthday): void {
 /** Everyone into the park for the next three hours. Callers announce it. */
 export function startFestival(sim: Sim, name: string): void {
   sim.events.festival = { until: sim.time + FESTIVAL_LENGTH, attendees: new Set(), name };
+  festivalHeld(sim);
   lightBonfire(sim);
 }
 
@@ -382,7 +384,7 @@ function endParty(sim: Sim): void {
   sim.log(people.length ? `The party wound down. ${plural(people.length, 'person', 'people')} had a good time` : 'Nobody showed up to the party', 'event', people.length ? 'good' : 'bad');
 }
 
-export type WorldEventKey = 'festival' | 'harvest' | 'newcomers' | 'trader' | 'drought' | 'storm' | 'snowstorm' | 'outbreak' | 'fire';
+export type WorldEventKey = 'festival' | 'harvest' | 'newcomers' | 'trader' | 'drought' | 'storm' | 'snowstorm' | 'outbreak' | 'fire' | 'recall';
 
 export const WORLD_EVENTS: { key: WorldEventKey; label: string; hint: string; tone: 'good' | 'bad' }[] = [
   { key: 'festival', label: 'Hold a festival', hint: 'Everyone gathers in the park for a few hours', tone: 'good' },
@@ -393,6 +395,7 @@ export const WORLD_EVENTS: { key: WorldEventKey; label: string; hint: string; to
   { key: 'storm', label: 'Storm', hint: 'Rain, flattened crops and fallen trees', tone: 'bad' },
   { key: 'outbreak', label: 'Outbreak', hint: 'A flu starts going around town', tone: 'bad' },
   { key: 'snowstorm', label: 'Blizzard', hint: 'Heavy snow and bitter cold for six hours', tone: 'bad' },
+  { key: 'recall', label: 'Recall vote', hint: 'The town votes tonight on whether to keep its mayor', tone: 'bad' },
   { key: 'fire', label: 'Fire', hint: 'A building catches fire; the town comes running with buckets', tone: 'bad' },
 ];
 
@@ -455,10 +458,26 @@ export function triggerWorldEvent(sim: Sim, key: WorldEventKey): void {
       lightning(sim);
       break;
     }
+    case 'recall': {
+      if (sim.mayor === null) {
+        sim.log('There is no mayor to recall', 'event', 'neutral');
+        break;
+      }
+      const c = sim.civic;
+      c.recallAt = Math.max(sim.time + 30, sim.day * MIN_PER_DAY + 19.5 * 60);
+      sim.log(`A petition forces a recall vote on Mayor ${first(sim.agent(sim.mayor)!)} at ${hhmmOf(c.recallAt)}`, 'event', 'bad').weight = HEADLINE;
+      break;
+    }
     case 'fire': {
       const homes = m.buildings.filter((b) => burns(b) && !fireAt(sim, b.id));
       if (homes.length) startFire(sim, sim.rng.pick(homes), 'a lamp knocked over');
       break;
     }
   }
+}
+
+/** "19:30". */
+function hhmmOf(t: number): string {
+  const m = Math.floor(t % MIN_PER_DAY);
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 }

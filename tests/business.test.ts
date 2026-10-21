@@ -17,6 +17,8 @@ const adults = (sim: Sim) => sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE
 function town(): Sim {
   const sim = new Sim(6);
   at(sim, 8, 9);
+  // Day 8 opens a season: a mayor fond of festivals would hold a fête tonight, and the tavern can't compete.
+  sim.civic.policies.festivals = 'normal';
   return sim;
 }
 
