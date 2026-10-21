@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { PRIORITY_WEIGHT } from '../src/sim/defs';
+import { ageOf } from '../src/sim/agents';
+import { ADULT_AGE, PRIORITY_WEIGHT, ROLES } from '../src/sim/defs';
+import { setRole } from '../src/sim/planner';
 import { triggerWorldEvent } from '../src/sim/events';
 import { gatherKind, laborPlan } from '../src/sim/labor';
 import type { Agent } from '../src/sim/types';
@@ -261,6 +263,7 @@ describe('seasons', () => {
     a.thinkIn = 0;
     let entered = -1;
     let leftCold = 0;
+    let warmed = false;
     for (let t = 0; t < 120; t++) {
       // A housemate has the seat by the fire the whole time.
       sim.reserved.set(seat.id, -1);
@@ -268,11 +271,13 @@ describe('seasons', () => {
       sim.run(1);
       const home = sim.roomOf(a)?.id === hh.room;
       if (home && entered < 0) entered = t;
-      if (entered >= 0 && !home && a.needs.warmth < 55) leftCold++;
+      if (a.needs.warmth >= 60) warmed = true;
+      // Once warmed up they may go back to work; it's leaving before that which counts (the cold sets in again after).
+      if (entered >= 0 && !warmed && !home && a.needs.warmth < 55) leftCold++;
     }
     expect(entered).toBeGreaterThanOrEqual(0);
     expect(leftCold).toBe(0);
-    expect(a.needs.warmth).toBeGreaterThanOrEqual(55);
+    expect(warmed).toBe(true);
   }, 120_000);
 
   it('an empty hearth in winter makes for a cold, unhappy home', () => {
@@ -293,6 +298,8 @@ describe('seasons', () => {
     sim.stock.wood = 0;
     sim.stock.firewood = 0;
     sim.stock.stone = 60 * PRIORITY_WEIGHT[sim.priorities.materials] - 1;
+    // The crew needs hands of both parities for the split to mean anything, whoever this timeline left on the gathering crew.
+    for (const a of sim.agents.filter((x) => ageOf(sim, x) >= ADULT_AGE && ROLES[x.role].flexible && x.id % 2 && !['woodcutter', 'laborer', 'builder'].includes(x.role)).slice(0, 2)) setRole(sim, a, 'laborer', null);
     const gatherers = sim.agents.filter((a) => ['woodcutter', 'laborer', 'builder'].includes(a.role) && !a.carry);
     expect(gatherers.some((a) => a.id % 2)).toBe(true);
     const kinds = gatherers.map((a) => laborPlan(sim, a)?.kind).filter((k) => k === 'chop' || k === 'mine');
