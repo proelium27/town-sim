@@ -27,6 +27,7 @@ export function badgesFor(a: Agent): Badge[] {
   if (n.hygiene < 22) out.push({ key: 'hygiene', glyph: '~', color: 0x5a9fb8, urgent: n.hygiene < 10 });
   if (n.social < 18) out.push({ key: 'social', glyph: '…', color: 0xc94f7c, urgent: n.social < 8 });
   if (n.fun < 15) out.push({ key: 'fun', glyph: '☹', color: 0x8a5cc2, urgent: n.fun < 6 });
+  if (a.illness) out.push({ key: 'health', glyph: '+', color: 0x3f9e74, urgent: a.illness.severity > 0.6 });
   if (a.mood < 28) out.push({ key: 'mood', glyph: '⚡', color: 0xd04a3a, urgent: a.mood < 15 });
   return out.slice(0, 3);
 }
@@ -191,9 +192,9 @@ export class AgentsView {
       const y = (a.py + (a.y - a.py) * alpha + 1) * TILE - 2 + oy;
       const moving = a.moving && speed > 0;
       if (moving) s.anim += dtSec * 7 * Math.max(1, speed);
-      const facing: Facing = a.action.kind === 'sleep' && a.action.stage === 'perform' ? 'down' : a.facing;
+      const facing: Facing = (a.action.kind === 'sleep' || a.action.kind === 'rest') && a.action.stage === 'perform' ? 'down' : a.facing;
       s.body.texture = s.frames[facing][moving ? Math.floor(s.anim) % 4 : 0];
-      const lying = a.action.kind === 'sleep' && a.action.stage === 'perform';
+      const lying = (a.action.kind === 'sleep' || a.action.kind === 'rest') && a.action.stage === 'perform';
       if (lying) {
         // Tucked into bed: rotate about the middle of the tile and draw above the bed sprite.
         s.body.anchor.set(0.5, 0.5);

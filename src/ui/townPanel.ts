@@ -148,11 +148,12 @@ export class TownPanel {
     const homes = sim.town.households.filter((h) => h.building >= 0);
     const beds = homes.reduce((n, h) => n + capacity(sim, h.id), 0);
     const homeless = pop.filter((a) => sim.town.households[a.household].building < 0).length;
+    const sick = pop.filter((a) => a.illness).length;
     const fb = foodBalance(sim);
     const net = fb.produce - fb.eat;
     const projects = sim.projects.map((p) => ({ p, stage: stageOf(sim, p) }));
     const sig = JSON.stringify([
-      pop.length, kids, elders, beds, homeless, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
+      pop.length, kids, elders, beds, homeless, sick, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
       sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
       sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), this.resetArmed, Math.round(sim.treasury / 5), sim.lastLedger, (['food', 'firewood', 'tools'] as const).map((g) => price(sim, g)), hasWorkshop(sim), chains(sim).map((c) => [c.have, c.target, c.stuck]), sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
       sim.season >= 2 && Math.round((1 - sim.seasonProgress) * SEASON_DAYS * 10),
@@ -164,7 +165,7 @@ export class TownPanel {
     this.root.innerHTML = `
       <section class="tp-sec">
         <dl class="tp-stats">
-          <div><dt>People</dt><dd class="num">${pop.length}</dd><span>${plural(kids, 'kid')}, ${elders} retired</span></div>
+          <div><dt>People</dt><dd class="num">${pop.length}</dd><span>${plural(kids, 'kid')}, ${elders} retired${sick ? `, <b class="neg">${sick} sick</b>` : ''}</span></div>
           <div><dt>Homes</dt><dd class="num">${homes.length}</dd><span>${plural(beds, 'bed')}${homeless ? `, <b class="neg">${homeless} homeless</b>` : ''}</span></div>
           <div><dt>Buildings</dt><dd class="num">${sim.map.buildings.length}</dd><span>${sim.projects.length} going up</span></div>
         </dl>

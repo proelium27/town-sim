@@ -1,5 +1,6 @@
 import { MEMORIES, type MemoryKind, NEED_KEYS, NEEDS, type NeedKey, type TraitKey } from './defs';
 import { clamp } from './rng';
+import { exposure } from './health';
 import type { Agent, Relation, Tone } from './types';
 import type { Sim } from './sim';
 
@@ -195,6 +196,8 @@ export function converse(sim: Sim, a: Agent, b: Agent): 'chat' | 'argument' {
   rb.familiarity = Math.min(100, rb.familiarity + 6);
   ra.lastTalk = rb.lastTalk = sim.time;
   const topic = rng.pick(TOPICS);
+  exposure(sim, a, b);
+  exposure(sim, b, a);
   if (rng.chance(pArg)) {
     shiftOpinion(sim, a, b, -rng.range(4, 10));
     shiftOpinion(sim, b, a, -rng.range(4, 10));
@@ -230,6 +233,7 @@ export function bondNearby(sim: Sim, a: Agent, b: Agent, dt: number): void {
   const r = rel(a, b);
   r.familiarity = Math.min(100, r.familiarity + 0.04 * dt);
   if (!sim.rng.chance(0.008 * dt)) return;
+  exposure(sim, a, b, 0.3);
   const lean = compatibility(a, b) + r.opinion / 150 + sim.rng.range(-0.3, 0.3);
   shiftOpinion(sim, a, b, lean >= -0.05 ? 1 : -1.5);
 }

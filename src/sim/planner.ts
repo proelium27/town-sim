@@ -204,6 +204,11 @@ function proposals(sim: Sim): Proposal[] {
   if (sim.agents.length >= 22 && count('workshop') === 0 && sim.stock.wood >= 40) {
     out.push({ bp: 'workshop', score: 0.6 * mw, reason: 'we could make our own planks, bricks and furniture', forAgents: [], proposer: sim.agents.find((a) => a.role === 'builder') ?? charismatic(), name: 'Northwind Workshop' });
   }
+  const sick = sim.agents.filter((a) => a.illness).length;
+  if (count('clinic') === 0 && sim.agents.length >= 14 && (sick >= 3 || sim.time - sim.outbreak < 3 * 1440)) {
+    const patient = sim.agents.find((a) => a.illness && ageOf(sim, a) >= ADULT_AGE);
+    out.push({ bp: 'clinic', score: (1.1 + sick * 0.08) * cw, reason: sick >= 3 ? `${sick} people are sick and there's nowhere to treat them` : 'the flu went through town and there was nowhere to treat anyone', forAgents: [], proposer: patient ?? charismatic(), name: 'Northwind Clinic' });
+  }
   if (sim.unburied.length && !sim.projects.some((p) => p.blueprint === 'cemetery')) {
     const dead = sim.person(sim.unburied[0])!;
     const mourner = sim.agents.filter((a) => a.id === dead.partner || dead.children.includes(a.id) || dead.parents.includes(a.id)).find((a) => ageOf(sim, a) >= ADULT_AGE);
@@ -473,6 +478,7 @@ export function roleDemand(sim: Sim): RoleSlot[] {
   const kids = sim.agents.filter((a) => ageOf(sim, a) >= 5 && ageOf(sim, a) < ADULT_AGE).length;
   const demand: RoleSlot[] = [];
   for (const s of schools) if (kids) demand.push(['teacher', 1, s.id]);
+  for (const c of m.buildings.filter((b) => b.kind === 'clinic')) demand.push(['doctor', 1, c.id]);
   for (const d of diners) demand.push(['cook', 1, d.id]);
   const hw = PRIORITY_WEIGHT[sim.priorities.housing];
   const mw = PRIORITY_WEIGHT[sim.priorities.materials];
@@ -541,6 +547,7 @@ export function allocateRoles(sim: Sim): void {
   demand.forEach(([r], i) => open.set(r, (open.get(r) ?? 0) + quota[i]));
   for (const a of pool) if (open.has(a.role)) open.set(a.role, open.get(a.role)! - 1);
   const calledAway = (a: Agent, role: RoleKey) => a.career !== undefined && a.career !== role && (open.get(a.career) ?? 0) > 0;
+  const settling = (a: Agent) => sim.time - (a.roleSince ?? -Infinity) < MIN_TENURE;
   const fits = (a: Agent, [role, , building]: RoleSlot) => a.role === role && (building === null || a.workBuilding === building);
 
   const line = new Map<number, number>();
@@ -556,7 +563,8 @@ export function allocateRoles(sim: Sim): void {
     const [role, , building] = slot;
     let need = quota[i] - taken(i);
     if (need <= 0) return;
-    const spare = pool.filter((a) => !line.has(a.id));
+    // Anyone who only just took up their trade is asked last, so a dip in one line doesn't bounce them straight back.
+    const spare = pool.filter((a) => !line.has(a.id)).sort((x, y) => Number(settling(x)) - Number(settling(y)));
     const order = [...spare.filter((a) => a.career === role), ...spare.filter((a) => a.career !== role && !calledAway(a, role)), ...spare.filter((a) => a.career !== role && calledAway(a, role))];
     for (const a of order) {
       if (need <= 0) break;
@@ -572,7 +580,7 @@ export function allocateRoles(sim: Sim): void {
   const keeps = (a: Agent) => (a.role === 'builder' && demand.some((slot) => fits(a, slot))) || (CRAFT_ROLES.includes(a.role) && hasWorkshop(sim));
   for (const a of pool) {
     if (line.has(a.id) || a.role === 'laborer') continue;
-    if (sim.time - (a.roleSince ?? -Infinity) < MIN_TENURE || keeps(a)) continue;
+    if (settling(a) || keeps(a)) continue;
     setRole(sim, a, 'laborer', null);
     changes.push(`${first(a)} is helping out as a laborer`);
   }

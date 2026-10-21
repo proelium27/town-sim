@@ -18,6 +18,7 @@ export const FIT: Partial<Record<RoleKey, Partial<Record<Aptitude, number>>>> = 
   mason: { hands: 1, outdoors: 0.3 },
   toolmaker: { hands: 0.8, numbers: 0.6 },
   teacher: { people: 1, numbers: 0.6 },
+  doctor: { people: 0.7, numbers: 0.8 },
   cook: { people: 0.6, hands: 0.6 },
   engineer: { numbers: 1 },
   designer: { hands: 0.5, people: 0.4, numbers: 0.3 },
@@ -56,6 +57,7 @@ export function lessonAptitude(sim: Sim, kid: Agent): Aptitude {
 function workplaceFor(sim: Sim, role: RoleKey): number | null | undefined {
   if (role === 'teacher') return sim.map.buildings.find((b) => b.kind === 'school')?.id;
   if (role === 'cook') return sim.map.buildings.find((b) => b.kind === 'cafe' && b.name.includes('Diner'))?.id;
+  if (role === 'doctor') return sim.map.buildings.find((b) => b.kind === 'clinic')?.id;
   return null;
 }
 

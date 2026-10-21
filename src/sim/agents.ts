@@ -179,10 +179,12 @@ export function createAgent(sim: Sim, o: NewAgentOpts): Agent {
     lastBirthday: 0,
     tool: 0,
     aptitude: startingAptitude(sim, traits, parents),
+    wear: 0,
   };
   if (namesake) a.namedAfter = namesake.id;
   a.needs.energy = rng.range(70, 95);
   a.needs.warmth = 100;
+  a.needs.health = 100;
   for (const p of parents) {
     p.children.push(a.id);
     a.relations.set(p.id, { opinion: 60, familiarity: 90, lastTalk: -Infinity });
@@ -292,6 +294,8 @@ export function backfillAgent(a: Agent): void {
   a.lastBirthday ??= 0;
   a.tool ??= 0;
   a.aptitude ??= { hands: 20, numbers: 20, people: 20, outdoors: 20 };
+  a.wear ??= 0;
+  a.needs.health ??= 100;
   // Saves from before winter: everyone starts warm.
   a.needs.warmth ??= 100;
 }

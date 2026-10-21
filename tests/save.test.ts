@@ -28,6 +28,13 @@ describe('saving and loading', () => {
     expect(b.map.propsOn(b.map.props[0].x, b.map.props[0].y)).toContain(b.map.props[0]);
   });
 
+  it('people in a save from before health load in full health', () => {
+    const file = JSON.parse(saveSim(new Sim(3)));
+    for (const a of file.sim.agents) delete a.needs.health;
+    const b = loadSim(JSON.stringify(file));
+    expect(b.agents.every((a) => a.needs.health === 100)).toBe(true);
+  });
+
   it('backfills new fields on people who moved away, too', () => {
     const a = new Sim(7, { agents: true });
     const gone = a.agents.pop()!;
