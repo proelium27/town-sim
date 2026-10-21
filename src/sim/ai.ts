@@ -102,8 +102,9 @@ function findSpot(sim: Sim, a: Agent, uses: UseKind[], filter?: (p: Prop) => boo
   const m = sim.map;
   const ax = m.cx(a.at);
   const ay = m.cy(a.at);
-  const cands = m.props
-    .filter((p) => p.use && uses.includes(p.use) && canUse(sim, a, p) && (!filter || filter(p)))
+  const cands = m
+    .propsWithUses(uses)
+    .filter((p) => canUse(sim, a, p) && (!filter || filter(p)))
     .map((p) => ({ p, d: Math.hypot(p.spot!.x - ax, p.spot!.y - ay) }))
     .sort((x, y) => x.d - y.d)
     .slice(0, 4);
@@ -879,20 +880,28 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
   }
 }
 
-/** Needs urgent enough to interrupt anything except sleep. */
-function urgent(sim: Sim, a: Agent): boolean {
+/**
+ * Needs urgent enough to interrupt anything except sleep: 'bladder' when that's the only one, else 'other'.
+ * The bladder is told apart because it's the one that can go unmet for hours (no restroom free or open) and costs nothing
+ * while it waits, so its retries are spaced out; the rest are rethought every step until met.
+ */
+function urgency(sim: Sim, a: Agent): 'bladder' | 'other' | null {
   const k = a.action.kind;
   // A load already on its way to a build site or a hearth gets there first.
-  if ((k === 'haul' || k === 'stoke') && a.action.leg === 'deliver') return false;
-  if (a.bladder < 12 && k !== 'toilet') return true;
-  if (a.needs.hunger < 10 && k !== 'eat' && k !== 'cook' && k !== 'snack' && k !== 'sleep') return true;
-  if (sim.events.standup && isOffice(a) && isWorkTime(sim, a) && k !== 'meet' && k !== 'toilet') return true;
+  if ((k === 'haul' || k === 'stoke') && a.action.leg === 'deliver') return null;
+  if (a.needs.hunger < 10 && k !== 'eat' && k !== 'cook' && k !== 'snack' && k !== 'sleep') return 'other';
+  if (sim.events.standup && isOffice(a) && isWorkTime(sim, a) && k !== 'meet' && k !== 'toilet') return 'other';
   // Freezing outdoors: stop and go somewhere warm.
-  if (a.needs.warmth < 20 && sim.map.room[a.at] < 0 && k !== 'relax' && chill(sim) > 0) return true;
+  if (a.needs.warmth < 20 && sim.map.room[a.at] < 0 && k !== 'relax' && chill(sim) > 0) return 'other';
   // Too ill to carry on: down tools and go lie down.
-  if (offSick(a) && SICK_STOPS.includes(k)) return true;
-  return false;
+  if (offSick(a) && SICK_STOPS.includes(k)) return 'other';
+  if (a.bladder < 12 && k !== 'toilet') return 'bladder';
+  return null;
 }
+
+/** Game minutes before someone retries a restroom trip their last rethink couldn't start: doubling from the first to the max. */
+const BLADDER_RETRY_FIRST = 0.25;
+const BLADDER_RETRY_MAX = 4;
 
 /** What someone off sick stops doing at once, whatever stage it's at. */
 const SICK_STOPS: ActionKind[] = ['work', 'teach', 'learn', 'build', 'chop', 'mine', 'farm', 'haul', 'split', 'stoke', 'craft', 'pave', 'meet'];
@@ -1680,7 +1689,20 @@ export function tickAgents(sim: Sim, dt: number): void {
     a.thinkIn -= dt;
     const asleep = a.action.kind === 'sleep' && a.action.stage === 'perform';
     if (caughtOut(sim, a)) finish(sim, a);
-    if (a.action.kind === 'idle' || (a.thinkIn <= 0 && !asleep) || (urgent(sim, a) && !asleep)) decide(sim, a, stage);
+    const due = a.action.kind === 'idle' || (a.thinkIn <= 0 && !asleep);
+    const why = !due && !asleep ? urgency(sim, a) : null;
+    const alarmed = why === 'other' || (why === 'bladder' && sim.time >= (a.urgentRetryAt ?? 0));
+    if (due || alarmed) {
+      decide(sim, a, stage);
+      // Still only the restroom, and no restroom free or open: look again soon, then less and less often, so
+      // nobody rethinks everything every step while they wait.
+      if (alarmed && urgency(sim, a) === 'bladder') {
+        a.urgentBackoff = Math.min(BLADDER_RETRY_MAX, (a.urgentBackoff ?? BLADDER_RETRY_FIRST / 2) * 2);
+        a.urgentRetryAt = sim.time + a.urgentBackoff;
+      }
+    }
+    // Once the restroom isn't pressing, the next time it is gets the quick first retry again.
+    if (a.urgentBackoff !== undefined && urgency(sim, a) !== 'bladder') a.urgentBackoff = a.urgentRetryAt = undefined;
     if (a.action.stage === 'travel') move(sim, a, dt, stage);
     else {
       a.moving = false;

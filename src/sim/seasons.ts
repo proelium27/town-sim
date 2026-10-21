@@ -18,6 +18,18 @@ export const FESTIVALS = ['Spring fair', 'Midsummer night', 'Harvest festival', 
  * autumn and the start of spring are chilly; summer is warm.
  */
 export function chill(sim: Sim): number {
+  const storm = !!sim.events.snowstorm;
+  const hit = chillCache.get(sim);
+  if (hit && hit.time === sim.time && hit.storm === storm) return hit.value;
+  const value = chillAt(sim);
+  chillCache.set(sim, { time: sim.time, storm, value });
+  return value;
+}
+
+/** chill() runs for everyone several times a step; it only changes with the clock and the weather. */
+const chillCache = new WeakMap<Sim, { time: number; storm: boolean; value: number }>();
+
+function chillAt(sim: Sim): number {
   if (sim.events.snowstorm) return 1;
   const s = sim.season;
   const p = sim.seasonProgress;

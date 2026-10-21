@@ -11,7 +11,10 @@ npm install
 npm run dev        # http://localhost:5173
 npm test           # sim + pathfinding tests
 npm run build      # typecheck + production bundle
+npx vite-node bench/perf.ts crowd 200   # sim cost per step with 200 people, plus a state fingerprint
 ```
+
+Fastest needs a sim step to cost about 0.5ms or less. The bench's fingerprint is a hash of the whole town state: an optimisation that shouldn't change behaviour must leave it unchanged for the same arguments.
 
 `?seed=42` in the URL gives a different cast.
 

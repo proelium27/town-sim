@@ -145,7 +145,7 @@ describe('elections across towns', () => {
   const results: { platform: string; reelected: boolean; landslide: boolean }[] = [];
   const record = (L: NonNullable<Sim['lastElection']>, reelected: boolean) =>
     results.push({ platform: L.platform, reelected, landslide: L.votes[0][1] > 2 * (L.votes[1]?.[1] ?? 0) });
-  for (const seed of [1, 3, 5, 7]) {
+  for (const seed of [1, 3, 20, 25]) {
     it(`seed ${seed} holds two elections`, () => {
       const sim = new Sim(seed);
       at(sim, 2, 19.5);

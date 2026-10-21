@@ -108,6 +108,10 @@ export interface Agent {
   thoughts: Thought[];
   action: Action;
   thinkIn: number;
+  /** A restroom trip that rethinking couldn't start (none free or open) isn't rethought again until this game time. */
+  urgentRetryAt?: number;
+  /** The current wait between those retries, in game minutes; it doubles each time and clears once the restroom isn't pressing. */
+  urgentBackoff?: number;
   task: Task | null;
   tasksDone: number;
   money: number;

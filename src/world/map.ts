@@ -269,7 +269,33 @@ export class TownMap {
   }
 
   propsWithUse(use: UseKind): Prop[] {
-    return this.props.filter((p) => p.use === use);
+    return this.propsWithUses([use]);
+  }
+
+  /** Props by use, in `props` order; rebuilt when props are added or removed. Private, so saves skip it. */
+  #byUse = new Map<UseKind, Prop[]>();
+  #order = new Map<Prop, number>();
+  #byUseVersion = -1;
+  #byUseOf: Prop[] | null = null;
+
+  /** Props with any of these uses, in the same order as `props`. A fresh array the caller may change. */
+  propsWithUses(uses: readonly UseKind[]): Prop[] {
+    if (this.#byUseVersion !== this.propVersion || this.#byUseOf !== this.props) {
+      this.#byUse = new Map();
+      this.#order = new Map();
+      this.props.forEach((p, i) => {
+        if (!p.use) return;
+        this.#order.set(p, i);
+        let list = this.#byUse.get(p.use);
+        if (!list) this.#byUse.set(p.use, (list = []));
+        list.push(p);
+      });
+      this.#byUseVersion = this.propVersion;
+      this.#byUseOf = this.props;
+    }
+    if (uses.length === 1) return [...(this.#byUse.get(uses[0]) ?? [])];
+    const out = [...new Set(uses)].flatMap((u) => this.#byUse.get(u) ?? []);
+    return out.sort((x, y) => this.#order.get(x)! - this.#order.get(y)!);
   }
 
   /** Someone walked onto this cell. */

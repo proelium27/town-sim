@@ -233,6 +233,8 @@ describe('seasons', () => {
   it('a blizzard holds back the festival, and one that lasts the evening snows it off', () => {
     const sim = winterTown();
     at(sim, 7, 16);
+    // Whatever the winter weather brought earlier, this blizzard starts now (one already blowing would swallow it).
+    sim.events.snowstorm = null;
     triggerWorldEvent(sim, 'snowstorm');
     const from = sim.time;
     sim.run(7 * 60);
