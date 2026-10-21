@@ -2,7 +2,7 @@ import type { Art } from '../assets/loader';
 import { ageOf } from '../sim/agents';
 import { xpToNext } from '../sim/ai';
 import { NEED_KEYS, NEED_LABEL, ROLES, SKILL_KEYS, SKILL_LABEL, TRAITS } from '../sim/defs';
-import { moodParts, moodTarget, moodWord, relationLabel } from '../sim/social';
+import { kinship, moodParts, moodTarget, moodWord, relationLabel, type Kin } from '../sim/social';
 import type { Agent } from '../sim/types';
 import type { Sim } from '../sim/sim';
 import { RelationGraph } from './relgraph';
@@ -101,8 +101,8 @@ export class Inspector {
       <section class="pane" role="tabpanel" id="pane-people" aria-labelledby="tab-people" data-pane="people">
         <h3>Family <span class="h3-note" data-f="home"></span></h3>
         <ul class="list family" data-slot="family"></ul>
-        <h3>Everyone else</h3>
         <div data-slot="graph"></div>
+        <h3>Everyone else</h3>
         <ul class="list" data-slot="rels"></ul>
       </section>
 
@@ -135,14 +135,31 @@ export class Inspector {
     set('title', `${role.title}${wpName ? ` · ${esc(wpName)}` : ''}`, true);
     const hh = this.sim.town.households[a.household];
     set('home', hh.building >= 0 ? `lives at ${esc(hh.name)}` : 'no home yet', true);
-    const kin = (id: number, label: string) => {
+    // Family is the bond level above close friends: everyone related by blood or marriage, closest kin first.
+    const KIN_ORDER: Kin[] = ['partner', 'parent', 'child', 'sibling', 'stepparent', 'stepchild', 'grandparent', 'grandchild', 'in-law'];
+    const famIds: [number, Kin][] = [
+      ...(a.partner !== null ? [[a.partner, 'partner'] as [number, Kin]] : []),
+      ...a.parents.map((id): [number, Kin] => [id, 'parent']),
+      ...a.children.map((id): [number, Kin] => [id, 'child']),
+    ];
+    for (const o of this.sim.agents) {
+      if (famIds.some(([id]) => id === o.id)) continue;
+      const k = kinship(this.sim, a, o);
+      if (k) famIds.push([o.id, k]);
+    }
+    famIds.sort((x, y) => KIN_ORDER.indexOf(x[1]) - KIN_ORDER.indexOf(y[1]));
+    const kinRow = ([id, label]: [number, Kin]) => {
       const p = this.sim.person(id);
       if (!p) return '';
       const alive = !!this.sim.agent(id);
-      return `<li><button class="row" ${alive ? `data-act="person" data-id="${id}"` : 'disabled'}><span>${esc(p.name)} <span class="meta">${label}${alive ? `, ${Math.floor(ageOf(this.sim, p))}` : ', passed away'}</span></span><span class="meta">${alive ? ROLES[p.role].title : ''}</span></button></li>`;
+      const op = a.relations.get(id)?.opinion;
+      const level = alive && op !== undefined && relationLabel(op, label) !== 'Family' ? ' · estranged' : '';
+      const right = alive && op !== undefined ? `<span class="${op >= 0 ? 'pos' : 'neg'} num">${op > 0 ? '+' : ''}${Math.round(op)}</span>` : '';
+      return `<li><button class="row" ${alive ? `data-act="person" data-id="${id}"` : 'disabled'}><span>${esc(p.name)} <span class="meta">${label}${alive ? `, ${Math.floor(ageOf(this.sim, p))} · ${ROLES[p.role].title}` : ', passed away'}${level}</span></span>${right}</button></li>`;
     };
-    const fam = [a.partner !== null ? kin(a.partner, 'partner') : '', ...a.parents.map((id) => kin(id, 'parent')), ...a.children.map((id) => kin(id, 'child'))].join('');
-    this.slot('family', JSON.stringify([a.partner, a.parents, a.children, age, hh.building, ...a.children.map((id) => !!this.sim.agent(id))]), fam || '<li class="meta">No family in town yet.</li>');
+    const fam = famIds.map(kinRow).join('');
+    this.slot('family', JSON.stringify([famIds, age, hh.building, ...famIds.map(([id]) => [!!this.sim.agent(id), Math.round(a.relations.get(id)?.opinion ?? 0)])]), fam || '<li class="meta">No family in town yet.</li>');
+    const family = new Set(famIds.map(([id]) => id));
     const following = this.hooks.isFollowing();
     const fb = r.querySelector('[data-f="follow"]') as HTMLElement;
     fb.setAttribute('aria-pressed', String(following));
@@ -190,7 +207,7 @@ export class Inspector {
     if (this.tab === 'people') this.graph.draw(this.sim, a);
     const rels = [...a.relations.entries()]
       .map(([id, rel]) => ({ o: this.sim.agent(id)!, rel }))
-      .filter((x) => x.o)
+      .filter((x) => x.o && !family.has(x.o.id))
       .sort((x, y) => y.rel.opinion - x.rel.opinion);
     this.slot('rels', JSON.stringify(rels.map((x) => [x.o.id, Math.round(x.rel.opinion)])), rels
       .map((x) => `<li><button class="row" data-act="person" data-id="${x.o.id}"><span>${esc(x.o.name)} <span class="meta">${relationLabel(x.rel.opinion)}</span></span><span class="${x.rel.opinion >= 0 ? 'pos' : 'neg'} num">${x.rel.opinion > 0 ? '+' : ''}${Math.round(x.rel.opinion)}</span></button></li>`)
