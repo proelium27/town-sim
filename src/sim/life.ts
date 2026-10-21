@@ -98,7 +98,7 @@ export function die(sim: Sim, a: Agent, cause: string): void {
   sim.log(`${a.name} passed away (${cause})`, 'family', 'bad', a).weight = HEADLINE;
   if (sim.mayor === a.id) {
     sim.mayor = null;
-    sim.log('Northwind is without a mayor until the next election', 'event', 'bad').weight = HEADLINE;
+    sim.log(`${sim.name} is without a mayor until the next election`, 'event', 'bad').weight = HEADLINE;
   }
   sim.milestone(`${a.name} passed away`);
   if (bury(sim, a.id)) scheduleFuneral(sim, a, wasMayor);
@@ -205,7 +205,7 @@ export function newcomers(sim: Sim, n: number, force: boolean): Agent[] {
     made[1].relations.set(made[0].id, { opinion: 80, familiarity: 95, lastTalk: -Infinity });
   }
   for (const a of made) {
-    think(sim, a, 'So this is Northwind. Smaller than I pictured.', 'neutral');
+    think(sim, a, `So this is ${sim.name}. Smaller than I pictured.`, 'neutral');
     for (const b of made) if (a.id !== b.id && !a.relations.has(b.id)) a.relations.set(b.id, { opinion: 30, familiarity: 50, lastTalk: -Infinity });
   }
   sim.populationVersion++;

@@ -63,11 +63,11 @@ export function yearPage(sim: Sim, year: number): YearPage {
   const deaths = counted(/ passed away$/);
   const weddings = counted(/ were married$/);
   const built = counted(/^Built /);
-  const left = counted(/ left Northwind$/);
+  const left = sim.history.filter((h) => yearOf(h.t) === year && h.text.endsWith(` left ${sim.name}`)).length;
 
   const parts: string[] = [];
   if (pop0 !== undefined && pop1 !== undefined) {
-    parts.push(pop1 > pop0 ? `Northwind grew from ${pop0} to ${pop1} people` : pop1 < pop0 ? `Northwind shrank from ${pop0} to ${pop1} people` : `Northwind held steady at ${pop1} people`);
+    parts.push(pop1 > pop0 ? `${sim.name} grew from ${pop0} to ${pop1} people` : pop1 < pop0 ? `${sim.name} shrank from ${pop0} to ${pop1} people` : `${sim.name} held steady at ${pop1} people`);
   }
   const n = (k: number, one: string, many: string) => (k === 1 ? `one ${one}` : `${k} ${many}`);
   const counts = [
@@ -101,7 +101,7 @@ export function years(sim: Sim): number[] {
 
 /** "Bram Ellis, Year 1–Year 4, aged 81. Bram worked as a carpenter and raised 3 children. Survived by …" */
 export function obituary(sim: Sim, dead: Agent): string {
-  const born = dead.birth >= 0 ? `born in Year ${yearOf(dead.birth)}` : 'born before Northwind was founded';
+  const born = dead.birth >= 0 ? `born in Year ${yearOf(dead.birth)}` : `born before ${sim.name} was founded`;
   const died = dead.diedAt !== undefined ? `died in Year ${yearOf(dead.diedAt)}` : 'since passed away';
   // The age is already in the first sentence.
   const words = eulogy(sim, dead, false).filter((w) => !w.startsWith('lived to'));

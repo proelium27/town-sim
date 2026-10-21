@@ -238,7 +238,7 @@ export function proposals(sim: Sim): Proposal[] {
   const cw = weight(sim, 'community');
   if (kids.length >= 2 && count('school') === 0) {
     const parent = sim.agent(kids[0].parents[0]);
-    out.push({ bp: 'school', score: (0.9 + kids.length * 0.08) * cw, reason: `${kids.length} kids have nowhere to learn`, forAgents: [], proposer: parent ?? charismatic(), name: 'Northwind School' });
+    out.push({ bp: 'school', score: (0.9 + kids.length * 0.08) * cw, reason: `${kids.length} kids have nowhere to learn`, forAgents: [], proposer: parent ?? charismatic(), name: `${sim.name} School` });
   }
   if (sim.agents.length >= 24 && count('diner') < Math.floor(sim.agents.length / 24)) {
     out.push({ bp: 'diner', score: 0.6 * cw, reason: 'the café is packed every lunchtime', forAgents: [], proposer: sim.agents.find((a) => a.traits.includes('foodie')) ?? charismatic(), name: `${['Corner', 'Hilltop', 'Lakeside'][count('diner') % 3]} Diner` });
@@ -252,12 +252,12 @@ export function proposals(sim: Sim): Proposal[] {
   if (sim.agents.length >= 22 && count('workshop') === 0 && sim.stock.wood >= 40) {
     // Its case grows with every few people past that, so a steady run of couples wanting homes can't starve it.
     const overdue = Math.min(1, (sim.agents.length - 22) * 0.15);
-    out.push({ bp: 'workshop', score: (0.6 + overdue) * mw, reason: 'we could make our own planks, bricks and furniture', forAgents: [], proposer: sim.agents.find((a) => a.role === 'builder') ?? charismatic(), name: 'Northwind Workshop' });
+    out.push({ bp: 'workshop', score: (0.6 + overdue) * mw, reason: 'we could make our own planks, bricks and furniture', forAgents: [], proposer: sim.agents.find((a) => a.role === 'builder') ?? charismatic(), name: `${sim.name} Workshop` });
   }
   const sick = sim.agents.filter((a) => a.illness).length;
   if (count('clinic') === 0 && sim.agents.length >= 14 && (sick >= 3 || sim.time - sim.outbreak < 3 * 1440)) {
     const patient = sim.agents.find((a) => a.illness && ageOf(sim, a) >= ADULT_AGE);
-    out.push({ bp: 'clinic', score: (1.1 + sick * 0.08) * cw, reason: sick >= 3 ? `${sick} people are sick and there's nowhere to treat them` : 'the flu went through town and there was nowhere to treat anyone', forAgents: [], proposer: patient ?? charismatic(), name: 'Northwind Clinic' });
+    out.push({ bp: 'clinic', score: (1.1 + sick * 0.08) * cw, reason: sick >= 3 ? `${sick} people are sick and there's nowhere to treat them` : 'the flu went through town and there was nowhere to treat anyone', forAgents: [], proposer: patient ?? charismatic(), name: `${sim.name} Clinic` });
   }
   if (sim.unburied.length && !sim.projects.some((p) => p.blueprint === 'cemetery')) {
     const dead = sim.person(sim.unburied[0])!;
@@ -266,7 +266,7 @@ export function proposals(sim: Sim): Proposal[] {
     out.push({
       bp: 'cemetery', score: 1.3 * cw,
       reason: full ? 'the cemetery is full' : `we have nowhere to lay ${first(dead)} to rest`,
-      forAgents: [], proposer: mourner ?? charismatic(), name: full ? 'Hill Cemetery' : 'Northwind Cemetery',
+      forAgents: [], proposer: mourner ?? charismatic(), name: full ? 'Hill Cemetery' : `${sim.name} Cemetery`,
     });
   }
   const avgFun = sim.agents.reduce((s, a) => s + a.needs.fun, 0) / Math.max(1, sim.agents.length);

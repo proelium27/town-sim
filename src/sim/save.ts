@@ -76,6 +76,9 @@ export function loadSim(text: string): Sim {
   // Anything added since the save was made starts from a sensible default.
   sim.stock = { ...emptyStock(), ...sim.stock };
   sim.departed ??= [];
+  sim.name ??= 'Northwind';
+  sim.expected ??= [];
+  sim.travelSeen ??= [];
   for (const a of [...sim.agents, ...sim.deceased, ...sim.departed]) {
     backfillAgent(a);
     // Per-person backfills that set a need go before this generic fallback, or it would fill the need first.

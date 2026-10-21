@@ -32,7 +32,7 @@ export function digest(sim: Sim, from: number, limit = DIGEST_LINES): Digest {
     .map((e, i) => ({ e, i }))
     .filter(({ e }) => (e.weight ?? 0) >= NOTABLE)
     .sort((x, y) => score(y.e) - score(x.e) || y.i - x.i)
-    // "Northwind is without a mayor" twice in a day is one piece of news.
+    // "<town> is without a mayor" twice in a day is one piece of news.
     .filter(({ e }) => !seen.has(e.text) && !!seen.add(e.text))
     .slice(0, limit)
     .sort((x, y) => x.i - y.i)

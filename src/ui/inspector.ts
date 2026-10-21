@@ -10,6 +10,7 @@ import { kinship, moodParts, moodTarget, moodWord, relationLabel, type Kin } fro
 import type { Agent } from '../sim/types';
 import type { Sim } from '../sim/sim';
 import { RelationGraph } from './relgraph';
+import { cantTravel, partyFor, PURSE_MAX } from '../sim/travel';
 import { dayTime, duration, esc, hhmm, hourLabel } from './util';
 
 
@@ -34,7 +35,7 @@ export class Inspector {
     private root: HTMLElement,
     private sim: Sim,
     private art: Art,
-    private hooks: { select: (id: number | null) => void; follow: () => void; isFollowing: () => boolean },
+    private hooks: { select: (id: number | null) => void; follow: () => void; isFollowing: () => boolean; journey: (id: number, whole: boolean) => void },
   ) {
     this.graph = new RelationGraph((id) => hooks.select(id));
     root.addEventListener('click', (e) => {
@@ -44,8 +45,34 @@ export class Inspector {
       if (el.dataset.act === 'follow') hooks.follow();
       if (el.dataset.act === 'person') hooks.select(Number(el.dataset.id));
       if (el.dataset.act === 'tab') this.setTab(el.dataset.tab as Tab);
+      if (el.dataset.act === 'journey') {
+        const box = root.querySelector<HTMLElement>('[data-f="journey"]');
+        if (box) box.hidden = !box.hidden;
+      }
+      if (el.dataset.act === 'go' && this.agentId !== null) hooks.journey(this.agentId, el.dataset.whole === '1');
       this.sigs.head = '';
     });
+  }
+
+  /** Seeing someone off: just them, or the whole household, with why not if they can't go. */
+  private journeyBox(a: Agent): string {
+    const sim = this.sim;
+    const alone = partyFor(sim, a, false);
+    const all = partyFor(sim, a, true);
+    const one = cantTravel(sim, alone);
+    const fam = cantTravel(sim, all);
+    const name = esc(a.name.split(' ')[0]);
+    const btn = (whole: boolean, label: string, why: string | null) =>
+      `<button class="btn" data-act="go" data-whole="${whole ? 1 : 0}" ${why ? `disabled title="${esc(why)}"` : ''}>${label}</button>`;
+    return `<div class="journey" data-f="journey" hidden>
+        <p>Send ${name} to another town? They leave ${esc(sim.name)} for good, taking their trade, skills, big memories and up to $${PURSE_MAX}. You get a file that anyone can welcome into their town.</p>
+        <div class="save-row">
+          ${btn(false, `Just ${name}`, one)}
+          ${all.length > 1 ? btn(true, `The whole household (${all.length})`, fam) : ''}
+          <button class="btn" data-act="journey">Stay</button>
+        </div>
+        ${one && all.length < 2 ? `<p class="warn-line">${esc(one)}</p>` : ''}
+      </div>`;
   }
 
   show(id: number | null): void {
@@ -69,7 +96,9 @@ export class Inspector {
       <div class="ins-meta">
         <div class="chips">${a.traits.map((t) => `<span class="chip" title="${esc(TRAITS[t].description)}">${TRAITS[t].name}</span>`).join('')}</div>
         <button class="btn" data-act="follow" data-f="follow" title="Follow (F)">Follow</button>
+        <button class="btn" data-act="journey" title="Send them to another town">Journey</button>
       </div>
+      ${this.journeyBox(a)}
       <p class="dream" data-f="dream"></p>
       <p class="money num" data-f="money"></p>
 
@@ -140,7 +169,7 @@ export class Inspector {
     const age = Math.floor(ageOf(this.sim, a));
     const wpName = this.sim.town.workplaces.find((w) => w.id === role.workplace)?.name ?? this.sim.building(a.workBuilding)?.name;
     set('age', String(age));
-    set('title', `${role.title}${wpName ? ` · ${esc(wpName)}` : ''}${this.sim.mayor === a.id ? ' · <b>Mayor</b>' : ''}`, true);
+    set('title', `${role.title}${wpName ? ` · ${esc(wpName)}` : ''}${this.sim.mayor === a.id ? ' · <b>Mayor</b>' : ''}${a.from ? ` · from ${esc(a.from)}` : ''}`, true);
     const hh = this.sim.town.households[a.household];
     const dream = dreamLine(this.sim, a);
     set('dream', dream ? `<span class="k">${dream.label}</span> <span class="${dream.state}">${esc(dream.text)}</span>${dream.progress ? ` <span class="meta num">· ${esc(dream.progress)}</span>` : ''}` : '', true);

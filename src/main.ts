@@ -9,6 +9,8 @@ import { ActivityLog } from './ui/activity';
 import { Hud } from './ui/hud';
 import { Inspector } from './ui/inspector';
 import { TownPanel } from './ui/townPanel';
+import { cantTravel, partyFor, sendAway } from './sim/travel';
+import { download } from './ui/util';
 import { readAway, readSave, Saves } from './ui/saves';
 import { Away } from './ui/away';
 import { Director } from './ui/director';
@@ -123,6 +125,15 @@ async function boot(): Promise<void> {
     select: (id) => select(id, true),
     follow: () => (following = !following),
     isFollowing: () => following,
+    journey: (id, whole) => {
+      const a = sim.agent(id);
+      if (!a) return;
+      const party = partyFor(sim, a, whole);
+      if (cantTravel(sim, party)) return;
+      const file = sendAway(sim, party);
+      download(JSON.stringify(file, null, 1), `traveler-${a.name.toLowerCase().replace(/[^a-z]+/g, '-')}.json`);
+      select(null, true);
+    },
   });
 
   const away = new Away(sim, { speed: () => speed, select: (id) => select(id, true), openLog: () => activity.toggle(true) });

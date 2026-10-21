@@ -10,6 +10,8 @@ import { WORLD_EVENTS, type WorldEventKey, triggerWorldEvent } from '../sim/even
 import { allocateRoles, buildCap, capacity, stageOf } from '../sim/planner';
 import { first } from '../sim/social';
 import type { Sim } from '../sim/sim';
+import { expectCart, fromName, partyName, readTravelers } from '../sim/travel';
+import { NOTABLE } from '../sim/types';
 import type { Saves } from './saves';
 import { esc, hhmm } from './util';
 
@@ -42,6 +44,10 @@ export class TownPanel {
   private sig = '';
   /** New town takes two clicks: the first arms it for a few seconds. */
   private resetArmed = false;
+  /** Typing a new name: hold re-renders so the field keeps focus. */
+  private renaming = false;
+  /** The last word on a traveler file: who's coming, or why they can't. */
+  private travelNote = '';
 
   constructor(
     private root: HTMLElement,
@@ -58,6 +64,33 @@ export class TownPanel {
       if (f) this.saves.importFile(f).catch(() => {});
     });
     root.after(picker);
+    const travelers = Object.assign(document.createElement('input'), { type: 'file', name: 'travelers', accept: '.json,application/json', hidden: true });
+    travelers.addEventListener('change', async () => {
+      const f = travelers.files?.[0];
+      travelers.value = '';
+      if (!f) return;
+      try {
+        const file = readTravelers(await f.text());
+        const e = expectCart(sim, file);
+        this.travelNote = `${partyName(file)} set off from ${fromName(sim, file)}. Expect them ${dateOf(e.at)} around ${hhmm(e.at)}.`;
+      } catch (err) {
+        this.travelNote = (err as Error).message;
+      }
+      this.sig = '';
+      this.update();
+    });
+    root.after(travelers);
+    root.addEventListener('keydown', (e) => {
+      const input = (e.target as HTMLElement).closest('input[data-f="rename"]') as HTMLInputElement | null;
+      if (!input) return;
+      if (e.key === 'Enter') this.rename(input.value);
+      if (e.key === 'Escape') this.rename(null);
+      e.stopPropagation();
+    });
+    root.addEventListener('focusout', (e) => {
+      const input = (e.target as HTMLElement).closest('input[data-f="rename"]') as HTMLInputElement | null;
+      if (input && this.renaming) this.rename(input.value);
+    });
     root.addEventListener('click', (e) => {
       const el = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
       if (!el) return;
@@ -84,6 +117,19 @@ export class TownPanel {
         this.saves.exportBackup();
       } else if (act === 'import') {
         picker.click();
+        return;
+      } else if (act === 'welcome') {
+        travelers.click();
+        return;
+      } else if (act === 'rename') {
+        this.renaming = true;
+        const line = this.root.querySelector('.tier-line b');
+        if (line) {
+          line.innerHTML = `<input data-f="rename" class="town-name" maxlength="24" value="${esc(sim.name)}" aria-label="Town name" />`;
+          const input = line.querySelector('input')!;
+          input.focus();
+          input.select();
+        }
         return;
       } else if (act === 'reset') {
         // Two clicks: the first arms it, so a stray click can't wipe a town.
@@ -172,7 +218,20 @@ export class TownPanel {
       </section>`;
   }
 
+  /** Commits a new town name (letters, spaces, apostrophes and hyphens), or cancels with null. */
+  private rename(value: string | null): void {
+    this.renaming = false;
+    const name = (value ?? '').replace(/[^\p{L} '\-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 24);
+    if (value !== null && name.length >= 2 && name !== this.sim.name) {
+      this.sim.log(`${this.sim.name} is now called ${name}`, 'event', 'good').weight = NOTABLE;
+      this.sim.name = name;
+    }
+    this.sig = '';
+    this.update();
+  }
+
   update(): void {
+    if (this.renaming) return;
     const sim = this.sim;
     const pop = sim.agents;
     const kids = pop.filter((a) => ageOf(sim, a) < ADULT_AGE).length;
@@ -186,7 +245,7 @@ export class TownPanel {
     const projects = sim.projects.map((p) => ({ p, stage: stageOf(sim, p) }));
     const sig = JSON.stringify([
       pop.length, kids, elders, beds, homeless, sick, sim.tier, sim.mayor, sim.agenda, sim.election?.stage, sim.lastElection?.year, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
-      sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
+      sim.name, sim.expected.length, this.travelNote, sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
       sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), this.resetArmed, Math.round(sim.treasury / 5), sim.lastLedger, (['food', 'firewood', 'tools'] as const).map((g) => price(sim, g)), hasWorkshop(sim), chains(sim).map((c) => [c.have, c.target, c.stuck]), sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
       sim.season >= 2 && Math.round((1 - sim.seasonProgress) * SEASON_DAYS * 10),
     ]);
@@ -196,7 +255,7 @@ export class TownPanel {
     const ev = sim.events;
     this.root.innerHTML = `
       <section class="tp-sec">
-        <p class="tier-line"><b>Northwind ${TIERS[sim.tier].toLowerCase()}</b>${sim.tier + 1 < TIERS.length ? ` · becomes a ${TIERS[sim.tier + 1].toLowerCase()} at ${TIER_AT[sim.tier + 1][0]} people and ${TIER_AT[sim.tier + 1][1]} buildings` : ''}</p>
+        <p class="tier-line"><b>${esc(sim.name)}</b> ${TIERS[sim.tier].toLowerCase()}${sim.tier + 1 < TIERS.length ? ` · becomes a ${TIERS[sim.tier + 1].toLowerCase()} at ${TIER_AT[sim.tier + 1][0]} people and ${TIER_AT[sim.tier + 1][1]} buildings` : ''} <button class="chip-btn" data-act="rename" title="Rename the town">Rename</button></p>
         <dl class="tp-stats">
           <div><dt>People</dt><dd class="num">${pop.length}</dd><span>${plural(kids, 'kid')}, ${elders} retired${sick ? `, <b class="neg">${sick} sick</b>` : ''}</span></div>
           <div><dt>Homes</dt><dd class="num">${homes.length}</dd><span>${plural(beds, 'bed')}${homeless ? `, <b class="neg">${homeless} homeless</b>` : ''}</span></div>
@@ -255,6 +314,13 @@ export class TownPanel {
           <button class="btn danger${this.resetArmed ? ' armed' : ''}" data-act="reset" ${this.saves.enabled ? '' : 'title="Starts this scratch town over. Your saved town is untouched."'}>${this.resetArmed ? 'Click again to start over' : 'New town'}</button>
         </div>
         ${this.saves.notice() ? `<p class="warn-line">${esc(this.saves.notice())}</p>` : ''}
+      </section>
+      <section class="tp-sec">
+        <h3>Travelers</h3>
+        <p class="tp-note">Send someone to another town from their card (Journey). Welcome travelers with a file someone sent you; their cart arrives a day and a half later.</p>
+        <div class="save-row"><button class="btn" data-act="welcome">Welcome travelers…</button></div>
+        ${this.travelNote ? `<p class="tp-note">${esc(this.travelNote)}</p>` : ''}
+        ${sim.expected.length ? `<ul class="tp-road">${sim.expected.map((e) => `<li>On the road: <b>${esc(partyName(e.file))}</b> from ${esc(fromName(sim, e.file))}, due ${dateOf(e.at)} ${hhmm(e.at)}</li>`).join('')}</ul>` : ''}
       </section>
       <section class="tp-sec">
         <h3>History <button class="chip-btn" data-act="chronicle" title="Year by year, obituaries and family trees (H)">Read the chronicle</button></h3>

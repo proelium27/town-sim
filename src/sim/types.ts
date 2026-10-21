@@ -169,6 +169,8 @@ export interface Agent {
   deeds?: import('./aspirations').Deeds;
   /** Game minute they died, for the chronicle. */
   diedAt?: number;
+  /** The town they came from, for travelers. */
+  from?: string;
 }
 
 export interface Project {

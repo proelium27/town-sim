@@ -76,7 +76,7 @@ export const DREAMS: Record<DreamKey, DreamDef> = {
   },
   mayor: {
     text: () => 'being elected mayor',
-    came: () => 'was elected mayor of Northwind',
+    came: (sim) => `was elected mayor of ${sim.name}`,
     weight: (sim, a) => (working(a) && sim.mayor !== a.id ? 0.25 + a.skills.charisma.level * 0.15 + trait(a, 'extrovert', 0.5) + trait(a, 'competitive', 0.6) - trait(a, 'introvert', 0.2) : 0),
     done: (sim, a) => sim.mayor === a.id,
     lost: (_s, a) => (a.role === 'retired' ? 'retired without ever winning an election' : ''),
@@ -121,8 +121,8 @@ export const DREAMS: Record<DreamKey, DreamDef> = {
     leans: { socialize: 0.1 },
   },
   city: {
-    text: () => 'seeing Northwind become a city',
-    came: () => 'saw Northwind become a city',
+    text: (sim) => `seeing ${sim.name} become a city`,
+    came: (sim) => `saw ${sim.name} become a city`,
     weight: (sim, a) => (sim.tier < 2 ? 0.4 + (ageOf(sim, a) >= 40 ? 0.4 : 0) : 0),
     progress: (sim) => `${sim.agents.length} of ${TIER_AT[2][0]} people`,
     done: (sim) => sim.tier >= 2,
