@@ -112,7 +112,7 @@ export const SKILL_LABEL: Record<SkillKey, string> = {
 export type RoleKey =
   | 'engineer' | 'designer' | 'writer' | 'manager' | 'receptionist' | 'barista' | 'shopkeeper' | 'librarian'
   | 'builder' | 'farmer' | 'woodcutter' | 'laborer' | 'teacher' | 'cook' | 'child' | 'retired'
-  | 'carpenter' | 'mason' | 'toolmaker' | 'doctor';
+  | 'carpenter' | 'mason' | 'toolmaker' | 'doctor' | 'fisher';
 
 export interface RoleDef {
   key: RoleKey;
@@ -164,6 +164,7 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   builder: { key: 'builder', title: 'Builder', craft: 'Building', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
   farmer: { key: 'farmer', title: 'Farmer', craft: 'Farming', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
   woodcutter: { key: 'woodcutter', title: 'Woodcutter', craft: 'Forestry', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
+  fisher: { key: 'fisher', title: 'Fisher', craft: 'Fishing', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
   laborer: { key: 'laborer', title: 'Laborer', craft: 'Labor', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
   carpenter: { key: 'carpenter', title: 'Carpenter', craft: 'Carpentry', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
   mason: { key: 'mason', title: 'Mason', craft: 'Masonry', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
@@ -237,7 +238,7 @@ export type MemoryKind =
   | 'feelingIll' | 'hurt' | 'recovered' | 'frail' | 'caredFor' | 'lookedAfter' | 'proudTown' | 'roomToBreathe'
   | 'wonElection' | 'lostElection' | 'myCandidateWon'
   | 'engaged' | 'married' | 'wedding' | 'heartbroken' | 'funeral'
-  | 'dreamCameTrue' | 'dreamFaded';
+  | 'dreamCameTrue' | 'dreamFaded' | 'skated' | 'lakeside';
 
 export interface MemoryDef {
   label: string;
@@ -324,4 +325,6 @@ export const MEMORIES: Record<MemoryKind, MemoryDef> = {
   funeral: { label: 'Said goodbye at the funeral', mood: 2, duration: 2 * D, major: false, maxStack: 2 },
   dreamCameTrue: { label: 'A dream came true', mood: 20, duration: 4 * D, major: true, maxStack: 1 },
   dreamFaded: { label: 'Let go of a dream', mood: -6, duration: 2 * D, major: false, maxStack: 1 },
+  skated: { label: 'Went skating on the lake', mood: 7, duration: D, major: false, maxStack: 1 },
+  lakeside: { label: 'An afternoon by the lake', mood: 5, duration: D, major: false, maxStack: 1 },
 };

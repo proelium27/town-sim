@@ -157,7 +157,7 @@ function homeName(sim: Sim, a: Agent | undefined): string {
   return `${a ? first(a) : 'New'}'s place ${sim.nextProjectId}`;
 }
 
-function proposals(sim: Sim): Proposal[] {
+export function proposals(sim: Sim): Proposal[] {
   const out: Proposal[] = [];
   const adults = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE);
   const kids = sim.agents.filter((a) => ageOf(sim, a) >= 4 && ageOf(sim, a) < ADULT_AGE);
@@ -220,6 +220,16 @@ function proposals(sim: Sim): Proposal[] {
     out.push({ bp: 'farm', score: (0.8 + Math.min(1, deficit / 40) + (sim.stock.food < sim.agents.length * 3 ? 0.6 : 0)) * fw, reason: sim.stock.food < sim.agents.length * 3 ? 'food stores are running low' : 'we will need more food as we grow', forAgents: [], proposer: farmer ?? charismatic(), name: `${['Sunny', 'River', 'Oak', 'Clover', 'Barley', 'Willow'][count('farm') % 6]} Farm` });
   }
 
+  // A fishing dock: food from the lake, and the one harvest that doesn't stop at the first frost. Worth it once
+  // the town has mouths to feed, most of all with winter coming.
+  if (count('dock') === 0 && sim.agents.length >= 14) {
+    const fisherly = sim.agents.find((a) => a.role === 'farmer') ?? charismatic();
+    const winterSoon = sim.season === 1 || sim.season === 2;
+    if (winterSoon || deficit > 0) {
+      out.push({ bp: 'dock', score: (0.7 + (sim.season === 2 ? 0.5 : 0) + (deficit > 0 ? 0.3 : 0)) * fw, reason: winterSoon ? "fish don't stop at the first frost" : 'the lake is full of fish', forAgents: [], proposer: fisherly, name: 'Lakeside Dock' });
+    }
+  }
+
   // ---- storage and community
   const mw = weight(sim, 'materials');
   if (count('storehouse') < 1 + Math.floor(sim.agents.length / 35)) {
@@ -235,7 +245,9 @@ function proposals(sim: Sim): Proposal[] {
   }
   // A workshop once the town is big enough to keep one busy and has the timber to spare.
   if (sim.agents.length >= 22 && count('workshop') === 0 && sim.stock.wood >= 40) {
-    out.push({ bp: 'workshop', score: 0.6 * mw, reason: 'we could make our own planks, bricks and furniture', forAgents: [], proposer: sim.agents.find((a) => a.role === 'builder') ?? charismatic(), name: 'Northwind Workshop' });
+    // Its case grows with every few people past that, so a steady run of couples wanting homes can't starve it.
+    const overdue = Math.min(1, (sim.agents.length - 22) * 0.15);
+    out.push({ bp: 'workshop', score: (0.6 + overdue) * mw, reason: 'we could make our own planks, bricks and furniture', forAgents: [], proposer: sim.agents.find((a) => a.role === 'builder') ?? charismatic(), name: 'Northwind Workshop' });
   }
   const sick = sim.agents.filter((a) => a.illness).length;
   if (count('clinic') === 0 && sim.agents.length >= 14 && (sick >= 3 || sim.time - sim.outbreak < 3 * 1440)) {
@@ -309,7 +321,64 @@ function pathToStreet(sim: Sim, sx: number, sy: number, avoid: (x: number, y: nu
   return null;
 }
 
+/** The last dock search, per town: the shore only changes slowly, so it's looked over at most once a day. */
+const dockSearch = new WeakMap<Sim, { day: number; site: Site | null }>();
+
+/**
+ * A dock goes on the lake shore: a 5x3 lot on dry land with two tiles of open water straight out from the middle of
+ * its far side (where the pier runs), its door facing back toward town and a path from there to a street.
+ */
+export function findDockSite(sim: Sim): Site | null {
+  const cached = dockSearch.get(sim);
+  if (cached && cached.day === sim.day) return cached.site;
+  const m = sim.map;
+  const bp = BLUEPRINTS.dock;
+  const [tx, ty] = townCenter(sim);
+  const water = (x: number, y: number) => m.inBounds(x, y) && m.ground[m.idx(x, y)] === 'water';
+  const cands: { x: number; y: number; doorTop: boolean; score: number }[] = [];
+  for (let y = 1; y < m.h - 1; y++) {
+    for (let x = 3; x < m.w - 4; x++) {
+      if (!water(x, y) || !water(x + 1, y)) continue;
+      // Water to the south of the lot (door on top), or to the north (door below).
+      for (const doorTop of [true, false]) {
+        const lx = x - 2;
+        const ly = doorTop ? y - bp.h : y + 1;
+        let ok = true;
+        let clear = 0;
+        for (let yy = ly - (doorTop ? 1 : 0); yy < ly + bp.h + (doorTop ? 0 : 1) && ok; yy++) {
+          for (let xx = lx - 1; xx <= lx + bp.w && ok; xx++) {
+            if (!m.inBounds(xx, yy)) ok = false;
+            else {
+              const i = m.idx(xx, yy);
+              if (!BUILDABLE.has(m.ground[i]) || m.cell[i] !== 0 || m.room[i] >= 0) ok = false;
+              else for (const p of m.propsOn(xx, yy)) {
+                if (!p.resource) ok = false;
+                else clear++;
+              }
+            }
+          }
+        }
+        if (ok) cands.push({ x: lx, y: ly, doorTop, score: Math.hypot(lx - tx, ly - ty) + clear * 3 });
+      }
+    }
+  }
+  cands.sort((a, b) => a.score - b.score);
+  let best: Site | null = null;
+  for (const c of cands.slice(0, 8)) {
+    const dx = c.x + bp.doorX;
+    const dy = c.doorTop ? c.y - 1 : c.y + bp.h;
+    const inLot = (xx: number, yy: number) => xx >= c.x && xx < c.x + bp.w && yy >= c.y && yy < c.y + bp.h;
+    const path = pathToStreet(sim, dx, dy, inLot);
+    if (!path) continue;
+    const cost = c.score + path.length * 0.6;
+    if (!best || cost < best.cost) best = { x: c.x, y: c.y, doorTop: c.doorTop, path: [m.idx(dx, dy), ...path].filter((i) => BUILDABLE.has(m.ground[i])), cost };
+  }
+  dockSearch.set(sim, { day: sim.day, site: best });
+  return best;
+}
+
 export function findSite(sim: Sim, key: BlueprintKey, near?: { x: number; y: number }): Site | null {
+  if (key === 'dock') return findDockSite(sim);
   const m = sim.map;
   const bp = BLUEPRINTS[key];
   const [tx, ty] = townCenter(sim);
@@ -556,9 +625,24 @@ export function roleDemand(sim: Sim): RoleSlot[] {
   // Farms are staffed before building crews, unless housing is the higher priority.
   const tilt: RoleSlot[] = [['farmer', capped(Math.round(farms * 1.5 * fw), 'food'), null], ['builder', capped(Math.round((1 + sim.projects.length * 0.8) * hw), 'housing'), null]];
   if (sim.priorities.housing > sim.priorities.food) tilt.reverse();
+  // Fishers: the lake adds to the harvest rather than taking hands from it, so outside winter they're staffed after
+  // the farm and building crews. Two (the places at the end of the pier) from autumn, when the fish are what lasts the
+  // winter; before that, one only if the town eats more than it grows or the stores are thin; the food lever nudges
+  // it. In winter nothing grows, so they come before the farm crew, whose fields are bare.
+  const fishers: RoleSlot[] = [];
+  const docks = m.buildings.filter((b) => b.kind === 'dock');
+  if (docks.length) {
+    const fb = foodBalance(sim);
+    const hungry = fb.eat > fb.produce || sim.stock.food < sim.agents.length * 4;
+    const base = sim.season >= 2 ? 2 : hungry ? 1 : 0;
+    const n = Math.max(0, Math.min(2, base + (sim.priorities.food === 2 ? 1 : sim.priorities.food === 0 ? -1 : 0)));
+    for (const d of docks) fishers.push(['fisher', n, d.id]);
+  }
+  if (sim.season === 3) for (const slot of fishers) demand.push(slot);
   demand.push(tilt[0]);
   if (hasWorkshop(sim)) demand.push(['carpenter', 1, null]);
   demand.push(tilt[1]);
+  if (sim.season !== 3) for (const slot of fishers) demand.push(slot);
   // Once there's a workshop, the trades it needs (one carpenter is staffed even before builders, above).
   if (hasWorkshop(sim)) {
     for (const role of CRAFT_ROLES) {

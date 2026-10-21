@@ -30,7 +30,7 @@ export interface Thought {
 export type ActionKind =
   | 'idle' | 'wander' | 'stroll' | 'work' | 'meet' | 'eat' | 'snack' | 'coffee' | 'cook'
   | 'sleep' | 'toilet' | 'shower' | 'socialize' | 'play' | 'music' | 'read' | 'relax' | 'shop' | 'party' | 'repair'
-  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach' | 'mourn' | 'escort' | 'split' | 'stoke' | 'craft' | 'rest' | 'care' | 'pave';
+  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach' | 'mourn' | 'escort' | 'split' | 'stoke' | 'craft' | 'rest' | 'care' | 'pave' | 'fish';
 
 export interface Action {
   kind: ActionKind;

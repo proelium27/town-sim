@@ -11,6 +11,7 @@ import { tickPlanner } from './planner';
 import { emptyLedger, tickMarket } from './market';
 import { tickPolitics } from './politics';
 import { tickRites } from './rites';
+import { tickLake } from './lake';
 import { type Annal, type ChronicleEntry, tickChronicle } from './chronicle';
 import { tickSeasons } from './seasons';
 import { Rng } from './rng';
@@ -203,6 +204,7 @@ export class Sim {
     tickEvents(this, STEP);
     tickRites(this);
     tickSeasons(this, STEP);
+    tickLake(this);
     tickMarket(this);
     tickPolitics(this);
     tickLife(this, STEP);

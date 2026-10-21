@@ -197,6 +197,26 @@ function stampCemetery(m: TownMap, x: number, y: number, doorTop: boolean, name:
   return b;
 }
 
+/**
+ * A fishing dock: a sandy lot on the shore with a boardwalk, and a pier two boards wide running out over the water
+ * from its lake side (local rows below the lot) until the lake runs out, at most three tiles. Fishers stand at the end.
+ */
+function stampDock(m: TownMap, x: number, y: number, doorTop: boolean, name: string, time = 0): Building {
+  const [s, b] = begin(m, 'dock', name, x, y, 5, 3, 2, doorTop, time);
+  s.fill(0, 0, 5, 3, 'sand');
+  s.fill(1, 2, 3, 1, 'floorWood');
+  let end = 2;
+  for (let k = 3; k < 6; k++) {
+    const cells = [s.at(2, k), s.at(3, k)];
+    if (!cells.every(([cx, cy]) => m.inBounds(cx, cy) && m.ground[m.idx(cx, cy)] === 'water')) break;
+    s.fill(2, k, 2, 1, 'floorWood');
+    end = k;
+  }
+  for (const dx of [2, 3]) s.drawn('bucket', dx, end, 1, 1, { use: 'fish', spot: [dx, end, 'down'], blocks: false });
+  s.drawn('crate', 0, 0, 1, 1);
+  return b;
+}
+
 /** Headstone tiles in a cemetery, in burial order: three rows either side of the center path. */
 export function graveSlots(b: Building): { x: number; y: number }[] {
   const out: { x: number; y: number }[] = [];
@@ -204,7 +224,7 @@ export function graveSlots(b: Building): { x: number; y: number }[] {
   return out;
 }
 
-export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park' | 'cemetery' | 'workshop' | 'clinic' | 'extension', Blueprint> = {
+export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park' | 'cemetery' | 'workshop' | 'clinic' | 'extension' | 'dock', Blueprint> = {
   house: {
     kind: 'house', noun: 'a new home', coins: 40, w: 11, h: 8, cost: { wood: 40, stone: 20 }, refined: { wood: 16, stone: 10, planks: 16, bricks: 8, furniture: 2 }, work: 300, doorX: 4, outdoor: false,
     stamp: (m, x, y, top, name, hh) => stampHouse(m, x, y, top, name, hh ?? 0, true),
@@ -224,6 +244,7 @@ export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'di
     },
   },
   cemetery: { kind: 'cemetery', noun: 'a cemetery', coins: 15, w: 9, h: 7, cost: { wood: 4, stone: 10 }, work: 100, doorX: 4, outdoor: true, stamp: (m, x, y, top, name) => stampCemetery(m, x, y, top, name) },
+  dock: { kind: 'dock', noun: 'a fishing dock', coins: 20, w: 5, h: 3, cost: { wood: 18, stone: 0 }, work: 120, doorX: 2, outdoor: true, stamp: (m, x, y, top, name) => stampDock(m, x, y, top, name) },
 };
 
 export type BlueprintKey = keyof typeof BLUEPRINTS;

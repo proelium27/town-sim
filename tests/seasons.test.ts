@@ -21,7 +21,13 @@ describe('seasons', () => {
     at(sim, 5, 23.9);
     eve = saveSim(sim);
   }, 300_000);
-  const winterTown = () => loadSim(eve);
+  // A calm first winter day: tests that want a blizzard call one up, so one the weather sends can't spoil their setup.
+  const winterTown = () => {
+    const sim = loadSim(eve);
+    sim.run(6 * 1440 + 1 - sim.time);
+    sim.events.plan = sim.events.plan.filter((e) => e.kind !== 'snowstorm');
+    return sim;
+  };
 
   it('warm summers, a chilly late autumn, and a cold winter', () => {
     const sim = new Sim(7, { agents: false });
@@ -137,7 +143,8 @@ describe('seasons', () => {
       const frost = sim.activity.find((e) => e.text.startsWith('First frost'))!.text;
       return { min, ripeLost: Number(/(\d+) ripe/.exec(frost)?.[1] ?? 0) };
     };
-    const normal = lowest(winterTown());
+    // The town as it stood, weather and all, to compare like with like against the Low run below.
+    const normal = lowest(loadSim(eve));
     const low = loadSim(autumn);
     low.priorities.food = 0;
     // Fewer hands bring in the autumn harvest, so more of it freezes in the fields. With the
