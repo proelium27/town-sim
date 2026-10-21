@@ -8,6 +8,7 @@ import { checkTier, EXTENSION_W, extensionSite, type ExtensionSite, stampExtensi
 import { bury } from './life';
 import { projectCushion } from './market';
 import { agendaWeight } from './politics';
+import { deeds, dreaming } from './aspirations';
 import { canSupply, CRAFT_ROLES, hasWorkshop, rawOf, RECIPES, targetOf, wanted } from './workshop';
 import { addMemory, first, think } from './social';
 import { HEADLINE, NOTABLE, type Agent, type Project } from './types';
@@ -180,7 +181,8 @@ function proposals(sim: Sim): Proposal[] {
     const sharedHome = a.household === p.household && members(sim, a.household).every((m) => fam.includes(m));
     if (sharedHome) continue;
     // A couple living apart, or sharing with housemates, wants a place of their own.
-    out.push({ bp: 'house', score: 1.45 * hw, reason: `${first(a)} and ${first(p)} want a home of their own`, forAgents: fam, proposer: a, name: homeName(sim, a), near: familyHome(sim, [a, p]) });
+    const dream = dreaming(a, 'home') || dreaming(p, 'home') ? 1.25 : 1;
+    out.push({ bp: 'house', score: 1.45 * hw * dream, reason: `${first(a)} and ${first(p)} want a home of their own`, forAgents: fam, proposer: a, name: homeName(sim, a), near: familyHome(sim, [a, p]) });
   }
   for (const h of sim.town.households) {
     if (h.building < 0) continue;
@@ -477,7 +479,9 @@ export function completeProject(sim: Sim, pr: Project): void {
   }
   for (const id of pr.builders) {
     const a = sim.agent(id);
-    if (a) addMemory(sim, a, 'builtSomething');
+    if (!a) continue;
+    addMemory(sim, a, 'builtSomething');
+    deeds(a).built++;
   }
   for (const a of sim.agents) addMemory(sim, a, 'townGrowing');
   const names = residents.map(first);
@@ -515,7 +519,9 @@ function finishExtension(sim: Sim, pr: Project, wing: ExtensionSite): void {
   stepOut(sim, sim.building(wing.building)!.door);
   for (const id of pr.builders) {
     const a = sim.agent(id);
-    if (a) addMemory(sim, a, 'builtSomething');
+    if (!a) continue;
+    addMemory(sim, a, 'builtSomething');
+    deeds(a).built++;
   }
   const fam = members(sim, hh.id);
   for (const a of fam) addMemory(sim, a, 'roomToBreathe');

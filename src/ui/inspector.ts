@@ -2,6 +2,7 @@ import type { Art } from '../assets/loader';
 import { ageOf } from '../sim/agents';
 import { xpToNext } from '../sim/ai';
 import { ADULT_AGE, billText, MIN_PER_DAY, NEED_KEYS, NEEDS, plural, ROLES, SEASON_DAYS, SEASONS, SKILL_KEYS, SKILL_LABEL, TRAITS } from '../sim/defs';
+import { dreamLine } from '../sim/aspirations';
 import { APT_LABEL, APTITUDES } from '../sim/careers';
 import { frailty, ILLNESS } from '../sim/health';
 import { chill } from '../sim/seasons';
@@ -69,6 +70,7 @@ export class Inspector {
         <div class="chips">${a.traits.map((t) => `<span class="chip" title="${esc(TRAITS[t].description)}">${TRAITS[t].name}</span>`).join('')}</div>
         <button class="btn" data-act="follow" data-f="follow" title="Follow (F)">Follow</button>
       </div>
+      <p class="dream" data-f="dream"></p>
       <p class="money num" data-f="money"></p>
 
       <section class="now" aria-label="Right now">
@@ -140,6 +142,8 @@ export class Inspector {
     set('age', String(age));
     set('title', `${role.title}${wpName ? ` · ${esc(wpName)}` : ''}${this.sim.mayor === a.id ? ' · <b>Mayor</b>' : ''}`, true);
     const hh = this.sim.town.households[a.household];
+    const dream = dreamLine(this.sim, a);
+    set('dream', dream ? `<span class="k">${dream.label}</span> <span class="${dream.state}">${esc(dream.text)}</span>${dream.progress ? ` <span class="meta num">· ${esc(dream.progress)}</span>` : ''}` : '', true);
     const sweet = this.sim.agent(a.court?.with);
     const court = sweet ? ` · ${a.court!.stage === 'engaged' ? 'engaged to' : 'courting'} <b>${esc(sweet.name.split(' ')[0])}</b>` : '';
     set('home', `${hh.building >= 0 ? `lives at ${esc(hh.name)}` : 'no home yet'}${court}`, true);

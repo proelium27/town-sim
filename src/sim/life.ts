@@ -4,6 +4,7 @@ import { graveSlots } from '../world/blueprints';
 import { beginCareer, chooseCareer, finishApprenticeships } from './careers';
 import { tickTownHealth } from './health';
 import { allocateRoles, capacity, members, moveTo, newHousehold, setRole } from './planner';
+import { dreaming, tickAspirations } from './aspirations';
 import { courtship, scheduleFuneral } from './rites';
 import { addMemory, first, kinship, think } from './social';
 import { HEADLINE, NOTABLE, type Agent } from './types';
@@ -17,6 +18,7 @@ export function tickLife(sim: Sim, dt: number): void {
   growUp(sim);
   finishApprenticeships(sim);
   courtship(sim);
+  tickAspirations(sim);
   births(sim);
   tickTownHealth(sim);
   takeInChildren(sim);
@@ -59,7 +61,8 @@ function births(sim: Sim): void {
     if (capacity(sim, a.household) <= members(sim, a.household).length) continue;
     const youngest = Math.max(-Infinity, ...[...a.children, ...b.children].map((id) => sim.person(id)?.birth ?? -Infinity));
     if (sim.time - youngest < 2 * 1440) continue;
-    if (!sim.rng.chance(0.04)) continue;
+    // A parent dreaming of a big family makes it a little likelier.
+    if (!sim.rng.chance(dreaming(a, 'family') || dreaming(b, 'family') ? 0.06 : 0.04)) continue;
     const baby = createAgent(sim, { role: 'child', household: a.household, age: 0, parents: [a, b], cell: a.at });
     sim.agents.push(baby);
     sim.populationVersion++;
