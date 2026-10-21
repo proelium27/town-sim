@@ -15,7 +15,7 @@ import { Rng } from './rng';
 import { type Car, tickTraffic } from './traffic';
 import type { Activity, ActivityKind, Agent, Project, Tone } from './types';
 
-/** Game minutes per simulation step. At 1x the sim runs 20 steps per real second (1 game minute/s). */
+/** Game minutes per simulation step: 20 steps per game minute, however fast the game is running (see main.ts). */
 export const STEP = 0.05;
 
 export type { Stock } from './defs';

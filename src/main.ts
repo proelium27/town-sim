@@ -12,9 +12,12 @@ import { TownPanel } from './ui/townPanel';
 import { readSave, Saves } from './ui/saves';
 import { Tracker } from './ui/tracker';
 
-/** Real milliseconds per sim step at 1x: 20 steps per second, so one game minute per real second. */
+/** Game minutes per real second at each speed: Normal plays a day in 8 minutes, Fast in about 90 seconds, Fastest in 24. */
+const MINUTES_PER_SECOND = [0, 3, 15, 60];
+/** Real milliseconds per sim step at one game minute per real second. */
 const STEP_MS = 1000 * STEP;
-const MAX_STEPS_PER_FRAME = 40;
+/** Most real time a frame spends stepping the sim; past it the backlog is dropped, so a slow machine runs slower instead of stalling. */
+const SIM_BUDGET_MS = 10;
 
 async function boot(): Promise<void> {
   const app = new Application();
@@ -213,14 +216,16 @@ async function boot(): Promise<void> {
     const dtMs = Math.min(250, tk.deltaMS);
     const dt = dtMs / 1000;
     if (speed > 0) {
-      acc += dtMs * speed;
-      let n = 0;
-      while (acc >= STEP_MS && n < MAX_STEPS_PER_FRAME) {
+      acc += dtMs * MINUTES_PER_SECOND[speed];
+      const start = performance.now();
+      while (acc >= STEP_MS) {
         sim.step();
         acc -= STEP_MS;
-        n++;
+        if (performance.now() - start > SIM_BUDGET_MS) {
+          acc = 0;
+          break;
+        }
       }
-      if (n === MAX_STEPS_PER_FRAME) acc = 0;
     }
     const pan = 520 * dt;
     if (keys.has('KeyA') || keys.has('ArrowLeft')) camera.panBy(pan, 0);
