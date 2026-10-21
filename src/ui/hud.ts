@@ -1,4 +1,5 @@
 import { DAY_NAMES, GOOD_KEYS, GOODS } from '../sim/defs';
+import { birthdayNames } from '../sim/events';
 import type { Sim } from '../sim/sim';
 import { statusOf } from './tracker';
 import { esc } from './util';
@@ -60,7 +61,8 @@ export class Hud {
       ['mood', mood],
     ];
     const building = sim.projects.length ? `Building ${sim.projects.length === 1 ? sim.projects[0].name : `${sim.projects.length} things`}` : '';
-    const happening = [ev.festival && 'Festival in the park', ev.drought && 'Drought', building, ev.standup && 'Standup', ev.pizza && 'Pizza in the kitchen', ev.party && 'Party in the lounge', ev.coffeeBroken && 'Coffee machine broken'].filter(Boolean).slice(0, 2) as string[];
+    const bday = ev.birthdays[0] && birthdayNames(sim, ev.birthdays[0]);
+    const happening = [ev.festival && 'Festival in the park', ev.drought && 'Drought', bday && `${bday}'s birthday`, building, ev.standup && 'Standup', ev.pizza && 'Pizza in the kitchen', ev.party && 'Party in the lounge', ev.coffeeBroken && 'Coffee machine broken'].filter(Boolean).slice(0, 2) as string[];
     this.put(
       this.statsEl,
       'stats',

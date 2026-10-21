@@ -41,6 +41,8 @@ npm run build      # typecheck + production bundle
 - **Economy**: woodcutters keep the stockpile topped up from the forest (which slowly regrows); farmers harvest and tend crops; food flows from farms to the storehouse to the market, kitchens and diners; households cook from their own pantry.
 - **Jobs**: flexible roles (builder, farmer, woodcutter, laborer, teacher, cook) are reassigned as the town's needs change. Office, café, market and library staff keep their jobs.
 - **Generations** (`src/sim/life.ts`): two years pass per game day. Kids are born to couples with a spare bed, go to school once there is one, and come of age at 18; people retire at 66 and die of old age; grief spreads to family and friends.
+- **Family life**: once a calendar year, on the day they were born, people throw a birthday party at home at 18:00: cake on the table, family comes over (friends too for round numbers like 18, 50 or 80). Households sit down to dinner together. Babies are sometimes named after a grandparent who has passed away.
+- **Cemetery**: the first death prompts a town meeting to build one; each death adds a named headstone, and family visit the grave now and then, which eases their grief.
 
 ## What you control
 

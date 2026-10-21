@@ -18,6 +18,17 @@ const LAST = [
 ];
 
 export const ageOf = (sim: Sim, a: Agent): number => ((sim.time - a.birth) / MIN_PER_DAY) * YEARS_PER_DAY;
+
+const NUMERALS = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+const SUFFIX = / (I{2,3}|IV|VI{0,3}|IX|X)$/;
+
+/** "Okafor" from "Ada Okafor II": the family name, without the first name or a namesake's numeral. */
+export function surnameOf(name: string): string {
+  return name.replace(SUFFIX, '').split(' ').slice(1).join(' ');
+}
+
+/** 2 for "Ada Okafor II", 1 for "Ada Okafor". */
+const ordinalOf = (name: string): number => Math.max(1, NUMERALS.indexOf(SUFFIX.exec(name)?.[1] ?? ''));
 export const isChild = (sim: Sim, a: Agent): boolean => ageOf(sim, a) < ADULT_AGE;
 
 function pickTraits(sim: Sim, inherit: TraitKey[] = []): TraitKey[] {
@@ -98,10 +109,23 @@ export function createAgent(sim: Sim, o: NewAgentOpts): Agent {
     hairHue: look ? look.hairHue : rng.pick([0, 0, 20, 200, 300, 40]),
     hairLight: o.age >= RETIRE_AGE ? 1.6 : look ? look.hairLight : rng.pick([0.55, 0.8, 1, 1.25]),
   };
-  const surname = o.surname ?? (parents[0] ? parents[0].name.split(' ').slice(1).join(' ') : rng.pick(LAST));
+  const surname = o.surname ?? (parents[0] ? surnameOf(parents[0].name) : rng.pick(LAST));
+  // Sometimes a baby carries on the name of a grandparent who has passed away.
+  const living = new Set(sim.agents.map((x) => x.name.split(' ')[0]));
+  const late = parents
+    .flatMap((p) => p.parents)
+    .map((id) => sim.deceased.find((d) => d.id === id))
+    .filter((d): d is Agent => !!d && !living.has(d.name.split(' ')[0]));
+  const namesake = o.age < 1 && late.length && rng.chance(0.5) ? rng.pick(late) : undefined;
+  let name = namesake ? `${namesake.name.split(' ')[0]} ${surname}` : `${uniqueFirst(sim)} ${surname}`;
+  if (namesake) {
+    // Anyone who already carried this exact name pushes the numeral up: Ada Okafor, Ada Okafor II, Ada Okafor III.
+    const prior = [...sim.agents, ...sim.deceased].filter((d) => d.name.replace(SUFFIX, '') === name).map((d) => ordinalOf(d.name));
+    if (prior.length) name += ` ${NUMERALS[Math.min(NUMERALS.length - 1, Math.max(...prior) + 1)]}`;
+  }
   const a: Agent = {
     id: sim.nextAgentId++,
-    name: `${uniqueFirst(sim)} ${surname}`,
+    name,
     age: Math.floor(o.age),
     role: o.role,
     household: o.household,
@@ -142,7 +166,9 @@ export function createAgent(sim: Sim, o: NewAgentOpts): Agent {
     children: [],
     carry: null,
     workBuilding: null,
+    lastBirthday: 0,
   };
+  if (namesake) a.namedAfter = namesake.id;
   a.needs.energy = rng.range(70, 95);
   for (const p of parents) {
     p.children.push(a.id);
@@ -238,4 +264,9 @@ export function createAgents(sim: Sim): void {
     const fam = a.household === b.household ? 40 : ROLES[a.role].workplace === ROLES[b.role].workplace && ROLES[a.role].workplace !== 'none' ? 15 : 0;
     if (fam) a.relations.set(b.id, { opinion: a.household === b.household ? sim.rng.range(10, 30) : sim.rng.range(-5, 15), familiarity: fam, lastTalk: -Infinity });
   }
+}
+
+/** Fills fields added since an older save was made. */
+export function backfillAgent(a: Agent): void {
+  a.lastBirthday ??= 0;
 }

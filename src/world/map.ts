@@ -2,7 +2,8 @@ import type { Facing, GroundKey, PropKey } from '../assets/manifest';
 
 export type DrawnKey =
   | 'monitor' | 'toilet' | 'basin' | 'whiteboard' | 'coffee' | 'shower' | 'net'
-  | 'rock' | 'stump' | 'crop0' | 'crop1' | 'crop2' | 'crop3' | 'crate' | 'logs' | 'stones' | 'chalkboard' | 'deskKid';
+  | 'rock' | 'stump' | 'crop0' | 'crop1' | 'crop2' | 'crop3' | 'crate' | 'logs' | 'stones' | 'chalkboard' | 'deskKid'
+  | 'cake' | 'grave';
 
 export type RoomKind =
   | 'office' | 'meeting' | 'kitchen' | 'lounge' | 'lobby' | 'restroom'
@@ -53,9 +54,12 @@ export interface Prop {
   cost?: number;
   /** Game minute after which a temporary prop (stumps) disappears. */
   expires?: number;
+  /** Headstones: who lies here. */
+  about?: number;
+  label?: string;
 }
 
-export type BuildingKind = 'office' | 'cafe' | 'market' | 'library' | 'house' | 'farm' | 'storehouse' | 'school' | 'park' | 'workshop';
+export type BuildingKind = 'office' | 'cafe' | 'market' | 'library' | 'house' | 'farm' | 'storehouse' | 'school' | 'park' | 'workshop' | 'cemetery';
 
 export interface Building {
   id: number;

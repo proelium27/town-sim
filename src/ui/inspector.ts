@@ -153,7 +153,8 @@ export class Inspector {
       const right = alive && op !== undefined ? `<span class="${op >= 0 ? 'pos' : 'neg'} num">${op > 0 ? '+' : ''}${Math.round(op)}</span>` : '';
       return `<li><button class="row" ${alive ? `data-act="person" data-id="${id}"` : 'disabled'}><span>${esc(p.name)} <span class="meta">${label}${alive ? `, ${Math.floor(ageOf(this.sim, p))} · ${ROLES[p.role].title}` : ', passed away'}${level}</span></span>${right}</button></li>`;
     };
-    const fam = famIds.map(kinRow).join('');
+    const namesake = this.sim.person(a.namedAfter);
+    const fam = famIds.map(kinRow).join('') + (namesake ? `<li class="meta">Named after their late grandparent ${esc(namesake.name.split(' ')[0])}</li>` : '');
     this.slot('family', JSON.stringify([famIds, age, hh.building, ...famIds.map(([id]) => [!!this.sim.agent(id), Math.round(a.relations.get(id)?.opinion ?? 0)])]), fam || '<li class="meta">No family in town yet.</li>');
     const family = new Set(famIds.map(([id]) => id));
     const following = this.hooks.isFollowing();

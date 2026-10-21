@@ -1,9 +1,10 @@
 import type { GroundKey } from '../assets/manifest';
 import { BLUEPRINTS, type BlueprintKey } from '../world/blueprints';
 import type { Household } from '../world/town';
-import { ageOf, makeSchedule, newTask } from './agents';
+import { ageOf, makeSchedule, newTask, surnameOf } from './agents';
 import { ADULT_AGE, billGoods, type Good, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
 import { foodBalance } from './economy';
+import { bury } from './life';
 import { addMemory, first, think } from './social';
 import type { Agent, Project } from './types';
 import type { Sim } from './sim';
@@ -29,11 +30,13 @@ export function newHousehold(sim: Sim, name: string): Household {
   return h;
 }
 
-/** Moves people into another household, bringing a few groceries with them. */
+/** Moves people into another household, bringing a few groceries with them. Children are never left behind without a grown-up. */
 export function moveTo(sim: Sim, people: Agent[], hh: number): void {
+  const left = new Set<number>();
   for (const a of people) {
     if (a.household === hh) continue;
     const from = a.household;
+    left.add(from);
     a.household = hh;
     if (sim.pantry[from] > 1) {
       sim.pantry[from]--;
@@ -41,6 +44,10 @@ export function moveTo(sim: Sim, people: Agent[], hh: number): void {
     }
     // Release any bed they had reserved at the old place.
     if (a.action.kind === 'sleep' && a.action.propId !== undefined) sim.reserved.delete(a.action.propId);
+  }
+  for (const from of left) {
+    const rest = members(sim, from);
+    if (rest.length && rest.every((x) => ageOf(sim, x) < ADULT_AGE)) moveTo(sim, rest, hh);
   }
 }
 
@@ -118,7 +125,7 @@ const HOME_SUFFIX = ['home', 'house', 'cottage', 'place', 'lodge'];
 
 /** "Reyes home", or "Reyes cottage" if that name is taken. */
 function homeName(sim: Sim, a: Agent | undefined): string {
-  const surname = a ? a.name.split(' ').slice(1).join(' ') : 'Hillside';
+  const surname = a ? surnameOf(a.name) : 'Hillside';
   const taken = new Set([...sim.town.households.map((h) => h.name), ...sim.projects.map((p) => p.name), ...sim.map.buildings.map((b) => b.name)]);
   for (const s of HOME_SUFFIX) if (!taken.has(`${surname} ${s}`)) return `${surname} ${s}`;
   return `${a ? first(a) : 'New'}'s place ${sim.nextProjectId}`;
@@ -187,6 +194,16 @@ function proposals(sim: Sim): Proposal[] {
   }
   if (sim.agents.length >= 24 && count('diner') < Math.floor(sim.agents.length / 24)) {
     out.push({ bp: 'diner', score: 0.6 * cw, reason: 'the café is packed every lunchtime', forAgents: [], proposer: sim.agents.find((a) => a.traits.includes('foodie')) ?? charismatic(), name: `${['Corner', 'Hilltop', 'Lakeside'][count('diner') % 3]} Diner` });
+  }
+  if (sim.unburied.length && !sim.projects.some((p) => p.blueprint === 'cemetery')) {
+    const dead = sim.person(sim.unburied[0])!;
+    const mourner = sim.agents.filter((a) => a.id === dead.partner || dead.children.includes(a.id) || dead.parents.includes(a.id)).find((a) => ageOf(sim, a) >= ADULT_AGE);
+    const full = count('cemetery') > 0;
+    out.push({
+      bp: 'cemetery', score: 1.3 * cw,
+      reason: full ? 'the cemetery is full' : `we have nowhere to lay ${first(dead)} to rest`,
+      forAgents: [], proposer: mourner ?? charismatic(), name: full ? 'Hill Cemetery' : 'Northwind Cemetery',
+    });
   }
   const avgFun = sim.agents.reduce((s, a) => s + a.needs.fun, 0) / Math.max(1, sim.agents.length);
   if (sim.agents.length >= 20 && count('park') < Math.floor(sim.agents.length / 20)) {
@@ -340,6 +357,10 @@ export function completeProject(sim: Sim, pr: Project): void {
   let hhId: number | undefined;
   const residents = pr.forAgents.map((id) => sim.agent(id)).filter((a): a is Agent => !!a);
   if (pr.blueprint === 'house') {
+    // Kids born (or who moved in) since the house was proposed come along with their parents.
+    for (const r of [...residents]) {
+      for (const k of familyOf(sim, r)) if (!residents.includes(k) && k.household === r.household && ageOf(sim, k) < ADULT_AGE) residents.push(k);
+    }
     const homeless = residents.length && sim.town.households[residents[0].household].building < 0 && residents.every((r) => r.household === residents[0].household);
     hhId = homeless ? residents[0].household : newHousehold(sim, pr.name).id;
   }
@@ -381,6 +402,11 @@ export function completeProject(sim: Sim, pr: Project): void {
   const names = residents.map(first);
   sim.log(`${pr.name} is finished${names.length ? `. ${names.join(', ')} moved in` : ''}`, 'build', 'good', residents[0]);
   sim.milestone(`Built ${pr.name}`);
+  if (pr.blueprint === 'cemetery') {
+    const laid = sim.unburied.filter((id) => bury(sim, id));
+    sim.unburied = sim.unburied.filter((id) => !laid.includes(id));
+    if (laid.length) sim.log(`${laid.map((id) => sim.person(id)!.name).join(', ')} ${laid.length > 1 ? 'were' : 'was'} laid to rest at ${pr.name}`, 'family', 'neutral');
+  }
   if (pr.blueprint !== 'house') allocateRoles(sim);
 }
 

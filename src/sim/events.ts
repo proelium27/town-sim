@@ -1,7 +1,10 @@
-import { ROLES } from './defs';
+import { ageOf } from './agents';
+import { MIN_PER_DAY, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
+import { kinship } from './social';
 import { newcomers } from './life';
 import { addMemory, first, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
+import type { Agent } from './types';
 
 export interface EventState {
   standup: { until: number; attendees: Set<number> } | null;
@@ -11,13 +14,41 @@ export interface EventState {
   coffeeBroken: boolean;
   drought: { until: number } | null;
   festival: { until: number; attendees: Set<number> } | null;
+  /** Birthday parties happening right now, one per household. */
+  birthdays: Birthday[];
   /** Day the schedule below was planned for. */
   plannedDay: number;
-  plan: { at: number; kind: 'standup' | 'pizza' | 'party' | 'coffee' | 'rain'; length: number }[];
+  plan: { at: number; kind: 'standup' | 'pizza' | 'party' | 'coffee' | 'rain' | 'birthday'; length: number; host?: number }[];
+}
+
+export interface Birthday {
+  /** Whose birthday it is: housemates born on the same day share one party. */
+  hosts: number[];
+  household: number;
+  /** The host passed a milestone age (50, 80, 100) since their last party: friends come too, not just family. */
+  milestone: boolean;
+  until: number;
+  guests: Set<number>;
+  cake?: number;
+}
+
+/** Not 18: growing up already marks it, and with parties 16 years of age apart nearly every first adult party would pass it. */
+const MILESTONES = [50, 80, 100];
+
+/** The milestone age passed since last year's party, if any. Parties are a calendar year apart, which is many years of age. */
+export function milestoneFor(age: number): number | undefined {
+  const before = age - YEAR_DAYS * YEARS_PER_DAY;
+  return MILESTONES.find((m) => m > before && m <= age);
+}
+
+/** Day of the calendar year (0..7) someone was born on. */
+export function birthdayOf(birth: number): number {
+  const year = YEAR_DAYS * MIN_PER_DAY;
+  return Math.floor((((birth % year) + year) % year) / MIN_PER_DAY);
 }
 
 export function initialEvents(): EventState {
-  return { standup: null, pizza: null, party: null, rain: null, coffeeBroken: false, drought: null, festival: null, plannedDay: -1, plan: [] };
+  return { standup: null, pizza: null, party: null, rain: null, coffeeBroken: false, drought: null, festival: null, birthdays: [], plannedDay: -1, plan: [] };
 }
 
 /** Lays out the day's happenings at midnight (or on the first tick). */
@@ -34,6 +65,13 @@ function planDay(sim: Sim): void {
     if (r.chance(0.25)) ev.plan.push({ at: base + r.range(9, 15) * 60, kind: 'coffee', length: 0 });
   }
   if (r.chance(0.35)) ev.plan.push({ at: base + r.range(7, 19) * 60, kind: 'rain', length: r.range(60, 220) });
+  // Birthdays follow the calendar: once a year, on the day of the year someone was born.
+  const today = sim.day % YEAR_DAYS;
+  for (const a of sim.agents) {
+    if (birthdayOf(a.birth) !== today || a.lastBirthday >= sim.year || sim.time - a.birth < YEAR_DAYS * MIN_PER_DAY * 0.75) continue;
+    ev.plan.push({ at: base + 18 * 60, kind: 'birthday', length: 150, host: a.id });
+  }
+  ev.plan.sort((x, y) => x.at - y.at);
   ev.plan.sort((a, b) => a.at - b.at);
 }
 
@@ -63,6 +101,18 @@ export function tickEvents(sim: Sim, _dt: number): void {
           sim.log('The office coffee machine broke down', 'event', 'bad');
         }
         break;
+      case 'birthday': {
+        // Housemates born on the same day share the party: gather their entries too.
+        const hh = sim.agent(e.host!)?.household;
+        const hosts = [e.host!];
+        for (let i = 0; i < ev.plan.length; ) {
+          const o = ev.plan[i];
+          if (o.kind === 'birthday' && o.at <= sim.time && sim.agent(o.host!)?.household === hh) hosts.push(ev.plan.splice(i, 1)[0].host!);
+          else i++;
+        }
+        startBirthday(sim, hosts, e.length);
+        break;
+      }
       case 'rain':
         if (!ev.rain) {
           ev.rain = { until: sim.time + e.length };
@@ -92,6 +142,94 @@ export function tickEvents(sim: Sim, _dt: number): void {
     ev.rain = null;
     sim.log('The rain cleared up', 'event', 'neutral');
   }
+  for (const b of ev.birthdays) if (sim.time >= b.until) endBirthday(sim, b);
+}
+
+/** "Oskar", "Oskar and Bo", "Ada, Oskar and Bo". */
+export function andList(names: string[]): string {
+  return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/** Whose party it is: "Oskar" or "Oskar and Bo". */
+export function birthdayNames(sim: Sim, b: Birthday): string {
+  return andList(b.hosts.map((id) => sim.agent(id)).filter((x): x is Agent => !!x).map(first));
+}
+
+/** Everyone in one household with a birthday today celebrates at a single party. */
+function startBirthday(sim: Sim, hostIds: number[], length: number): void {
+  const hosts = hostIds.map((id) => sim.agent(id)).filter((a): a is Agent => !!a && a.lastBirthday < sim.year);
+  if (!hosts.length) return;
+  const names = andList(hosts.map(first));
+  const ages = hosts.map((a) => Math.floor(ageOf(sim, a)));
+  const marks = ages.map(milestoneFor);
+  const milestone = marks.some((m) => m !== undefined);
+  for (const a of hosts) a.lastBirthday = sim.year;
+  const hh = sim.town.households[hosts[0].household];
+  if (hh.building < 0) {
+    for (const a of hosts) addMemory(sim, a, 'birthday');
+    sim.log(hosts.length > 1 ? `${names} had birthdays with nowhere to throw a party` : `${names} turned ${ages[0]} with nowhere to throw a party`, 'family', 'neutral', hosts[0], hosts[1]);
+    return;
+  }
+  // One cake on the home's table, if it has one.
+  const m = sim.map;
+  const table = m.props.find((p) => p.room === hh.room && /^table/.test(p.key));
+  const cake = table ? m.addProp({ key: 'cake', drawn: true, x: table.x, y: table.y, w: 1, h: 1, blocks: true }) : undefined;
+  sim.events.birthdays.push({ hosts: hosts.map((a) => a.id), household: hosts[0].household, milestone, until: sim.time + length, guests: new Set(hosts.map((a) => a.id)), cake: cake?.id });
+  hosts.forEach((a, i) => {
+    const [age, mark] = [ages[i], marks[i]];
+    think(sim, a, mark === age ? `${age}! That's a big one.` : mark ? `${age} today. My first party since turning ${mark}.` : `Another year older. ${age} today.`, 'good');
+  });
+  if (hosts.length === 1) {
+    const [age, mark] = [ages[0], marks[0]];
+    const since = mark && mark !== age ? `, the first party since turning ${mark}` : '';
+    sim.log(`It's ${names}'s birthday: ${age} today${since}${milestone ? ', so friends are invited too' : ''}`, 'family', 'good', hosts[0]);
+    return;
+  }
+  const same = ages.every((x) => x === ages[0]);
+  const turned = hosts
+    .map((a, i) => (marks[i] === undefined ? '' : marks[i] === ages[i] ? `${first(a)} turned ${ages[i]}` : `${first(a)} is past ${marks[i]}`))
+    .filter(Boolean);
+  sim.log(
+    `It's ${names}'s birthday: ${same ? `${hosts.length > 2 ? 'all' : 'both'} ${ages[0]}` : andList(ages.map(String))} today${turned.length ? `. ${andList(turned)}, so friends are invited too` : ''}`,
+    'family',
+    'good',
+    hosts[0],
+    hosts[1],
+  );
+}
+
+function endBirthday(sim: Sim, b: Birthday): void {
+  sim.events.birthdays = sim.events.birthdays.filter((x) => x !== b);
+  if (b.cake !== undefined) {
+    const p = sim.map.prop(b.cake);
+    if (p) sim.map.removeProp(p);
+  }
+  const hosts = b.hosts.map((id) => sim.agent(id)).filter((x): x is Agent => !!x);
+  if (!hosts.length) return;
+  const guests = [...b.guests].filter((id) => !b.hosts.includes(id)).map((id) => sim.agent(id)).filter((x): x is Agent => !!x);
+  // Co-hosts had each other, so a joint party is never a lonely one.
+  const company = guests.length + hosts.length - 1;
+  for (const h of hosts) addMemory(sim, h, 'myBirthday', undefined, company ? 1 + Math.min(1, company / 6) : 0.4);
+  for (const g of guests) {
+    addMemory(sim, g, 'birthday', hosts[0]);
+    for (const h of hosts) {
+      shiftOpinion(sim, g, h, sim.rng.range(1, 4));
+      shiftOpinion(sim, h, g, sim.rng.range(2, 5));
+    }
+  }
+  const names = andList(hosts.map(first));
+  const family = guests.filter((g) => hosts.some((h) => kinship(sim, h, g))).length;
+  const text = guests.length
+    ? `${names}'s birthday wound down: ${family} family${guests.length > family ? ` and ${guests.length - family} friends` : ''} came to celebrate`
+    : hosts.length > 1
+      ? `${names} celebrated their birthday together`
+      : `Nobody came to ${names}'s birthday`;
+  sim.log(text, 'family', company ? 'good' : 'bad', hosts[0], hosts[1]);
+}
+
+/** The birthday party this person is hosting or invited to right now, if any. */
+export function birthdayFor(sim: Sim, a: { id: number }): Birthday | undefined {
+  return sim.events.birthdays.find((b) => b.hosts.includes(a.id) || b.guests.has(a.id));
 }
 
 function endStandup(sim: Sim): void {

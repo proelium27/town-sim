@@ -34,6 +34,8 @@ export class Sim {
   agents: Agent[] = [];
   /** The dead, kept for family trees and relationship history. */
   deceased: Agent[] = [];
+  /** The dead waiting for a cemetery to be built. */
+  unburied: number[] = [];
   nextAgentId = 1;
   /** Bumped whenever someone is born, arrives or dies. */
   populationVersion = 0;

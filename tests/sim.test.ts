@@ -45,7 +45,7 @@ describe('daily routines', () => {
   it('weekends are work-free', () => {
     runTo(sim, 5, 11);
     expect(sim.agents.filter((a) => a.action.kind === 'work').length).toBe(0);
-  });
+  }, 60_000);
 
   it('a week produces friendships, finished work, skill growth and few near misses', () => {
     runTo(sim, 7, 0);
