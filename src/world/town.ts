@@ -293,7 +293,7 @@ export function buildTown(seed = 7, character: Character = CLASSIC): Town {
   // Starter infrastructure on the edge of town: a storehouse and one farm.
   stampStorehouse(m, 86, 30, true, 'Town Storehouse');
   fill(89, 29, 1, 1, 'plaza');
-  stampFarm(m, 86, 38, true, 'Meadow Farm');
+  stampFarm(m, 86, 38, true, character.classic ? 'Meadow Farm' : character.farmNames[0]);
   fill(84, 37, 1, 1, 'dirt');
   for (let x = 84; x < 96; x++) fill(x, 37, 1, 1, 'dirt');
 

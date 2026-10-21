@@ -708,8 +708,13 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   const hungryKid = pantry <= 1 ? hungriestKid(sim, a) : undefined;
   const kidNeed = hungryKid ? 1 - hungryKid.needs.hunger / 100 : 0;
   const forKid = kidNeed > 0.7;
-  if (homed && pantry <= 1 && !housemateShopping && (!workTime || kidNeed > 0.8) && !evening && sim.stock.food >= 6 && !little && !turnedAway && canAffordGroceries(sim, a)) {
-    o.push(spotOption(sim, a, 'shop', 0.85 + (forKid ? kidNeed * 1.2 : 0), forKid ? `Nothing at home for ${first(hungryKid!)}` : 'Fridge is empty', ['shop'], () => 'Shopping for groceries', 14));
+  // From late autumn households keep a few meals in, so a blizzard evening (no shops, no café) doesn't find the cupboard bare.
+  const stocked = sim.season === 3 || (sim.season === 2 && sim.seasonProgress > 0.5) ? 3 : 1;
+  // A bare cupboard with the evening coming is worth leaving work for in winter, and worth braving a blizzard for
+  // (the market is shelter too); only getting properly cold outranks it.
+  const bare = pantry < 0.5;
+  if (homed && pantry <= stocked && !housemateShopping && (!workTime || kidNeed > 0.8 || (bare && stocked > 1)) && !evening && sim.stock.food >= 6 && !little && !turnedAway && canAffordGroceries(sim, a)) {
+    o.push(spotOption(sim, a, 'shop', 0.85 + (forKid ? kidNeed * 1.2 : 0) + (bare && (stocked > 1 || storm) ? 0.6 : 0), forKid ? `Nothing at home for ${first(hungryKid!)}` : 'Fridge is empty', ['shop'], () => 'Shopping for groceries', 14));
   }
 
   // ---- go home at night / stay near home when small

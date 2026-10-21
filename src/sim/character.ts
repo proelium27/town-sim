@@ -11,9 +11,12 @@ import { Rng } from './rng';
  * (huddled around a green, scattered farmsteads, a ribbon along the road), and plain historical accident:
  * the decision a meeting happened to make one evening, the plot someone happened to pick.
  *
- * Every dial is tuned so that 0.5 (or an empty table) is how the town behaved before characters existed;
- * CLASSIC is that town, and old saves load as it.
+ * CLASSIC holds every dial at the value that reproduces the town as it was before characters existed (kin, civic and
+ * openness at 0.5; whim and lean at 0; multipliers at 1; empty bias), and old saves load as it. The one
+ * deliberate change it shares with every town is the winter pantry buffer (ai.ts).
  */
+
+/** Where a town sits. */
 export type Setting = 'lakeside' | 'woodland' | 'highland' | 'meadow';
 export type Trade = 'farming' | 'timber' | 'quarry' | 'market';
 /** Clustered: huddled round the center. Scattered: homesteads with elbow room. Roadside: a ribbon along the main roads. */
@@ -26,6 +29,7 @@ export interface Lake {
   ry: number;
 }
 
+/** One town's character: rolled from its seed, saved with the town, read by the planner, the land and the people. */
 export interface Character {
   name: string;
   setting: Setting;
@@ -59,6 +63,11 @@ export interface Character {
   founders: string[];
   /** Planner weight per blueprint, from the trade and the town's values (missing: 1). */
   bias: Partial<Record<BlueprintKey, number>>;
+  /** How far ahead of what it eats a town farms (farming towns keep a margin). */
+  foodMargin: number;
+  /** How much wood and stone the stockpile keeps on hand (timber and quarry towns keep more). */
+  woodStock: number;
+  stoneStock: number;
   /** Town size at which a workshop is first proposed, and people per diner and per park. */
   workshopAt: number;
   dinerEvery: number;
@@ -93,6 +102,9 @@ export const CLASSIC: Character = {
   lakes: [{ x: 108, y: 72, rx: 10, ry: 5.5 }],
   founders: ['Okafor', 'Lindqvist', 'Reyes', 'Tanaka', 'Haddad', 'Novak'],
   bias: {},
+  foodMargin: 1,
+  woodStock: 1,
+  stoneStock: 1,
   workshopAt: 22,
   dinerEvery: 24,
   parkEvery: 20,
@@ -124,8 +136,8 @@ interface SettingDef {
 
 const SETTINGS: Record<Setting, SettingDef> = {
   lakeside: {
-    prefixes: ['Ash', 'Wil', 'Fen', 'Heron', 'Still', 'Reed', 'Swan', 'Elm'],
-    suffixes: ['mere', 'water', 'haven', 'wick', 'port'],
+    prefixes: ['Ash', 'Wil', 'Fen', 'Heron', 'Still', 'Reed', 'Swan', 'Elm', 'Mallow', 'Teal', 'Otter', 'Pike'],
+    suffixes: ['mere', 'water', 'haven', 'wick', 'port', 'bay', 'pool'],
     trades: { farming: 2, market: 2, timber: 1 },
     layouts: { clustered: 1, scattered: 1, roadside: 2 },
     fertility: [1.0, 1.2],
@@ -137,8 +149,8 @@ const SETTINGS: Record<Setting, SettingDef> = {
     parks: ['Shore', 'Kingfisher', 'Reed Bank', 'Willow'],
   },
   woodland: {
-    prefixes: ['Oak', 'Bram', 'Thorn', 'Hazel', 'Elder', 'Fox', 'Birch', 'Rowan'],
-    suffixes: ['wood', 'holt', 'hurst', 'den', 'grove'],
+    prefixes: ['Oak', 'Bram', 'Thorn', 'Hazel', 'Elder', 'Fox', 'Birch', 'Rowan', 'Alder', 'Yew', 'Badger', 'Linden'],
+    suffixes: ['wood', 'holt', 'hurst', 'den', 'grove', 'shaw', 'ley'],
     trades: { timber: 4, farming: 1 },
     layouts: { clustered: 2, scattered: 1, roadside: 1 },
     fertility: [0.9, 1.05],
@@ -150,8 +162,8 @@ const SETTINGS: Record<Setting, SettingDef> = {
     parks: ['Fern', 'Bluebell', 'Old Oak', 'Mossy'],
   },
   highland: {
-    prefixes: ['High', 'Grey', 'Raven', 'Iron', 'Black', 'Cold', 'Hart', 'Brae'],
-    suffixes: ['ridge', 'stone', 'crag', 'moor', 'fell'],
+    prefixes: ['High', 'Grey', 'Raven', 'Iron', 'Black', 'Cold', 'Hart', 'Brae', 'Flint', 'Wolf', 'Eagle', 'Storm'],
+    suffixes: ['ridge', 'stone', 'crag', 'moor', 'fell', 'tor', 'scar'],
     trades: { quarry: 4, timber: 1, market: 1 },
     layouts: { clustered: 3, scattered: 1, roadside: 1 },
     fertility: [0.78, 0.92],
@@ -163,8 +175,8 @@ const SETTINGS: Record<Setting, SettingDef> = {
     parks: ['Heather', 'Lookout', 'Cairn', 'Gorse'],
   },
   meadow: {
-    prefixes: ['Sun', 'Bar', 'Clover', 'Wheat', 'Lark', 'Green', 'Broad', 'Mill'],
-    suffixes: ['field', 'ford', 'ley', 'ton', 'stead'],
+    prefixes: ['Sun', 'Bar', 'Clover', 'Wheat', 'Lark', 'Green', 'Broad', 'Mill', 'Hay', 'Oat', 'Bramble', 'Fair'],
+    suffixes: ['field', 'ford', 'ley', 'ton', 'stead', 'by', 'well'],
     trades: { farming: 4, market: 2 },
     layouts: { clustered: 1, scattered: 3, roadside: 1 },
     fertility: [1.12, 1.3],
@@ -177,10 +189,15 @@ const SETTINGS: Record<Setting, SettingDef> = {
   },
 };
 
+/** "Little Ashmere", "Upper Greycrag": now and then a town's name carries one. */
+const QUALIFIERS = ['Little', 'Upper', 'Lower', 'Great', 'Old', 'East'];
+
 /** Lake sites outside the original town, clear of the roads and the starter farm. */
 const LAKE_SITES: [number, number][] = [[108, 72], [110, 11], [64, 74], [18, 72]];
 /** Roughly where the town starts, for pointing growth at a lake. */
 const ORIGIN: [number, number] = [56, 28];
+/** Directions (radians, y down) from the original town toward open land: north-east round to south-west. */
+const OPEN: [number, number] = [-0.7, 2.3];
 
 function weighted<T extends string>(rng: Rng, table: Partial<Record<T, number>>): T {
   const entries = Object.entries(table) as [T, number][];
@@ -208,40 +225,53 @@ export function rollCharacter(seed: number): Character {
   if (rng.chance(def.pond)) lakes.push({ x: sites[1][0], y: sites[1][1], rx: rng.range(4, 6.5), ry: rng.range(3, 4) });
   // Lakeside towns grow toward the water; elsewhere, whichever way the founders' road took them.
   const shore = setting === 'lakeside' && lakes[0];
-  const heading = shore ? Math.atan2(shore.y - ORIGIN[1], shore.x - ORIGIN[0]) : rng.range(-Math.PI, Math.PI);
-  const lean = { clustered: rng.range(3, 7), roadside: rng.range(6, 12), scattered: rng.range(10, 18) }[layout];
+  // The original town fills the north-west, so the open land (and any growth) lies east and south of it.
+  const heading = shore ? Math.atan2(shore.y - ORIGIN[1], shore.x - ORIGIN[0]) : rng.range(OPEN[0], OPEN[1]);
+  const lean = { clustered: rng.range(10, 16), roadside: rng.range(12, 20), scattered: rng.range(16, 26) }[layout];
   // The fields go out the other way from the houses, more or less.
-  const farmHeading = heading + Math.PI + rng.range(-1.2, 1.2);
+  const turn = rng.range(1, 1.8) * (rng.chance(0.5) ? 1 : -1);
+  const farmHeading = Math.min(OPEN[1], Math.max(OPEN[0], heading + turn));
 
   const founders = rng.shuffle([...LAST]).slice(0, 6);
-  const name = rng.pick(def.prefixes) + rng.pick(def.suffixes);
+  const name = (rng.chance(0.2) ? `${rng.pick(QUALIFIERS)} ` : '') + rng.pick(def.prefixes) + rng.pick(def.suffixes);
 
   // What the town was founded on, and what it values, tilt what its meetings put forward.
+  // Gentler on diners and clinics, whose base case sits close to what a meeting will take up at all:
+  // a town that cares little for public works still gets one, just later.
   const community = 0.7 + civic * 0.6;
+  const gentle = 0.85 + civic * 0.3;
   const bias: Partial<Record<BlueprintKey, number>> = {
     school: community,
     park: community,
-    clinic: 0.85 + civic * 0.3,
-    diner: community,
+    clinic: gentle,
+    diner: gentle,
     extension: 0.8 + kin * 0.4,
   };
   const mul = (k: BlueprintKey, f: number) => (bias[k] = (bias[k] ?? 1) * f);
   const start: Character['start'] = {};
   let workshopAt = 22;
-  let dinerEvery = 24;
+  // Civic towns want a diner sooner; market towns sooner still.
+  let dinerEvery = Math.round(28 - civic * 8);
+  let foodMargin = 1;
+  let woodStock = 1;
+  let stoneStock = 1;
   if (trade === 'farming') {
     mul('farm', 1.35);
     mul('storehouse', 1.1);
+    // Farming towns break new fields until they grow well ahead of what they eat.
+    foodMargin = 1.3;
     start.food = 60;
   } else if (trade === 'timber') {
     mul('workshop', 1.6);
     mul('storehouse', 1.2);
     workshopAt = 18;
+    woodStock = 1.6;
     start.wood = 30;
   } else if (trade === 'quarry') {
     mul('workshop', 1.4);
     mul('storehouse', 1.2);
     workshopAt = 20;
+    stoneStock = 1.6;
     start.stone = 30;
   } else {
     mul('diner', 1.5);
@@ -253,19 +283,25 @@ export function rollCharacter(seed: number): Character {
   const names = (pool: string[], suffix: string) => rng.shuffle(pool.map((n) => `${n} ${suffix}`));
   // One park is named for a founding family, the way real towns remember theirs.
   const parkNames = names(def.parks, 'Park');
-  parkNames.splice(1, 0, `${founders[rng.int(0, 5)]} Park`);
+  parkNames.unshift(`${founders[rng.int(0, 5)]} Park`);
 
   return {
     name, setting, trade, layout, kin, civic, openness, whim, heading, lean, farmHeading,
     fertility: rng.range(...def.fertility),
     timber: def.timber, stone: def.stone, regrowth: def.regrowth,
     forest: def.forest, rocks: def.rocks, lakes, founders, bias,
+    foodMargin, woodStock, stoneStock,
     workshopAt, dinerEvery, parkEvery: Math.round(26 - civic * 12),
     start,
     farmNames: names(def.farms, 'Farm'),
     dinerNames: names(def.diners, 'Diner'),
     parkNames,
   };
+}
+
+/** Most children a couple will have: family-minded towns have bigger families. */
+export function kidCap(c: Character): number {
+  return c.kin >= 0.7 ? 4 : c.kin <= 0.3 ? 2 : 3;
 }
 
 /** The nth name from a pool, numbering repeats once the pool runs out ("Reed Farm 2"). */
@@ -300,12 +336,13 @@ export function describe(c: Character): { summary: string; traits: string[] } {
   if (c.classic) return { summary: 'The original town, as it was first laid out.', traits: [] };
   const soil = c.fertility >= 1.15 ? ', on rich soil' : c.fertility <= 0.9 ? ', on thin soil' : '';
   const traits: string[] = [];
-  if (c.kin >= 0.65) traits.push('big families who settle near their parents');
-  else if (c.kin <= 0.35) traits.push('small families; grown kids go their own way');
+  // The same cut-offs the town lives by (kidCap, settleNear, newcomer group sizes), so the text never overstates.
+  if (c.kin >= 0.7) traits.push('big families who build on for the next baby');
+  else if (c.kin < 0.3) traits.push('small families; grown kids go their own way');
   if (c.civic >= 0.65) traits.push('proud of its schools and parks');
   else if (c.civic <= 0.35) traits.push('not one for public works');
-  if (c.openness >= 0.65) traits.push('quick to welcome newcomers');
-  else if (c.openness <= 0.35) traits.push('wary of strangers');
+  if (c.openness >= 0.7) traits.push('quick to welcome newcomers');
+  else if (c.openness <= 0.3) traits.push('wary of strangers');
   traits.push(LAYOUT_TEXT[c.layout]);
   if (c.whim >= 0.38) traits.push('town meetings are hard to predict');
   const article = /^[aeiou]/.test(TRADE_TEXT[c.trade]) ? 'An' : 'A';

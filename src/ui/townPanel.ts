@@ -254,7 +254,7 @@ export class TownPanel {
           <button class="btn danger${this.resetArmed ? ' armed' : ''}" data-act="reset" ${this.saves.enabled ? '' : 'title="Starts this scratch town over. Your saved town is untouched."'}>${this.resetArmed ? 'Click again to start over' : 'New town'}</button>
         </div>
         ${this.saves.notice() ? `<p class="warn-line">${esc(this.saves.notice())}</p>` : ''}
-        <p class="seed-line">Seed <span class="num">${sim.seed}</span> · <a href="?seed=${sim.seed}" target="_blank" rel="noopener" title="Opens a fresh copy of this town from its first day; it is never saved">replay from day one</a></p>
+        <p class="seed-line">Seed <span class="num">${sim.seed}</span> · <a href="?seed=${sim.seed}${sim.character.classic ? '&amp;classic' : ''}" target="_blank" rel="noopener" title="Opens a fresh copy of this town from its first day; it is never saved">replay from day one</a></p>
       </section>
       <section class="tp-sec">
         <h3>History</h3>

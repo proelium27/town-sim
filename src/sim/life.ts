@@ -1,4 +1,5 @@
 import { ageOf, createAgent, surnameOf } from './agents';
+import { kidCap } from './character';
 import { ADULT_AGE, RETIRE_AGE, ROLES } from './defs';
 import { graveSlots } from '../world/blueprints';
 import { beginCareer, chooseCareer, finishApprenticeships } from './careers';
@@ -25,7 +26,8 @@ export function tickLife(sim: Sim, dt: number): void {
   sim.timers.arrival -= 120;
   if (sim.timers.arrival <= 0) {
     // Word gets around: a welcoming town draws newcomers more often, and in bigger groups.
-    const open = sim.character.openness;
+    // A town that starts to empty out takes whoever comes, however wary it is; empty homes come cheap.
+    const open = sim.agents.length < 24 ? Math.max(sim.character.openness, 0.5) : sim.character.openness;
     sim.timers.arrival = sim.rng.range(1.2, 2.4) * 1440 * (1.5 - open);
     newcomers(sim, sim.rng.int(1, open >= 0.7 ? 4 : open <= 0.3 ? 2 : 3), false);
   }
@@ -97,7 +99,7 @@ function births(sim: Sim): void {
     const kids = new Set([...a.children, ...b.children]).size;
     // Family-minded towns have bigger families, and have them sooner.
     const kin = sim.character.kin;
-    if (kids >= (kin >= 0.7 ? 4 : kin <= 0.3 ? 2 : 3)) continue;
+    if (kids >= kidCap(sim.character)) continue;
     if (sim.town.households[a.household].building < 0) continue;
     if (capacity(sim, a.household) <= members(sim, a.household).length) continue;
     const youngest = Math.max(-Infinity, ...[...a.children, ...b.children].map((id) => sim.person(id)?.birth ?? -Infinity));

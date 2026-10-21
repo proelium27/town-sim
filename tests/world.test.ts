@@ -195,7 +195,8 @@ describe('walking together', () => {
   }, 600_000);
 
   it('a grown-up at home walks a young kid to school', () => {
-    const sim = new Sim(7);
+    // The original town, which has its school by day four.
+    const sim = new Sim(7, { character: CLASSIC });
     for (let d = 0; d < 8 && !sim.map.buildings.some((b) => b.kind === 'school'); d++) sim.run(720);
     // The next weekday, just before school.
     let day = sim.day + 1;
