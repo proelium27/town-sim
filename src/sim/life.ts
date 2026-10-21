@@ -84,6 +84,7 @@ export function die(sim: Sim, a: Agent, cause: string): void {
   const wasMayor = sim.mayor === a.id;
   a.diedAt = sim.time;
   sim.agents = sim.agents.filter((x) => x.id !== a.id);
+  a.died = { at: sim.time, mayor: wasMayor };
   sim.deceased.push(a);
   a.survivors = survivorsOf(sim, a);
   sim.populationVersion++;

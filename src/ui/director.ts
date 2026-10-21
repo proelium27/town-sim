@@ -121,13 +121,13 @@ export class Director {
     if (!s || now - this.shotAt >= s.hold * 1000) return this.next();
     if (now - this.shotAt >= MIN_HOLD_MS && now - this.checkedAt >= CHECK_MS) {
       this.checkedAt = now;
-      const cand = pickShot(this.sim, this.shown, s.kind);
+      const cand = pickShot(this.sim, this.shown, s);
       if (cand && cand.key !== s.key && s.score < 26 && urgent(this.sim, cand, this.shown)) this.cut(cand);
     }
   }
 
   private next(): void {
-    const s = pickShot(this.sim, this.shown, this.shot?.kind);
+    const s = pickShot(this.sim, this.shown, this.shot ?? undefined);
     if (s) this.cut(s);
   }
 

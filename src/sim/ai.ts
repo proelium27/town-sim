@@ -1201,8 +1201,8 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       n.energy = Math.min(100, n.energy + 0.06 * dt);
       for (const o of others(sim, a, ['relax'], 4)) bondNearby(sim, a, o, dt);
       if (tick()) {
-        // Warming up lasts until they're warm (or the hearth gives out).
-        if (act.reason.startsWith('Cold (') && n.warmth < 60 && chill(sim) > 0 && warmHere(sim, a)) act.timer = 10;
+        // Warming up lasts until they're warm (or the hearth gives out), sheltering from a storm that's blown over too.
+        if (isWarmUp(act) && n.warmth < 60 && chill(sim) > 0 && warmHere(sim, a)) act.timer = 10;
         else finish(sim, a);
       }
       return;
