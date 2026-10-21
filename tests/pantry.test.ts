@@ -61,6 +61,26 @@ describe('pantry', () => {
     }, 60_000);
   }
 
+  it('a starving kid with nothing at home sends a grown-up out for groceries, even from work, and gets fed', () => {
+    const sim = new Sim(11);
+    at(sim, 1, 10);
+    const kid = sim.agents.find((x) => ['toddler', 'child'].includes(stageOf(sim, x)) && sim.agents.some((p) => p.household === x.household && stageOf(sim, p) === 'adult'));
+    if (!kid) throw new Error('no kid living with a grown-up');
+    const grownUps = sim.agents.filter((p) => p.household === kid.household && stageOf(sim, p) === 'adult');
+    sim.pantry[kid.household] = 0;
+    sim.stock.food = 200;
+    for (const p of grownUps) p.money = 200;
+    kid.needs.hunger = 8;
+    let shopped: Agent | undefined;
+    const end = sim.time + 8 * 60;
+    while (sim.time < end && kid.needs.hunger < 50) {
+      sim.step();
+      shopped ??= grownUps.find((p) => p.action.kind === 'shop' && p.action.reason === `Nothing at home for ${kid.name.split(' ')[0]}`);
+    }
+    expect(shopped).toBeDefined();
+    expect(kid.needs.hunger).toBeGreaterThanOrEqual(50);
+  }, 60_000);
+
   it('someone living alone with a bare pantry goes out to eat or shop', () => {
     const { sim, a } = hungryAtHome(0, true);
     const t0 = sim.time;

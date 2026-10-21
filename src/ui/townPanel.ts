@@ -4,6 +4,7 @@ import { foodBalance } from '../sim/economy';
 import { winterReadiness, WINTER_STOCK_DAYS } from '../sim/seasons';
 import { BASE_PRICE, price, TRADER_EVERY } from '../sim/market';
 import { TIER_AT, TIERS } from '../sim/growth';
+import { nextElection } from '../sim/politics';
 import { chains, hasWorkshop } from '../sim/workshop';
 import { WORLD_EVENTS, type WorldEventKey, triggerWorldEvent } from '../sim/events';
 import { allocateRoles, buildCap, capacity, stageOf } from '../sim/planner';
@@ -99,6 +100,32 @@ export class TownPanel {
     });
   }
 
+  /** Who's mayor, what they want, the race if one is on, and how last year's vote went. */
+  private mayorSection(): string {
+    const sim = this.sim;
+    const mayor = sim.agent(sim.mayor ?? undefined);
+    const race = sim.election && sim.election.year === sim.year && sim.election.stage !== 'done' ? sim.election : null;
+    const next = nextElection(sim);
+    const who = (id: number) => {
+      const a = sim.agent(id);
+      return a ? `<button class="linkish" data-act="person" data-id="${a.id}">${esc(a.name)}</button>` : 'someone who has since left';
+    };
+    let body = mayor
+      ? `<p class="mayor-line">Mayor ${who(mayor.id)}, elected on <b>${PRIORITY_LABEL[sim.agenda!].toLowerCase()}</b>.${sim.agenda && sim.priorities[sim.agenda] === 0 ? ` <span class="neg">You have ${PRIORITY_LABEL[sim.agenda].toLowerCase()} set to Low; the mayor disagrees.</span>` : ''}</p>`
+      : sim.lastElection
+        ? `<p class="mayor-line">The mayor's office is empty until the next election.</p>`
+        : `<p class="mayor-line">No mayor yet.</p>`;
+    if (race) {
+      body += `<p class="mayor-line">Standing today: ${race.candidates.map((c) => `${who(c.id)} (${PRIORITY_LABEL[c.platform].toLowerCase()})`).join(', ')}. ${race.stage === 'rally' ? 'The rally is on; votes are counted at 19:00.' : 'Rally in the park at 17:00.'}</p>`;
+    } else if (sim.lastElection) {
+      const L = sim.lastElection;
+      body += `<p class="mayor-line meta">Year ${L.year} vote: ${L.votes.map(([id, n]) => `${esc(sim.person(id)?.name.split(' ')[0] ?? '?')} ${n}`).join(' · ')}. Next election: Summer 1, Year ${next.year}.</p>`;
+    } else {
+      body += `<p class="mayor-line meta">First election: Summer 1, Year ${next.year}.</p>`;
+    }
+    return `<section class="tp-sec"><h3>Mayor <small>leans town meetings toward their agenda</small></h3>${body}</section>`;
+  }
+
   /** The town's purse: balance, yesterday's money in and out, today's prices, the next trader. */
   private treasurySection(): string {
     const sim = this.sim;
@@ -154,7 +181,7 @@ export class TownPanel {
     const net = fb.produce - fb.eat;
     const projects = sim.projects.map((p) => ({ p, stage: stageOf(sim, p) }));
     const sig = JSON.stringify([
-      pop.length, kids, elders, beds, homeless, sick, sim.tier, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
+      pop.length, kids, elders, beds, homeless, sick, sim.tier, sim.mayor, sim.agenda, sim.election?.stage, sim.lastElection?.year, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
       sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
       sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), this.resetArmed, Math.round(sim.treasury / 5), sim.lastLedger, (['food', 'firewood', 'tools'] as const).map((g) => price(sim, g)), hasWorkshop(sim), chains(sim).map((c) => [c.have, c.target, c.stuck]), sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
       sim.season >= 2 && Math.round((1 - sim.seasonProgress) * SEASON_DAYS * 10),
@@ -183,6 +210,7 @@ export class TownPanel {
         ${ev.drought ? '<p class="warn-line">Drought: nothing is growing.</p>' : ''}
         ${winterLine(sim)}
       </section>
+      ${this.mayorSection()}
       ${this.treasurySection()}
       ${this.workshopSection()}
       <section class="tp-sec">

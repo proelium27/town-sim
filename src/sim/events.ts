@@ -1,5 +1,5 @@
 import { ageOf } from './agents';
-import { MIN_PER_DAY, plural, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
+import { BIRTHDAY_HOUR, ELECTION_DAY, MIN_PER_DAY, plural, RALLY_HOUR, RALLY_LENGTH, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
 import { fallIll } from './health';
 import { TRADER_EVERY } from './market';
 import { FESTIVALS, snowing } from './seasons';
@@ -46,19 +46,23 @@ export interface Birthday {
 
 /** How long a festival runs, in minutes. */
 export const FESTIVAL_LENGTH = 180;
-/** Birthday parties start at 18:00, or after the evening's park event if it ends by 21:00. */
-const BIRTHDAY_HOUR = 18;
+/** Birthday parties start at BIRTHDAY_HOUR, or after the evening's park event if it ends by 21:00. */
 const BIRTHDAY_LATEST = 21;
 
 /**
  * When this evening's park event ends, if one is on or still to come today; else 0. Birthday parties
- * wait for it, so the family isn't split between the two.
+ * wait for it, so the family isn't split between the two. On election day that's the rally, which
+ * ends with the vote.
  */
 export function parkEventUntil(sim: Sim): number {
   const ev = sim.events;
   let until = ev.festival?.until ?? 0;
   const s = ev.seasonal;
   if (s && Math.floor(s.at / MIN_PER_DAY) === sim.day) until = Math.max(until, Math.max(s.at, sim.time) + FESTIVAL_LENGTH);
+  const race = sim.election;
+  if (race && race.year === sim.year && race.stage !== 'done' && sim.day % YEAR_DAYS === ELECTION_DAY) {
+    until = Math.max(until, race.stage === 'rally' ? race.rallyUntil : sim.day * MIN_PER_DAY + RALLY_HOUR * 60 + RALLY_LENGTH);
+  }
   return until;
 }
 
@@ -109,6 +113,7 @@ function planDay(sim: Sim): void {
   if (sim.season === 3 && r.chance(0.22)) ev.plan.push({ at: base + r.range(2, 16) * 60, kind: 'snowstorm', length: 0 });
   // Birthdays follow the calendar: once a year, on the day of the year someone was born.
   const today = sim.day % YEAR_DAYS;
+  // A party waits for the evening's park event (on election day, the rally and the vote): see parkEventUntil.
   for (const a of sim.agents) {
     if (birthdayOf(a.birth) !== today || a.lastBirthday >= sim.year || sim.time - a.birth < YEAR_DAYS * MIN_PER_DAY * 0.75) continue;
     ev.plan.push({ at: base + BIRTHDAY_HOUR * 60, kind: 'birthday', length: 150, host: a.id });

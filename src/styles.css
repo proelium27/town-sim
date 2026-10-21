@@ -426,3 +426,8 @@ body.inspecting .activity { width: min(620px, calc(100vw - var(--roster-w) - var
 /* Town view: tier */
 .tier-line { margin: 0 0 8px; font-size: 12px; color: var(--text-3); }
 .tier-line b { color: var(--text); font-weight: 600; text-transform: none; }
+
+/* Town view: mayor */
+.mayor-line { margin: 0 0 6px; font-size: 12px; color: var(--text-2); line-height: 1.45; }
+.mayor-line b { color: var(--text); font-weight: 600; }
+.mayor-line.meta { color: var(--text-3); }

@@ -65,7 +65,8 @@ export class Hud {
     ];
     const building = sim.projects.length ? `Building ${sim.projects.length === 1 ? sim.projects[0].name : `${sim.projects.length} things`}` : '';
     const bday = ev.birthdays[0] && birthdayNames(sim, ev.birthdays[0]);
-    const happening = [ev.festival && (ev.festival.name ?? 'Festival in the park'), ev.snowstorm && 'Blizzard', ev.drought && 'Drought', bday && `${bday}'s birthday`, building, ev.standup && 'Standup', ev.pizza && 'Pizza in the kitchen', ev.party && 'Party in the lounge', ev.coffeeBroken && 'Coffee machine broken'].filter(Boolean).slice(0, 2) as string[];
+    const race = sim.election && sim.election.year === sim.year && sim.election.stage !== 'done' ? sim.election : null;
+    const happening = [race && (race.stage === 'rally' ? 'Election rally' : 'Election day'), ev.festival && (ev.festival.name ?? 'Festival in the park'), ev.snowstorm && 'Blizzard', ev.drought && 'Drought', bday && `${bday}'s birthday`, building, ev.standup && 'Standup', ev.pizza && 'Pizza in the kitchen', ev.party && 'Party in the lounge', ev.coffeeBroken && 'Coffee machine broken'].filter(Boolean).slice(0, 2) as string[];
     this.put(
       this.statsEl,
       'stats',

@@ -297,6 +297,17 @@ function escort(sim: Sim, adult: Agent, kid: Agent, school: { door: { x: number;
   return true;
 }
 
+/** The hungriest kid in a grown-up's household who can't shop for themselves, if any is hungry. */
+function hungriestKid(sim: Sim, a: Agent): Agent | undefined {
+  let best: Agent | undefined;
+  for (const p of sim.agents) {
+    if (p.id === a.id || p.household !== a.household || p.needs.hunger >= 50) continue;
+    const st = stageOf(sim, p);
+    if ((st === 'toddler' || st === 'child') && (!best || p.needs.hunger < best.needs.hunger)) best = p;
+  }
+  return best;
+}
+
 /** A young kid setting off for school gets walked there by a grown-up from home, if one is free. */
 function askForEscort(sim: Sim, kid: Agent): void {
   if (!isYoungScholar(sim, kid) || kid.path.length < 8 || escorting(sim, kid)) return;
@@ -549,6 +560,12 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   if (sim.events.festival && !sleepTime && stage !== 'toddler' && !storm) {
     o.push(areaOption(sim, a, 'party', 1.15 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.25 : 0), 'Town festival', `At the ${(sim.events.festival.name ?? 'town festival').toLowerCase()}`, PARK, 9999));
   }
+  // Election rally: candidates make their case in the park; most grown-ups come and listen.
+  const race = sim.election;
+  if (race && race.year === sim.year && race.stage === 'rally' && stage !== 'toddler' && !sleepTime && !storm) {
+    const standing = race.candidates.some((c) => c.id === a.id);
+    o.push(areaOption(sim, a, 'party', standing ? 1.6 : stage === 'child' ? 0.4 : 0.95 + a.skills.charisma.level * 0.01, 'Election rally', standing ? 'Speaking at the rally' : 'At the election rally', PARK, 9999));
+  }
   for (const b of sim.events.birthdays) {
     const hosts = b.hosts.map((id) => sim.agent(id)).filter((x): x is Agent => !!x);
     if (!hosts.length) continue;
@@ -687,8 +704,12 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   const housemateShopping = sim.agents.some((p) => p.id !== a.id && p.household === a.household && p.action.kind === 'shop');
   // Skip the trip if it can't buy anything, and for a few hours after coming home empty-handed.
   const turnedAway = a.memories.some((m) => m.kind === 'broke' && sim.time - m.created < BROKE_RETRY);
-  if (homed && pantry <= 1 && !housemateShopping && !workTime && !evening && sim.stock.food >= 6 && !little && !turnedAway && canAffordGroceries(sim, a)) {
-    o.push(spotOption(sim, a, 'shop', 0.85, 'Fridge is empty', ['shop'], () => 'Shopping for groceries', 14));
+  // A hungry little one at home makes the trip urgent; a starving one is worth leaving work for.
+  const hungryKid = pantry <= 1 ? hungriestKid(sim, a) : undefined;
+  const kidNeed = hungryKid ? 1 - hungryKid.needs.hunger / 100 : 0;
+  const forKid = kidNeed > 0.7;
+  if (homed && pantry <= 1 && !housemateShopping && (!workTime || kidNeed > 0.8) && !evening && sim.stock.food >= 6 && !little && !turnedAway && canAffordGroceries(sim, a)) {
+    o.push(spotOption(sim, a, 'shop', 0.85 + (forKid ? kidNeed * 1.2 : 0), forKid ? `Nothing at home for ${first(hungryKid!)}` : 'Fridge is empty', ['shop'], () => 'Shopping for groceries', 14));
   }
 
   // ---- go home at night / stay near home when small
@@ -836,6 +857,7 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
     case 'party':
       if (o.reason === 'My birthday') return "My birthday party! I wonder who'll come.";
       if (o.reason.startsWith('Birthday: ')) return `Off to ${o.reason.slice(10)}'s birthday.`;
+      if (o.reason === 'Election rally') return a.action.label === 'Speaking at the rally' ? 'Time to make my case.' : "Let's hear what the candidates have to say.";
       return o.reason === 'Town festival' ? 'The whole town is out for the festival!' : 'Party in the lounge!';
     case 'mourn': return `I'll go and sit with ${o.reason.slice(7)} for a while.`;
     case 'escort': return `I'll walk ${o.reason.split(' ')[0]} to school on my way.`;
@@ -878,11 +900,12 @@ const SICK_STOPS: ActionKind[] = ['work', 'teach', 'learn', 'build', 'chop', 'mi
 // ------------------------------------------------------------------ performing
 
 /**
- * The gathering a party-goer is at, by what they set out for: a birthday, the town festival or the
- * office party. Both of the last two can be on at once (a festival on a Friday evening).
+ * The gathering a party-goer is at, by what they set out for: a birthday, the town festival, the
+ * office party or the election rally. Some can be on at once (a festival on a Friday evening).
  */
 function gathering(sim: Sim, act: Action) {
   if (act.partnerId !== undefined) return sim.events.birthdays.find((b) => b.hosts.includes(act.partnerId!));
+  if (act.reason === 'Election rally') return sim.election?.stage === 'rally' ? sim.election : null;
   return act.reason === 'Town festival' ? sim.events.festival : act.reason === 'Office party' ? sim.events.party : null;
 }
 
@@ -1184,8 +1207,14 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       if (sim.rng.chance(0.02 * dt)) say(sim, a, sim.rng.pick(['woo!', '♪', 'ha!', 'cheers']), 'good', 3);
       const ev = gathering(sim, act);
       const bday = ev && 'guests' in ev ? ev : undefined;
-      if (!ev) finish(sim, a);
-      else if (bday && sim.rng.chance(0.015 * dt)) say(sim, a, bday.hosts.includes(a.id) ? 'thank you!' : sim.rng.pick(['happy birthday!', '♪', 'cake!']), 'good', 3);
+      const rally = ev && 'candidates' in ev ? ev : undefined;
+      if (!ev) return finish(sim, a);
+      if (rally) {
+        const me = rally.candidates.find((c) => c.id === a.id);
+        if (me && sim.rng.chance(0.03 * dt)) say(sim, a, `vote ${first(a)}: ${me.platform === 'housing' ? 'more homes!' : me.platform === 'food' ? 'full stores!' : me.platform === 'materials' ? 'build, build, build!' : 'parks & festivals!'}`, 'good', 4);
+        return;
+      }
+      if (bday && sim.rng.chance(0.015 * dt)) say(sim, a, bday.hosts.includes(a.id) ? 'thank you!' : sim.rng.pick(['happy birthday!', '♪', 'cake!']), 'good', 3);
       return;
     }
     case 'escort': {

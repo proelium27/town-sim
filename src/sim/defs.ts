@@ -43,6 +43,13 @@ export const SEASON_DAYS = 2;
 export const SEASONS = ['Spring', 'Summer', 'Autumn', 'Winter'] as const;
 export type Season = (typeof SEASONS)[number];
 export const YEAR_DAYS = SEASON_DAYS * SEASONS.length;
+/** Elections fall on the first day of summer: the campaign opens at 9, the rally is at 17, the vote at 19. */
+export const ELECTION_DAY = SEASON_DAYS;
+/** When the election rally starts in the park, and how long it runs (minutes) before the vote. */
+export const RALLY_HOUR = 17;
+export const RALLY_LENGTH = 120;
+/** Birthday parties start at 18, or once the evening's park event (a festival, the election rally) is over. */
+export const BIRTHDAY_HOUR = 18;
 
 // ------------------------------------------------------------------ goods
 
@@ -227,7 +234,8 @@ export type MemoryKind =
   | 'grewUp' | 'harvest' | 'school' | 'festival' | 'drought' | 'storm'
   | 'birthday' | 'myBirthday' | 'familyDinner' | 'paidRespects' | 'eveningWalk'
   | 'snowDay' | 'cozyFire' | 'coldHome' | 'blizzard' | 'madeSomething' | 'toolBroke' | 'unpaid' | 'broke' | 'qualified'
-  | 'feelingIll' | 'hurt' | 'recovered' | 'frail' | 'caredFor' | 'lookedAfter' | 'proudTown' | 'roomToBreathe';
+  | 'feelingIll' | 'hurt' | 'recovered' | 'frail' | 'caredFor' | 'lookedAfter' | 'proudTown' | 'roomToBreathe'
+  | 'wonElection' | 'lostElection' | 'myCandidateWon';
 
 export interface MemoryDef {
   label: string;
@@ -304,4 +312,7 @@ export const MEMORIES: Record<MemoryKind, MemoryDef> = {
   lookedAfter: { label: 'Looked after family', mood: 3, duration: 12 * H, major: false, maxStack: 3 },
   proudTown: { label: 'Our town is growing up', mood: 6, duration: 1.5 * D, major: true, maxStack: 1 },
   roomToBreathe: { label: 'Room to breathe at home', mood: 7, duration: 1.5 * D, major: true, maxStack: 1 },
+  wonElection: { label: 'Elected mayor', mood: 10, duration: 2 * D, major: true, maxStack: 1 },
+  lostElection: { label: 'Lost the election', mood: -4, duration: D, major: true, maxStack: 1 },
+  myCandidateWon: { label: 'My candidate won', mood: 3, duration: D, major: false, maxStack: 1 },
 };
