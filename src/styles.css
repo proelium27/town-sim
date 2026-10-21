@@ -318,6 +318,21 @@ body.inspecting .activity { width: min(620px, calc(100vw - var(--roster-w) - var
 .dg-bar { height: 8px; margin: 8px 0 2px; border: 1.5px solid var(--edge); border-radius: 999px; background: var(--panel-3); overflow: hidden; }
 .dg-bar i { display: block; height: 100%; background: var(--accent); }
 
+/* ------------------------------------------------------------ director */
+.dir-btn[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); }
+.director {
+  top: calc(var(--gap) * 2 + var(--hud-h)); left: 50%; transform: translateX(-50%); z-index: 3;
+  max-width: calc(100vw - var(--gap) * 2); display: flex; align-items: center; gap: 10px; padding: 5px 6px 5px 10px;
+  white-space: nowrap;
+}
+.dir-mark { display: grid; color: var(--accent); }
+.dir-mark svg, .dir-btn svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.6; fill: none; stroke-linejoin: round; }
+.dir-cap { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.dir-auto { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-3); cursor: pointer; }
+.dir-auto input { accent-color: var(--accent); margin: 0; }
+/* Fades out when directing starts; snaps back the moment the player takes over. */
+body.directing .tracker, body.directing .activity, body.directing .inspector { opacity: 0; pointer-events: none; transition: opacity 220ms var(--ease); }
+
 /* ------------------------------------------------------------ inspector */
 .inspector {
   top: calc(var(--gap) * 2 + var(--hud-h)); right: var(--gap); bottom: var(--gap); width: var(--ins-w);

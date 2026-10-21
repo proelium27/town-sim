@@ -11,6 +11,7 @@ import { Inspector } from './ui/inspector';
 import { TownPanel } from './ui/townPanel';
 import { readAway, readSave, Saves } from './ui/saves';
 import { Away } from './ui/away';
+import { Director } from './ui/director';
 import { Tracker } from './ui/tracker';
 
 /** Real milliseconds per sim step at 1x: 20 steps per second, so one game minute per real second. */
@@ -51,9 +52,11 @@ async function boot(): Promise<void> {
     const W = window.innerWidth;
     const H = window.innerHeight;
     // Layout boxes (offset*), not getBoundingClientRect: the inspector's slide-in transform would skew it.
+    // While directing, the side panels step aside and the shot uses the whole window.
+    const directing = document.body.classList.contains('directing');
     const edge = (id: string) => {
       const el = document.getElementById(id)!;
-      return el.hidden ? null : { left: el.offsetLeft, right: el.offsetLeft + el.offsetWidth, bottom: el.offsetTop + el.offsetHeight };
+      return el.hidden || (directing && id !== 'hud') ? null :{ left: el.offsetLeft, right: el.offsetLeft + el.offsetWidth, bottom: el.offsetTop + el.offsetHeight };
     };
     const roster = edge('tracker');
     const ins = edge('inspector');
@@ -121,6 +124,10 @@ async function boot(): Promise<void> {
   });
 
   const away = new Away(sim, { speed: () => speed, select: (id) => select(id, true), openLog: () => activity.toggle(true) });
+  const director = new Director(sim, camera, document.getElementById('director-btn')!, (on) => {
+    if (on) following = false;
+    layout();
+  }, () => !away.busy);
 
   const speedEl = document.getElementById('speed')!;
   const setSpeed = (s: number) => {
@@ -158,6 +165,12 @@ async function boot(): Promise<void> {
     camera.zoomAt(...local(e), Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)));
   }, { passive: false });
   for (const ev of ['pointerdown', 'pointermove', 'keydown', 'wheel']) window.addEventListener(ev, () => away.input(), { passive: true });
+  // Any deliberate input takes the camera back from the director; just moving the mouse doesn't.
+  for (const ev of ['pointerdown', 'keydown', 'wheel']) {
+    window.addEventListener(ev, (e) => {
+      if (!director.owns(e.target) && (e as KeyboardEvent).code !== 'KeyC') director.input();
+    }, { passive: true });
+  }
   cv.addEventListener('pointerdown', (e) => {
     drag ={ x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false };
   });
@@ -200,6 +213,7 @@ async function boot(): Promise<void> {
     else if (e.code === 'KeyP') tracker.toggle();
     else if (e.code === 'KeyT') tracker.setView(tracker.view === 'town' ? 'people' : 'town');
     else if (e.code === 'KeyR') roofsOff = !roofsOff;
+    else if (e.code === 'KeyC') director.toggle();
     else if (e.code === 'KeyL') activity.toggle();
     else if (e.key === '/') {
       e.preventDefault();
@@ -239,6 +253,7 @@ async function boot(): Promise<void> {
     if (keys.has('KeyW') || keys.has('ArrowUp')) camera.panBy(0, pan);
     if (keys.has('KeyS') || keys.has('ArrowDown')) camera.panBy(0, -pan);
     if ([...keys].some((k) => /Key[WASD]|Arrow/.test(k))) following = false;
+    director.frame();
     if (following && selected !== null) {
       const a = sim.agent(selected)!;
       camera.lookAtClamped((a.x + 0.5) * TILE, (a.y + 0.5) * TILE);
@@ -265,7 +280,7 @@ async function boot(): Promise<void> {
   });
   refreshUi();
   if (saved?.sim) away.resume(readAway());
-  Object.assign(window, { sim, camera, select, setSpeed, away });
+  Object.assign(window, { sim, camera, select, setSpeed, away, director });
 }
 
 boot();

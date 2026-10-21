@@ -31,7 +31,8 @@ npm run build      # typecheck + production bundle
 | R | Lift every roof to see inside (they also lift when you zoom in or select someone indoors) |
 | P | Collapse / expand the left panel |
 | L | Expand / shrink the activity log |
-| Esc | Close the inspector |
+| C | Director mode: the camera finds what's happening and captions it (also starts after two idle minutes; any click, key or scroll hands the camera back) |
+| Esc | Close the inspector (or the "While you were away" card) |
 
 ## How the town builds itself
 
@@ -58,6 +59,7 @@ npm run build      # typecheck + production bundle
 - **World events** (Town view): hold a festival, a bumper harvest, send newcomers (even if there's no room, which forces a housing push), call a trader, a drought, a storm, a blizzard, an outbreak.
 - **Saving** (Town view): the town autosaves to your browser every game hour and reopens where you left off. Export downloads a save file, Import loads one, New town starts over (click twice). A `?seed=N` link opens a scratch town that is never saved.
 - **While you were away** (`src/sim/digest.ts`, `src/ui/away.ts`): come back after a minute or more with the tab hidden or closed, and the town catches up on the time you were gone at the speed it was running (up to one game day, fast-forwarding on screen in about a second), then a card tells you what happened: births, deaths, elections, new buildings, disasters first, then love, coming of age and town meetings, six lines at most, plus anything to worry about right now (people with nowhere to live, winter stores running short). Leaving it running untouched for ten minutes, on a second monitor say, gets the same card when you next touch the mouse or keyboard. A checkbox on the card turns catching up off.
+- **Director mode** (`src/sim/director.ts`, `src/ui/director.ts`; `C` or the camera button in the top bar): the side panels step aside and the camera glides between shots on its own, holding each for 9 to 15 seconds: fresh news (it follows whoever a birth, death, election or new love is about), arguments and new friendships as they happen, crowds (a festival or the election rally in the park, birthday parties, the Friday office party), building sites near completion, quiet life (couples on their evening walk, someone at the piano, a grown-up walking the kids to school, a visit to a grave) and now and then the whole town. A caption says who or what and why, in the inspector's words. Headlines and crowds cut in on quieter shots; anything just shown is held back so the camera roams. It starts by itself after two minutes without input (a checkbox on the caption turns that off) and never draws on the town's random numbers, so watching doesn't change what happens.
 
 ## Calendar
 
