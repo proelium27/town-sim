@@ -5,6 +5,7 @@ import { fallIll, FRAIL_NOTICE, frailty, needsCare, tickTownHealth } from '../sr
 import { kinship } from '../src/sim/social';
 import { findSite } from '../src/sim/planner';
 import { allocateRoles } from '../src/sim/planner';
+import { CLASSIC } from '../src/sim/character';
 import { Sim } from '../src/sim/sim';
 import { BLUEPRINTS } from '../src/world/blueprints';
 
@@ -53,7 +54,8 @@ describe('illness', () => {
 
 describe('off sick', () => {
   it('a pupil leaves class and a farmer leaves the field as soon as they are too ill to carry on', () => {
-    const sim = new Sim(7);
+    // The original town, which has its school by day four.
+    const sim = new Sim(7, { character: CLASSIC });
     for (let d = 0; d < 8 && !sim.map.buildings.some((b) => b.kind === 'school'); d++) sim.run(720);
     let day = sim.day + 1;
     while (day % 7 >= 5) day++;
