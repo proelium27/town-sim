@@ -3,6 +3,7 @@ import { Puddles, puddleAt } from '../src/render/puddles';
 import { Shading } from '../src/render/shading';
 import { hasUmbrella } from '../src/sim/agents';
 import { invitePartner } from '../src/sim/ai';
+import { CLASSIC } from '../src/sim/character';
 import { Sim } from '../src/sim/sim';
 import type { Agent } from '../src/sim/types';
 import { Cell, TownMap } from '../src/world/map';
@@ -175,8 +176,8 @@ describe('walking together', () => {
   }, 60_000);
 
   it('on school mornings, a grown-up walks a young kid to school before work', () => {
-    // An untouched town: nobody is placed by hand.
-    const sim = new Sim(4);
+    // An untouched original town: nobody is placed by hand.
+    const sim = new Sim(4, { character: CLASSIC });
     const was = new Map<number, string>();
     const runs: string[] = [];
     for (let k = 0; k < 10 * 288; k++) {

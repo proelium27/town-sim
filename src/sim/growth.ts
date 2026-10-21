@@ -118,7 +118,7 @@ export function checkTier(sim: Sim): void {
   if (sim.hour < CHARTER_HOURS[0] || sim.hour >= CHARTER_HOURS[1]) return;
   sim.tier = next;
   const tier = TIERS[next].toLowerCase();
-  sim.milestone(`Northwind became a ${tier}`);
+  sim.milestone(`${sim.name} became a ${tier}`);
   for (const a of sim.agents) addMemory(sim, a, 'proudTown');
   const ev = sim.events;
   const fest = ev.festival;
@@ -128,13 +128,13 @@ export function checkTier(sim: Sim): void {
     if (seasonal && seasonal.at < ev.festival!.until) {
       // Tonight's seasonal festival would land mid-charter: fold it in rather than drop it.
       ev.seasonal = null;
-      sim.log(`Northwind is now a ${tier}! Tonight's ${seasonal.name.toLowerCase()} in the park becomes a charter day`, 'event', 'good');
-    } else sim.log(`Northwind is now a ${tier}! There's a charter day in the park`, 'event', 'good');
+      sim.log(`${sim.name} is now a ${tier}! Tonight's ${seasonal.name.toLowerCase()} in the park becomes a charter day`, 'event', 'good');
+    } else sim.log(`${sim.name} is now a ${tier}! There's a charter day in the park`, 'event', 'good');
   } else if (fest.name === CHARTER_DAY) {
-    sim.log(`Northwind is now a ${tier}! The charter day in the park goes on`, 'event', 'good');
+    sim.log(`${sim.name} is now a ${tier}! The charter day in the park goes on`, 'event', 'good');
   } else {
     // Everyone's already out in the park: the festival becomes the charter day.
-    sim.log(`Northwind is now a ${tier}! The ${(fest.name ?? 'festival').toLowerCase()} in the park becomes a charter day`, 'event', 'good');
+    sim.log(`${sim.name} is now a ${tier}! The ${(fest.name ?? 'festival').toLowerCase()} in the park becomes a charter day`, 'event', 'good');
     fest.name = CHARTER_DAY;
   }
 }

@@ -79,7 +79,7 @@ function canUse(sim: Sim, a: Agent, p: Prop): boolean {
   const room = p.room >= 0 ? sim.map.rooms[p.room] : undefined;
   if (p.household !== undefined) return p.household === a.household;
   if (room?.kind === 'home') return sim.town.households[a.household].room === room.id;
-  if (room?.building === 'Northwind Studio') return isOffice(a);
+  if (room && room.building === sim.town.workplaces.find((w) => w.id === 'office')?.name) return isOffice(a);
   if (room) {
     const wp = sim.town.workplaces.find((w) => w.rooms.includes(room.id));
     if (wp && ROLES[a.role].workplace !== wp.id && !inWindow(sim.hour, wp.open, wp.close)) return false;

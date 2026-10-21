@@ -2,7 +2,7 @@
 
 A top-down pixel-art civilization sim where the townsfolk build the town themselves. You never place a building: you watch, set the town's priorities, and throw world events at it.
 
-Eighteen founders start in a small town (an office, a café, a market, a library, six homes, a farm and a storehouse) surrounded by forest, rock and a lake. From there they hold town meetings, decide what the town needs, pick sites, clear trees, haul timber and stone, and build homes, farms, a school, diners, parks and storehouses. People fall in love, move in together, have children who inherit their traits, grow up into jobs, retire and die; newcomers arrive along the east road when there's room. Each person has needs, traits, skills, a schedule, memories and opinions of everyone else, and decides what to do next with a utility AI.
+Eighteen founders start in a small town (an office, a café, a market, a library, six homes, a farm and a storehouse) surrounded by forest, rock and water. From there they hold town meetings, decide what the town needs, pick sites, clear trees, haul timber and stone, and build homes, farms, a school, diners, parks and storehouses. People fall in love, move in together, have children who inherit their traits, grow up into jobs, retire and die; newcomers arrive along the east road when there's room. Each person has needs, traits, skills, a schedule, memories and opinions of everyone else, and decides what to do next with a utility AI.
 
 ## Run it
 
@@ -13,7 +13,7 @@ npm test           # sim + pathfinding tests
 npm run build      # typecheck + production bundle
 ```
 
-`?seed=42` in the URL gives a different cast.
+`?seed=42` in the URL opens that town from its first day (the Town view shows each town's seed).
 
 ## Controls
 
@@ -32,6 +32,19 @@ npm run build      # typecheck + production bundle
 | P | Collapse / expand the left panel |
 | L | Expand / shrink the activity log |
 | Esc | Close the inspector |
+
+## Every town is different
+
+Each new town rolls a seed, and the seed rolls a **character** (`src/sim/character.ts`) modelled on why real towns turn out differently:
+
+- **Where it sits**: lakeside, woodland, highland or meadow. The setting shapes the wilds (how many lakes and where, how dense the forest, how rocky), the soil (crops grow up to 30% faster on rich meadow, slower on thin highland soil), how much timber or stone each tree and rock gives, and how fast the forest creeps back.
+- **What it was founded on**: farming, timber, quarrying or trade, picked to suit the setting. It sets the starting stores (extra food, wood, stone or coin) and tilts what town meetings put forward: timber and quarry towns want their workshop sooner, market towns get diners earlier, farming towns break more fields.
+- **What its people value**: family-mindedness (birth rate, family size, whether grown kids settle near their parents and families build on wings), civic pride (schools, parks, clinics and diners) and openness (how often newcomers come, in what numbers, and whether the town builds spare homes ahead of them).
+- **How it settles**: huddled close around the center, scattered homesteads with elbow room, or a ribbon of homes along the main roads. Homes lean toward one side of town (toward the water, for a lakeside town) and the fields spread out in a belt on another.
+- **Chance**: town meetings weigh each case with a little luck and the site picker chooses among the few best plots, so towns facing the same needs don't all make the same call in the same order. A family with nowhere to live and the dead waiting for a grave always come first.
+- **Names**: the town's own name ("Hazelgrove", "Coldmoor", "Swanwick"), founding families drawn from the surname pool, and farms, diners and parks named for the setting (one park for a founding family).
+
+The Town view sums the character up ("A timber town deep in the woods. Quick to welcome newcomers · homes huddle close around the center"). Saves from before characters load as the original Northwind, which behaves exactly as it always did.
 
 ## How the town builds itself
 
@@ -56,7 +69,7 @@ npm run build      # typecheck + production bundle
 
 - **Priorities** (Town view, `T`): Housing, Food, Wood & stone, Community, each Low / Normal / High. They weight what town meetings choose and how many people work each job.
 - **World events** (Town view): hold a festival, a bumper harvest, send newcomers (even if there's no room, which forces a housing push), call a trader, a drought, a storm, a blizzard, an outbreak.
-- **Saving** (Town view): the town autosaves to your browser every game hour and reopens where you left off. Export downloads a save file, Import loads one, New town starts over (click twice). A `?seed=N` link opens a scratch town that is never saved.
+- **Saving** (Town view): the town autosaves to your browser every game hour and reopens where you left off. Export downloads a save file, Import loads one, New town starts over with a new seed and a new character (click twice). A `?seed=N` link (the Town view links the current town's) opens a scratch copy from its first day that is never saved.
 
 ## Calendar
 

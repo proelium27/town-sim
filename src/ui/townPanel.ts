@@ -7,6 +7,7 @@ import { TIER_AT, TIERS } from '../sim/growth';
 import { nextElection } from '../sim/politics';
 import { chains, hasWorkshop } from '../sim/workshop';
 import { WORLD_EVENTS, type WorldEventKey, triggerWorldEvent } from '../sim/events';
+import { describe } from '../sim/character';
 import { allocateRoles, buildCap, capacity, stageOf } from '../sim/planner';
 import { first } from '../sim/social';
 import type { Sim } from '../sim/sim';
@@ -190,9 +191,11 @@ export class TownPanel {
     this.sig = sig;
     const bar = (v: number, max: number, c: string) => `<span class="bar" style="--c:${c}"><i style="width:${Math.min(100, (v / Math.max(1, max)) * 100)}%"></i></span>`;
     const ev = sim.events;
+    const about = describe(sim.character);
     this.root.innerHTML = `
       <section class="tp-sec">
-        <p class="tier-line"><b>Northwind ${TIERS[sim.tier].toLowerCase()}</b>${sim.tier + 1 < TIERS.length ? ` · becomes a ${TIERS[sim.tier + 1].toLowerCase()} at ${TIER_AT[sim.tier + 1][0]} people and ${TIER_AT[sim.tier + 1][1]} buildings` : ''}</p>
+        <p class="tier-line"><b>${esc(sim.name)} ${TIERS[sim.tier].toLowerCase()}</b>${sim.tier + 1 < TIERS.length ? ` · becomes a ${TIERS[sim.tier + 1].toLowerCase()} at ${TIER_AT[sim.tier + 1][0]} people and ${TIER_AT[sim.tier + 1][1]} buildings` : ''}</p>
+        <p class="town-char">${esc(about.summary)}${about.traits.length ? `<span>${about.traits.map(esc).join(' · ')}</span>` : ''}</p>
         <dl class="tp-stats">
           <div><dt>People</dt><dd class="num">${pop.length}</dd><span>${plural(kids, 'kid')}, ${elders} retired${sick ? `, <b class="neg">${sick} sick</b>` : ''}</span></div>
           <div><dt>Homes</dt><dd class="num">${homes.length}</dd><span>${plural(beds, 'bed')}${homeless ? `, <b class="neg">${homeless} homeless</b>` : ''}</span></div>
@@ -251,6 +254,7 @@ export class TownPanel {
           <button class="btn danger${this.resetArmed ? ' armed' : ''}" data-act="reset" ${this.saves.enabled ? '' : 'title="Starts this scratch town over. Your saved town is untouched."'}>${this.resetArmed ? 'Click again to start over' : 'New town'}</button>
         </div>
         ${this.saves.notice() ? `<p class="warn-line">${esc(this.saves.notice())}</p>` : ''}
+        <p class="seed-line">Seed <span class="num">${sim.seed}</span> · <a href="?seed=${sim.seed}" target="_blank" rel="noopener" title="Opens a fresh copy of this town from its first day; it is never saved">replay from day one</a></p>
       </section>
       <section class="tp-sec">
         <h3>History</h3>

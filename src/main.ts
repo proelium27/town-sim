@@ -37,8 +37,11 @@ async function boot(): Promise<void> {
   const params = new URLSearchParams(location.search);
   const scratch = params.has('seed');
   const saved = scratch ? null : readSave();
-  const sim = saved?.sim ?? new Sim(Number(params.get('seed') ?? 7));
+  // A brand-new town rolls its own seed, so no two grow up alike; the seed is saved with it.
+  const sim = saved?.sim ?? new Sim(Number(params.get('seed') ?? Math.floor(Math.random() * 1e6)));
   const saves = new Saves(sim, !scratch, saved?.unreadable);
+  // Save the new town straight away, or a reload before the first autosave would roll a different one.
+  if (!saved?.sim) saves.save();
   const world = new WorldView(art, sim);
   const people = new AgentsView(art, sim, world);
   app.stage.addChild(world.root, people.sky, people.rain, people.overlay);
