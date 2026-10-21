@@ -199,7 +199,8 @@ function stampCemetery(m: TownMap, x: number, y: number, doorTop: boolean, name:
 
 /**
  * A fishing dock: a sandy lot on the shore with a boardwalk, and a pier two boards wide running out over the water
- * from its lake side (local rows below the lot) until the lake runs out, at most three tiles. Fishers stand at the end.
+ * from its lake side (local rows below the lot) until the lake runs out, at most three tiles. Fishers stand at the end,
+ * and along the pier wherever open water lies beside it, so a longer pier has room for more of them.
  */
 function stampDock(m: TownMap, x: number, y: number, doorTop: boolean, name: string, time = 0): Building {
   const [s, b] = begin(m, 'dock', name, x, y, 5, 3, 2, doorTop, time);
@@ -213,6 +214,14 @@ function stampDock(m: TownMap, x: number, y: number, doorTop: boolean, name: str
     end = k;
   }
   for (const dx of [2, 3]) s.drawn('bucket', dx, end, 1, 1, { use: 'fish', spot: [dx, end, 'down'], blocks: false });
+  const wet = (dx: number, dy: number) => {
+    const [cx, cy] = s.at(dx, dy);
+    return m.inBounds(cx, cy) && m.ground[m.idx(cx, cy)] === 'water';
+  };
+  for (let k = 3; k < end; k++) {
+    if (wet(1, k)) s.drawn('bucket', 2, k, 1, 1, { use: 'fish', spot: [2, k, 'left'], blocks: false });
+    if (wet(4, k)) s.drawn('bucket', 3, k, 1, 1, { use: 'fish', spot: [3, k, 'right'], blocks: false });
+  }
   s.drawn('crate', 0, 0, 1, 1);
   return b;
 }

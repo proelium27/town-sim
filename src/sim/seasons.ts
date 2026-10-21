@@ -1,4 +1,5 @@
 import { MIN_PER_DAY, SEASONS } from './defs';
+import { allocateRoles } from './planner';
 import { addMemory, think } from './social';
 import type { Sim } from './sim';
 import { HEADLINE, NOTABLE } from './types';
@@ -74,6 +75,8 @@ export function tickSeasons(sim: Sim, dt: number): void {
   if (first) return;
   sim.log(`${SEASONS[season]} has come to Northwind`, 'event', 'neutral').weight = NOTABLE;
   sim.milestone(`${SEASONS[season]}, year ${sim.year}`);
+  // The town's needs shift with the season (fishers from autumn), so jobs are looked over now, not at the next six-hourly pass.
+  allocateRoles(sim);
   if (season === 3) {
     // Whatever is still in the fields, ripe or not, is lost: the harvest has to be in before the frost.
     let ripe = 0;
