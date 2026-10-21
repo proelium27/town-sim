@@ -13,7 +13,7 @@ import { Cell } from '../src/world/map';
 describe('a self-building town', () => {
   const sim = new Sim(7);
   const startBuildings = sim.map.buildings.length;
-  const startPop = sim.agents.length;
+  const founders = new Set(sim.agents.map((a) => a.id));
 
   it('proposes, builds and moves into new buildings without any player input', () => {
     sim.run(10 * 1440);
@@ -21,7 +21,8 @@ describe('a self-building town', () => {
     expect(built.length).toBeGreaterThanOrEqual(3);
     expect(built.some((b) => b.kind === 'house')).toBe(true);
     expect(sim.activity.some((e) => e.text.startsWith('Town meeting:'))).toBe(true);
-    expect(sim.agents.length).toBeGreaterThan(startPop);
+    // New people born or moved in (with courtship before marriage, a death can still leave the head count flat at day 10).
+    expect(sim.agents.some((a) => !founders.has(a.id))).toBe(true);
   }, 120_000);
 
   it('every new building is reachable and wired into the street', () => {

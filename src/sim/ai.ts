@@ -4,6 +4,7 @@ import { ageOf, hasUmbrella, newTask } from './agents';
 import { ADULT_AGE, type Good, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
 import { FOOD_PER_CROP } from './economy';
 import { birthdayNames } from './events';
+import { funeralOf, mourns, weddingNames, weddingOf, weddingRole } from './rites';
 import { CARRY, HAUL_PAUSE, laborPlan, siteEdges } from './labor';
 import { buildCap, completeProject, shortOf, supplied } from './planner';
 import { chill, HEARTH_FULL, snowing, SPLIT } from './seasons';
@@ -578,6 +579,24 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
     const names = birthdayNames(sim, b);
     o.push(areaOption(sim, a, 'party', isHost ? 1.4 : kin ? 1.2 : 0.95, isHost ? 'My birthday' : `Birthday: ${names}`, isHost ? 'Celebrating my birthday' : `At ${names}'s birthday`, room, 9999, { partnerId: b.hosts[0] }));
   }
+  // Weddings: the couple, both families and their friends; in the park unless the weather moved it home.
+  for (const w of sim.events.weddings) {
+    if (!w.started || stage === 'toddler') continue;
+    const role = weddingRole(sim, w, a);
+    if (!role || (storm && w.home === undefined) || (sleepTime && role !== 'couple')) continue;
+    const area = w.home !== undefined ? sim.map.rooms[sim.town.households[w.home].room] : PARK;
+    const names = weddingNames(sim, w);
+    const score = (role === 'couple' ? 1.7 : role === 'kin' ? 1.3 : role === 'friend' ? 1.05 : 0.8) + (role !== 'couple' && a.traits.includes('extrovert') ? 0.1 : 0);
+    o.push(areaOption(sim, a, 'party', score, role === 'couple' ? 'My wedding' : `Wedding: ${names}`, role === 'couple' ? 'Getting married' : `At ${names}'s wedding`, area, 9999, { partnerId: w.couple[0] }));
+  }
+  // Funerals: whoever grieves comes to the cemetery to say goodbye.
+  const cemetery = sim.map.buildings.find((b) => b.kind === 'cemetery');
+  for (const f of sim.events.funerals) {
+    const dead = sim.person(f.dead);
+    if (!f.started || !cemetery || !dead || stage === 'toddler' || storm || !mourns(a, dead)) continue;
+    const score = 1.35 + (kinship(sim, a, dead) ? 0.2 : 0);
+    o.push(areaOption(sim, a, 'mourn', score, `Funeral: ${first(dead)}`, `At ${first(dead)}'s funeral`, cemetery, 9999, { partnerId: dead.id, facing: 'up' }));
+  }
   // Join whoever in the family is already sitting down to dinner at home.
   if (homed && loc === 'home' && inWindow(h, 17.5, 20.5) && n.hunger < 92 && stage !== 'toddler' && !a.mealReady && pantry >= 0.5 && a.action.kind !== 'eat') {
     const homeRoom = sim.town.households[a.household].room;
@@ -652,7 +671,9 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
       const r = rel(a, p);
       const peers = little === (stageOf(sim, p) === 'child') ? 0.08 : 0;
       const kin = kinship(sim, a, p) ? 0.12 : 0;
-      const pull = r.opinion <= RIVAL ? -0.35 : r.opinion / 220 + r.familiarity / 500 + peers + kin;
+      // Courting couples seek each other out.
+      const sweet = a.court?.with === p.id ? 0.3 : 0;
+      const pull = r.opinion <= RIVAL ? -0.35 : r.opinion / 220 + r.familiarity / 500 + peers + kin + sweet;
       const sc = base + pull - d * 0.012 + sim.rng.range(0, 0.06);
       if (!best || sc > best.score) best = { p, score: sc };
     }
@@ -856,10 +877,12 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
     case 'meet': return 'Standup time.';
     case 'party':
       if (o.reason === 'My birthday') return "My birthday party! I wonder who'll come.";
+      if (o.reason === 'My wedding') return "Today's the day.";
+      if (o.reason.startsWith('Wedding: ')) return `Off to ${o.reason.slice(9)}'s wedding!`;
       if (o.reason.startsWith('Birthday: ')) return `Off to ${o.reason.slice(10)}'s birthday.`;
       if (o.reason === 'Election rally') return a.action.label === 'Speaking at the rally' ? 'Time to make my case.' : "Let's hear what the candidates have to say.";
       return o.reason === 'Town festival' ? 'The whole town is out for the festival!' : 'Party in the lounge!';
-    case 'mourn': return `I'll go and sit with ${o.reason.slice(7)} for a while.`;
+    case 'mourn': return o.reason.startsWith('Funeral: ') ? `Time to say goodbye to ${o.reason.slice(9)}.` : `I'll go and sit with ${o.reason.slice(7)} for a while.`;
     case 'escort': return `I'll walk ${o.reason.split(' ')[0]} to school on my way.`;
     case 'repair': return 'I will take a look at that coffee machine.';
     case 'snack': return 'Just a quick snack.';
@@ -904,6 +927,7 @@ const SICK_STOPS: ActionKind[] = ['work', 'teach', 'learn', 'build', 'chop', 'mi
  * office party or the election rally. Some can be on at once (a festival on a Friday evening).
  */
 function gathering(sim: Sim, act: Action) {
+  if (act.reason === 'My wedding' || act.reason.startsWith('Wedding: ')) return weddingOf(sim, act.partnerId!) ?? null;
   if (act.partnerId !== undefined) return sim.events.birthdays.find((b) => b.hosts.includes(act.partnerId!));
   if (act.reason === 'Election rally') return sim.election?.stage === 'rally' ? sim.election : null;
   return act.reason === 'Town festival' ? sim.events.festival : act.reason === 'Office party' ? sim.events.party : null;
@@ -1206,9 +1230,14 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       for (const o of sim.agents) if (o.id !== a.id && o.action.kind === 'party' && Math.abs(o.x - a.x) < 6 && Math.abs(o.y - a.y) < 6) bondNearby(sim, a, o, dt * 2);
       if (sim.rng.chance(0.02 * dt)) say(sim, a, sim.rng.pick(['woo!', '♪', 'ha!', 'cheers']), 'good', 3);
       const ev = gathering(sim, act);
-      const bday = ev && 'guests' in ev ? ev : undefined;
-      const rally = ev && 'candidates' in ev ? ev : undefined;
       if (!ev) return finish(sim, a);
+      if ('couple' in ev) {
+        const mine = ev.couple.includes(a.id);
+        if (sim.rng.chance(0.015 * dt)) say(sim, a, mine ? sim.rng.pick(['♥', 'thank you all!', 'I do']) : sim.rng.pick(['to the couple!', '♥', '♪', 'cheers']), 'good', 3);
+        return;
+      }
+      const bday = 'guests' in ev ? ev : undefined;
+      const rally = 'candidates' in ev ? ev : undefined;
       if (rally) {
         const me = rally.candidates.find((c) => c.id === a.id);
         if (me && sim.rng.chance(0.03 * dt)) say(sim, a, `vote ${first(a)}: ${me.platform === 'housing' ? 'more homes!' : me.platform === 'food' ? 'full stores!' : me.platform === 'materials' ? 'build, build, build!' : 'parks & festivals!'}`, 'good', 4);
@@ -1269,6 +1298,14 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
     }
     case 'mourn': {
       a.facing = 'up';
+      if (act.reason.startsWith('Funeral: ')) {
+        // At a funeral until it ends; endFuneral eases the grief and leaves the memory.
+        const f = funeralOf(sim, act.partnerId!);
+        if (!f) return finish(sim, a);
+        f.guests.add(a.id);
+        if (sim.rng.chance(0.006 * dt)) say(sim, a, '…', 'neutral', 3);
+        return;
+      }
       if (sim.rng.chance(0.01 * dt)) say(sim, a, '…', 'neutral', 3);
       if (tick()) {
         const dead = sim.person(act.partnerId);
