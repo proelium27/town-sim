@@ -12,6 +12,7 @@ import { TownPanel } from './ui/townPanel';
 import { readAway, readSave, Saves } from './ui/saves';
 import { Away } from './ui/away';
 import { Director } from './ui/director';
+import { ChronicleBook } from './ui/chronicle';
 import { Tracker } from './ui/tracker';
 
 /** Real milliseconds per sim step at 1x: 20 steps per second, so one game minute per real second. */
@@ -113,7 +114,8 @@ async function boot(): Promise<void> {
     document.body.classList.toggle('roster-collapsed', tracker.collapsed);
     layout();
   }, () => refreshUi());
-  const town = new TownPanel(tracker.townEl, sim, (x, y) => camera.lookAtClamped(x * TILE, y * TILE), (id) => select(id, true), saves);
+  const book = new ChronicleBook(sim, (id) => select(id, true));
+  const town = new TownPanel(tracker.townEl, sim, (x, y) => camera.lookAtClamped(x * TILE, y * TILE), (id) => select(id, true), saves, () => book.toggle());
   if (window.innerWidth < 900) tracker.toggle(true);
   const hud = new Hud(sim);
   const activity = new ActivityLog(document.getElementById('activity')!, sim, (id) => select(id, true));
@@ -148,6 +150,7 @@ async function boot(): Promise<void> {
     tracker.update(selected);
     if (tracker.view === 'town' && !tracker.collapsed) town.update();
     activity.update(selected);
+    book.update();
     inspector.update();
   };
 
@@ -190,7 +193,11 @@ async function boot(): Promise<void> {
   window.addEventListener('pointerup', (e) => {
     if (drag && !drag.moved && e.target === cv) {
       const hit = people.pick(...local(e), camera);
-      select(hit?.id ?? null);
+      // A headstone opens that person's page in the chronicle.
+      const [wx, wy] = camera.toWorld(...local(e));
+      const grave = hit ? undefined : sim.map.propsOn(Math.floor(wx / TILE), Math.floor(wy / TILE)).find((p) => p.key === 'grave' && p.about !== undefined);
+      if (grave) book.show('family', grave.about!);
+      else select(hit?.id ?? null);
     }
     drag = null;
   });
@@ -207,6 +214,7 @@ async function boot(): Promise<void> {
     } else if (e.key >= '1' && e.key <= '3') setSpeed(Number(e.key));
     else if (e.code === 'Escape') {
       if (away.open && !away.busy) away.close();
+      else if (book.open) book.close();
       else select(null);
     }
     else if (e.code === 'KeyF' && selected !== null) following = !following;
@@ -214,6 +222,7 @@ async function boot(): Promise<void> {
     else if (e.code === 'KeyT') tracker.setView(tracker.view === 'town' ? 'people' : 'town');
     else if (e.code === 'KeyR') roofsOff = !roofsOff;
     else if (e.code === 'KeyC') director.toggle();
+    else if (e.code === 'KeyH') book.toggle();
     else if (e.code === 'KeyL') activity.toggle();
     else if (e.key === '/') {
       e.preventDefault();

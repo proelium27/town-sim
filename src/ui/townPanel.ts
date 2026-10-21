@@ -49,6 +49,7 @@ export class TownPanel {
     private onFocus: (x: number, y: number) => void,
     private onPerson: (id: number) => void,
     private saves: Saves,
+    private onChronicle: () => void = () => {},
   ) {
     const picker = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json', hidden: true });
     picker.addEventListener('change', async () => {
@@ -71,6 +72,9 @@ export class TownPanel {
         if (pr) this.onFocus(pr.x + pr.w / 2, pr.y + pr.h / 2);
       } else if (act === 'person') {
         this.onPerson(Number(el.dataset.id));
+        return;
+      } else if (act === 'chronicle') {
+        this.onChronicle();
         return;
       } else if (act === 'save') {
         this.saves.save();
@@ -253,7 +257,7 @@ export class TownPanel {
         ${this.saves.notice() ? `<p class="warn-line">${esc(this.saves.notice())}</p>` : ''}
       </section>
       <section class="tp-sec">
-        <h3>History</h3>
+        <h3>History <button class="chip-btn" data-act="chronicle" title="Year by year, obituaries and family trees (H)">Read the chronicle</button></h3>
         <ol class="history">${[...sim.history].reverse().slice(0, 30).map((h) => `<li><time class="num">${dateOf(h.t)}<br>${hhmm(h.t)}</time><span>${esc(h.text)}</span></li>`).join('')}</ol>
       </section>`;
 

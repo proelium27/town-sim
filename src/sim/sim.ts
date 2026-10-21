@@ -11,6 +11,7 @@ import { tickPlanner } from './planner';
 import { emptyLedger, tickMarket } from './market';
 import { tickPolitics } from './politics';
 import { tickRites } from './rites';
+import { type Annal, type ChronicleEntry, tickChronicle } from './chronicle';
 import { tickSeasons } from './seasons';
 import { Rng } from './rng';
 import { type Car, tickTraffic } from './traffic';
@@ -81,6 +82,12 @@ export class Sim {
   /** Player-set emphasis for the town planner: 0 low, 1 normal, 2 high. */
   priorities: Record<PriorityKey, number> = { housing: 1, food: 1, materials: 1, community: 1 };
   history: Milestone[] = [];
+  /** Every headline the town has had, kept for good (the feed keeps only its last 500 lines). */
+  chronicle: ChronicleEntry[] = [];
+  /** The town on the first morning of each year. */
+  annals: Annal[] = [];
+  /** activityVersion the chronicle has caught up to. */
+  chronicleSeen = 0;
   events: EventState = initialEvents();
   cars: Car[] = [];
   tasksCompleted = 0;
@@ -203,6 +210,7 @@ export class Sim {
     tickEconomy(this, STEP);
     tickAgents(this, STEP);
     tickTraffic(this, STEP);
+    tickChronicle(this);
   }
 
   run(minutes: number): void {

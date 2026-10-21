@@ -79,6 +79,7 @@ function births(sim: Sim): void {
 export function die(sim: Sim, a: Agent, cause: string): void {
   if (a.action.propId !== undefined && sim.reserved.get(a.action.propId) === a.id) sim.reserved.delete(a.action.propId);
   const wasMayor = sim.mayor === a.id;
+  a.diedAt = sim.time;
   sim.agents = sim.agents.filter((x) => x.id !== a.id);
   sim.deceased.push(a);
   sim.populationVersion++;

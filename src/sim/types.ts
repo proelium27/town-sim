@@ -165,6 +165,8 @@ export interface Agent {
   dream?: import('./aspirations').Dream;
   /** Lifetime counts (buildings helped raise, festivals danced at). */
   deeds?: import('./aspirations').Deeds;
+  /** Game minute they died, for the chronicle. */
+  diedAt?: number;
 }
 
 export interface Project {
