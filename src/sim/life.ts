@@ -110,6 +110,25 @@ export function die(sim: Sim, a: Agent, cause: string): void {
   takeInChildren(sim);
 }
 
+/**
+ * Hands money on from someone who is gone (or going): to their partner if they're still in town, else their children
+ * who are, else the treasury. Behind means they're alive and left it behind rather than died.
+ */
+export function passOnMoney(sim: Sim, a: Agent, amount: number, behind = false): void {
+  const money = Math.floor(Math.max(0, amount));
+  if (money <= 0) return;
+  const partner = sim.agent(a.partner ?? undefined);
+  const heirs = partner ? [partner] : a.children.map((id) => sim.agent(id)).filter((k): k is Agent => !!k && k.id !== a.id);
+  if (!heirs.length) {
+    sim.treasury += money;
+    sim.ledger.sales += money;
+    if (money >= 20) sim.log(`${first(a)} left $${money}${behind ? ' behind' : ''} to the town`, 'family', 'neutral', a).weight = NOTABLE;
+    return;
+  }
+  for (const h of heirs) h.money += money / heirs.length;
+  if (money >= 20) sim.log(`${first(a)} left $${money}${behind ? ' behind' : ''} to ${heirs.map(first).join(' and ')}`, 'family', 'neutral', heirs[0], a).weight = NOTABLE;
+}
+
 const isMinor = (sim: Sim, a: Agent) => ageOf(sim, a) < ADULT_AGE;
 
 /** How close a grown-up is to a child, lower is closer: 0 parent, 1 grandparent, 2 sibling, 3 aunt or uncle, 4 other family. */
