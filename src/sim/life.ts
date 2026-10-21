@@ -80,6 +80,7 @@ export function die(sim: Sim, a: Agent, cause: string): void {
   if (a.action.propId !== undefined && sim.reserved.get(a.action.propId) === a.id) sim.reserved.delete(a.action.propId);
   const wasMayor = sim.mayor === a.id;
   sim.agents = sim.agents.filter((x) => x.id !== a.id);
+  a.died = { at: sim.time, mayor: wasMayor };
   sim.deceased.push(a);
   sim.populationVersion++;
   const partner = sim.agent(a.partner ?? undefined);
