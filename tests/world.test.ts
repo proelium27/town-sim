@@ -176,7 +176,7 @@ describe('walking together', () => {
 
   it('on school mornings, a grown-up walks a young kid to school before work', () => {
     // An untouched town: nobody is placed by hand.
-    const sim = new Sim(4);
+    const sim = new Sim(5);
     const was = new Map<number, string>();
     const runs: string[] = [];
     for (let k = 0; k < 10 * 288; k++) {

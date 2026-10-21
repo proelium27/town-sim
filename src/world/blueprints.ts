@@ -12,6 +12,8 @@ export interface Blueprint {
   cost: Bill;
   /** What it takes instead once the town has a workshop: refined materials, and furniture for homes. */
   refined?: Bill;
+  /** Coins the treasury pays to start it (tools, nails, the things the town can't make). */
+  coins: number;
   /** Builder-minutes of construction. */
   work: number;
   /** Door column in local coordinates (door sits on the top wall, or bottom when flipped). */
@@ -187,16 +189,16 @@ export function graveSlots(b: Building): { x: number; y: number }[] {
 
 export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park' | 'cemetery' | 'workshop', Blueprint> = {
   house: {
-    kind: 'house', noun: 'a new home', w: 11, h: 8, cost: { wood: 40, stone: 20 }, refined: { wood: 16, stone: 10, planks: 16, bricks: 8, furniture: 2 }, work: 300, doorX: 4, outdoor: false,
+    kind: 'house', noun: 'a new home', coins: 40, w: 11, h: 8, cost: { wood: 40, stone: 20 }, refined: { wood: 16, stone: 10, planks: 16, bricks: 8, furniture: 2 }, work: 300, doorX: 4, outdoor: false,
     stamp: (m, x, y, top, name, hh) => stampHouse(m, x, y, top, name, hh ?? 0, true),
   },
-  farm: { kind: 'farm', noun: 'a farm', w: 10, h: 7, cost: { wood: 10, stone: 0 }, work: 140, doorX: 4, outdoor: true, stamp: (m, x, y, top, name) => stampFarm(m, x, y, top, name) },
-  storehouse: { kind: 'storehouse', noun: 'a storehouse', w: 7, h: 6, cost: { wood: 25, stone: 10 }, refined: { wood: 10, planks: 12, bricks: 6 }, work: 200, doorX: 3, outdoor: false, stamp: (m, x, y, top, name) => stampStorehouse(m, x, y, top, name) },
-  school: { kind: 'school', noun: 'a schoolhouse', w: 11, h: 8, cost: { wood: 40, stone: 30 }, refined: { wood: 12, stone: 10, planks: 20, bricks: 16, furniture: 2 }, work: 420, doorX: 1, outdoor: false, stamp: (m, x, y, top, name) => stampSchool(m, x, y, top, name) },
-  diner: { kind: 'cafe', noun: 'a diner', w: 11, h: 8, cost: { wood: 35, stone: 25 }, refined: { wood: 10, stone: 8, planks: 18, bricks: 14, furniture: 2 }, work: 380, doorX: 9, outdoor: false, stamp: (m, x, y, top, name) => stampDiner(m, x, y, top, name) },
-  park: { kind: 'park', noun: 'a little park', w: 8, h: 8, cost: { wood: 6, stone: 8 }, work: 100, doorX: 3, outdoor: true, stamp: (m, x, y, top, name) => stampPark(m, x, y, top, name) },
-  workshop: { kind: 'workshop', noun: 'a workshop', w: 11, h: 8, cost: { wood: 35, stone: 25 }, work: 320, doorX: 5, outdoor: false, stamp: (m, x, y, top, name) => stampWorkshop(m, x, y, top, name) },
-  cemetery: { kind: 'cemetery', noun: 'a cemetery', w: 9, h: 7, cost: { wood: 4, stone: 10 }, work: 100, doorX: 4, outdoor: true, stamp: (m, x, y, top, name) => stampCemetery(m, x, y, top, name) },
+  farm: { kind: 'farm', noun: 'a farm', coins: 20, w: 10, h: 7, cost: { wood: 10, stone: 0 }, work: 140, doorX: 4, outdoor: true, stamp: (m, x, y, top, name) => stampFarm(m, x, y, top, name) },
+  storehouse: { kind: 'storehouse', noun: 'a storehouse', coins: 30, w: 7, h: 6, cost: { wood: 25, stone: 10 }, refined: { wood: 10, planks: 12, bricks: 6 }, work: 200, doorX: 3, outdoor: false, stamp: (m, x, y, top, name) => stampStorehouse(m, x, y, top, name) },
+  school: { kind: 'school', noun: 'a schoolhouse', coins: 90, w: 11, h: 8, cost: { wood: 40, stone: 30 }, refined: { wood: 12, stone: 10, planks: 20, bricks: 16, furniture: 2 }, work: 420, doorX: 1, outdoor: false, stamp: (m, x, y, top, name) => stampSchool(m, x, y, top, name) },
+  diner: { kind: 'cafe', noun: 'a diner', coins: 80, w: 11, h: 8, cost: { wood: 35, stone: 25 }, refined: { wood: 10, stone: 8, planks: 18, bricks: 14, furniture: 2 }, work: 380, doorX: 9, outdoor: false, stamp: (m, x, y, top, name) => stampDiner(m, x, y, top, name) },
+  park: { kind: 'park', noun: 'a little park', coins: 25, w: 8, h: 8, cost: { wood: 6, stone: 8 }, work: 100, doorX: 3, outdoor: true, stamp: (m, x, y, top, name) => stampPark(m, x, y, top, name) },
+  workshop: { kind: 'workshop', noun: 'a workshop', coins: 70, w: 11, h: 8, cost: { wood: 35, stone: 25 }, work: 320, doorX: 5, outdoor: false, stamp: (m, x, y, top, name) => stampWorkshop(m, x, y, top, name) },
+  cemetery: { kind: 'cemetery', noun: 'a cemetery', coins: 15, w: 9, h: 7, cost: { wood: 4, stone: 10 }, work: 100, doorX: 4, outdoor: true, stamp: (m, x, y, top, name) => stampCemetery(m, x, y, top, name) },
 };
 
 export type BlueprintKey = keyof typeof BLUEPRINTS;

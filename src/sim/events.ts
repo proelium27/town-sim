@@ -1,6 +1,8 @@
 import { ageOf } from './agents';
-import { MIN_PER_DAY, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
+import { MIN_PER_DAY, plural, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
+import { TRADER_EVERY } from './market';
 import { FESTIVALS, snowing } from './seasons';
+import { spawnTrader } from './traffic';
 import { FRIEND, kinship } from './social';
 import { newcomers } from './life';
 import { addMemory, first, shiftOpinion, think } from './social';
@@ -25,7 +27,7 @@ export interface EventState {
   birthdays: Birthday[];
   /** Day the schedule below was planned for. */
   plannedDay: number;
-  plan: { at: number; kind: 'standup' | 'pizza' | 'party' | 'coffee' | 'rain' | 'birthday' | 'storm' | 'snowstorm'; length: number; host?: number }[];
+  plan: { at: number; kind: 'standup' | 'pizza' | 'party' | 'coffee' | 'rain' | 'birthday' | 'storm' | 'snowstorm' | 'trader'; length: number; host?: number }[];
 }
 
 export interface Birthday {
@@ -99,6 +101,8 @@ function planDay(sim: Sim): void {
     if (r.chance(0.25)) ev.plan.push({ at: base + r.range(9, 15) * 60, kind: 'coffee', length: 0 });
   }
   if (r.chance(sim.season === 3 ? 0.5 : 0.35)) ev.plan.push({ at: base + r.range(7, 19) * 60, kind: 'rain', length: r.range(60, 220) });
+  // A trader's cart every few days.
+  if (sim.day % TRADER_EVERY === 1) ev.plan.push({ at: base + 10 * 60, kind: 'trader', length: 0 });
   // Autumn brings storms; winter, the odd blizzard.
   if (sim.season === 2 && sim.seasonProgress > 0.2 && r.chance(0.18)) ev.plan.push({ at: base + r.range(10, 20) * 60, kind: 'storm', length: 0 });
   if (sim.season === 3 && r.chance(0.22)) ev.plan.push({ at: base + r.range(2, 16) * 60, kind: 'snowstorm', length: 0 });
@@ -163,6 +167,9 @@ export function tickEvents(sim: Sim, dt: number): void {
       case 'snowstorm':
         triggerWorldEvent(sim, e.kind);
         break;
+      case 'trader':
+        spawnTrader(sim);
+        break;
       case 'rain':
         if (!ev.rain) {
           ev.rain = { until: sim.time + e.length };
@@ -202,7 +209,7 @@ export function tickEvents(sim: Sim, dt: number): void {
     ev.festival = null;
     for (const a of people) addMemory(sim, a, 'festival');
     for (const a of people) for (const b of people) if (a.id !== b.id && Math.abs(a.x - b.x) < 8) shiftOpinion(sim, a, b, sim.rng.range(0, 3));
-    sim.log(`The festival is over. ${people.length} townsfolk ${sim.season === 3 ? 'warmed up together' : 'danced the night away'}`, 'event', 'good');
+    sim.log(`The festival is over. ${plural(people.length, 'person', 'townsfolk')} ${sim.season === 3 ? 'warmed up together' : 'danced the night away'}`, 'event', 'good');
   }
   if (ev.rain && sim.time >= ev.rain.until) {
     ev.rain = null;
@@ -301,7 +308,7 @@ function endBirthday(sim: Sim, b: Birthday): void {
   const names = andList(hosts.map(first));
   const family = guests.filter((g) => hosts.some((h) => kinship(sim, h, g))).length;
   const friends = guests.length - family;
-  const who = [family && `${family} relative${family === 1 ? '' : 's'}`, friends && `${friends} friend${friends === 1 ? '' : 's'}`].filter(Boolean).join(' and ');
+  const who = [family && plural(family, 'relative'), friends && plural(friends, 'friend')].filter(Boolean).join(' and ');
   const text = guests.length
     ? `${names}'s birthday wound down: ${who} came to celebrate`
     : hosts.length > 1
@@ -352,15 +359,16 @@ function endParty(sim: Sim): void {
   const people = [...p.attendees].map((id) => sim.agent(id)!).filter(Boolean);
   for (const a of people) addMemory(sim, a, 'party');
   for (const a of people) for (const b of people) if (a.id !== b.id) shiftOpinion(sim, a, b, sim.rng.range(1, 5));
-  sim.log(people.length ? `The party wound down. ${people.length} people had a good time` : 'Nobody showed up to the party', 'event', people.length ? 'good' : 'bad');
+  sim.log(people.length ? `The party wound down. ${plural(people.length, 'person', 'people')} had a good time` : 'Nobody showed up to the party', 'event', people.length ? 'good' : 'bad');
 }
 
-export type WorldEventKey = 'festival' | 'harvest' | 'newcomers' | 'drought' | 'storm' | 'snowstorm';
+export type WorldEventKey = 'festival' | 'harvest' | 'newcomers' | 'trader' | 'drought' | 'storm' | 'snowstorm';
 
 export const WORLD_EVENTS: { key: WorldEventKey; label: string; hint: string; tone: 'good' | 'bad' }[] = [
   { key: 'festival', label: 'Hold a festival', hint: 'Everyone gathers in the park for a few hours', tone: 'good' },
   { key: 'harvest', label: 'Bumper harvest', hint: 'Every crop ripens at once', tone: 'good' },
   { key: 'newcomers', label: 'Send newcomers', hint: 'Three people arrive, housing or not', tone: 'good' },
+  { key: 'trader', label: 'Call a trader', hint: 'A cart comes to buy surplus and sell what is short', tone: 'good' },
   { key: 'drought', label: 'Drought', hint: 'Crops stop growing for two days', tone: 'bad' },
   { key: 'storm', label: 'Storm', hint: 'Rain, flattened crops and fallen trees', tone: 'bad' },
   { key: 'snowstorm', label: 'Blizzard', hint: 'Heavy snow and bitter cold for six hours', tone: 'bad' },
@@ -375,6 +383,9 @@ export function triggerWorldEvent(sim: Sim, key: WorldEventKey): void {
       ev.festival = { until: sim.time + FESTIVAL_LENGTH, attendees: new Set(), name: FESTIVALS[sim.season] };
       lightBonfire(sim);
       sim.log(`${FESTIVALS[sim.season]} in the park, called early!`, 'event', 'good');
+      break;
+    case 'trader':
+      spawnTrader(sim);
       break;
     case 'snowstorm':
       if (ev.snowstorm) break;
@@ -410,7 +421,8 @@ export function triggerWorldEvent(sim: Sim, key: WorldEventKey): void {
         fallen++;
       }
       for (const a of sim.agents) addMemory(sim, a, 'storm');
-      sim.log(`A storm rolled through${hit ? `, flattening ${hit.name}` : ''} and toppling ${fallen} trees`, 'event', 'bad');
+      const damage = [hit && `flattening ${hit.name}`, fallen && `toppling ${plural(fallen, 'tree')}`].filter(Boolean).join(' and ');
+      sim.log(`A storm rolled through${damage ? `, ${damage}` : ''}`, 'event', 'bad');
       break;
     }
   }

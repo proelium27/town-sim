@@ -8,6 +8,7 @@ import { tickEvents, type EventState, initialEvents } from './events';
 import { tickLife } from './life';
 import { Nav } from './nav';
 import { tickPlanner } from './planner';
+import { emptyLedger, tickMarket } from './market';
 import { tickSeasons } from './seasons';
 import { Rng } from './rng';
 import { type Car, tickTraffic } from './traffic';
@@ -37,6 +38,16 @@ export class Sim {
   deceased: Agent[] = [];
   /** The dead waiting for a cemetery to be built. */
   unburied: number[] = [];
+  /** People who moved away in hard times. */
+  departed: Agent[] = [];
+  /** The town's purse: shop takings, taxes and trade in; town wages and building costs out. */
+  treasury = 400;
+  /** Today's money in and out, and yesterday's for the Town view. */
+  ledger = emptyLedger();
+  lastLedger = emptyLedger();
+  ledgerDay = 0;
+  /** Consecutive days each household has been broke and miserable. */
+  hardDays: number[] = [];
   nextAgentId = 1;
   /** Bumped whenever someone is born, arrives or dies. */
   populationVersion = 0;
@@ -168,6 +179,7 @@ export class Sim {
     if (this.day !== dayBefore) for (const a of this.agents) a.workedToday = 0;
     tickEvents(this, STEP);
     tickSeasons(this, STEP);
+    tickMarket(this);
     tickLife(this, STEP);
     tickPlanner(this, STEP);
     tickEconomy(this, STEP);

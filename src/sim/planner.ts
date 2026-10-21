@@ -5,6 +5,7 @@ import { ageOf, makeSchedule, newTask, surnameOf } from './agents';
 import { ADULT_AGE, type Bill, billGoods, type Good, GOODS, MIN_PER_DAY, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
 import { foodBalance } from './economy';
 import { bury } from './life';
+import { projectCushion } from './market';
 import { canSupply, CRAFT_ROLES, hasWorkshop, rawOf, RECIPES, shortfall } from './workshop';
 import { addMemory, first, think } from './social';
 import type { Agent, Project } from './types';
@@ -357,9 +358,16 @@ export function unstick(sim: Sim): void {
 }
 
 function startProject(sim: Sim, p: Proposal): Project | null {
+  const bp = BLUEPRINTS[p.bp];
+  // The treasury has to be able to pay for it and still meet payroll; a home for the homeless gets built on credit,
+  // and a cemetery for the unburied only has to be affordable.
+  const urgent = p.bp === 'house' && p.forAgents.some((a) => sim.town.households[a.household].building < 0);
+  const cushion = p.bp === 'cemetery' && sim.unburied.length ? 0 : projectCushion(sim);
+  if (sim.treasury - bp.coins < cushion && !urgent) return null;
   const site = findSite(sim, p.bp);
   if (!site) return null;
-  const bp = BLUEPRINTS[p.bp];
+  sim.treasury -= bp.coins;
+  sim.ledger.projects += bp.coins;
   const pr: Project = {
     id: sim.nextProjectId++,
     blueprint: p.bp,
