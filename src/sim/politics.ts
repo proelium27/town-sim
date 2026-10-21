@@ -88,7 +88,9 @@ export function tickPolitics(sim: Sim): void {
   // A recall leaves the office empty until a special election the next day.
   if (sim.snapElection !== null && sim.day >= sim.snapElection && h >= 9) {
     sim.snapElection = null;
-    openCampaign(sim, true);
+    // On the regular election day the regular campaign (which leaves the recalled mayor off) is the election.
+    const live = sim.election && sim.election.year === sim.year && sim.election.stage !== 'done';
+    if (!live) openCampaign(sim, true);
   }
   const cur = sim.election;
   if (!cur || cur.year !== sim.year || cur.stage === 'done') return;
@@ -154,7 +156,7 @@ export const CAMPAIGN_SWING = 0.15;
 
 /**
  * How much a voter warms to a candidate: how well they like them, whether the platform speaks to them, family, and
- * for a sitting mayor, how long they have held the office.
+ * for a sitting mayor, how long they have held the office and whether they kept last term's promise.
  */
 export function voteScore(sim: Sim, v: Agent, c: Candidate, wants: PriorityKey[] = concernsOf(sim, v)): number {
   if (c.id === v.id) return 9;
@@ -205,7 +207,7 @@ function vote(sim: Sim, e: ElectionState): void {
   e.stage = 'done';
   sim.lastElection = { year: e.year, winner: winnerId, platform, votes };
   sim.recalled = null;
-  takeOffice(sim, winner, platform, was === winnerId);
+  sim.snapElection = null;
   addMemory(sim, winner, 'wonElection');
   say(sim, winner, `thank you, ${sim.name}!`, 'good', 8);
   for (const c of e.candidates) {
@@ -216,6 +218,8 @@ function vote(sim: Sim, e: ElectionState): void {
   const others = votes.slice(1).map(([id, n]) => `${first(sim.agent(id)!)} ${n}`).join(', ');
   sim.log(`${winner.name} ${was === winnerId ? 'was re-elected' : 'was elected'} mayor with ${plural(votes[0][1], 'vote')}${others ? ` (${others})` : ', unopposed'}, promising ${PITCH[platform]}`, 'event', 'good', winner).weight = HEADLINE;
   sim.milestone(`${winner.name} became mayor`);
+  // Policy follows the result in the feed.
+  takeOffice(sim, winner, platform, was === winnerId);
 }
 
 /** The mayor's agenda leans meetings toward it, a little. */
@@ -225,6 +229,7 @@ export function agendaWeight(sim: Sim, k: PriorityKey): number {
 
 /** Day and year of the next election, for the Town view. */
 export function nextElection(sim: Sim): { day: number; year: number } {
-  const passed = sim.day % YEAR_DAYS > ELECTION_DAY || (sim.day % YEAR_DAYS === ELECTION_DAY && sim.election?.year === sim.year && sim.election.stage === 'done');
+  // A special election early in the year (after a recall) stands in for that year's vote.
+  const passed = sim.day % YEAR_DAYS > ELECTION_DAY || (sim.election?.year === sim.year && sim.election.stage === 'done');
   return { day: ELECTION_DAY, year: sim.year + (passed ? 1 : 0) };
 }

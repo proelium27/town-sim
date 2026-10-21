@@ -1,5 +1,7 @@
 import { ageOf } from './agents';
-import { ADULT_AGE, MIN_PER_DAY, type PriorityKey, ROLES, SEASON_DAYS } from './defs';
+import { ADULT_AGE, ELECTION_DAY, MIN_PER_DAY, type PriorityKey, ROLES, SEASON_DAYS, YEAR_DAYS } from './defs';
+import { foodBalance } from './economy';
+import { BASE_PRICE, price } from './market';
 import { startFestival } from './events';
 import { ownedBy } from './business';
 import { Rng } from './rng';
@@ -63,7 +65,7 @@ export interface Civic {
   policies: Policies;
   /** Each grown-up's approval of the mayor, 0..100. */
   approval: Map<number, number>;
-  /** Town approval at each midnight, newest last (a week's worth). */
+  /** Town approval at each midnight under this mayor, newest last (the last eight days). */
   history: number[];
   lowDays: number;
   protest: Protest | null;
@@ -71,8 +73,10 @@ export interface Civic {
   /** A recall vote due at this time, if one has been forced. */
   recallAt: number | null;
   promise: Promise | null;
-  /** The season the mayor last changed a policy, so it's one change a season. */
+  /** The season the mayor last changed a policy: one unprompted change a season (a protest can still force one). */
   changedSeason: number;
+  /** The last promise the town judged, kept on show through the next term. */
+  verdict?: { mayor: number; platform: PriorityKey; kept: boolean; year: number };
   festivalsHeld: number;
   lastDay: number;
   /** The day of the last extra fête. */
@@ -122,7 +126,12 @@ export function takeOffice(sim: Sim, mayor: Agent, platform: PriorityKey, reelec
     c.policies = p;
   }
   c.promise = { mayor: mayor.id, platform, since: sim.time, baseline: measure(sim, platform) };
+  // A new term: grievances against the last one (a planned protest, a pending recall) lapse, and a new mayor's
+  // approval trend starts from scratch.
   c.lowDays = 0;
+  c.protest = null;
+  c.recallAt = null;
+  if (!reelected) c.history = [];
   c.changedSeason = seasonIndex(sim);
   for (const a of grownUps(sim)) c.approval.set(a.id, Math.max(c.approval.get(a.id) ?? 55, 55));
   const changed = (Object.keys(c.policies) as PolicyKey[]).filter((k) => c.policies[k] !== was[k]);
@@ -132,30 +141,35 @@ export function takeOffice(sim: Sim, mayor: Agent, platform: PriorityKey, reelec
 /** The number a platform is judged by, a year on. */
 function measure(sim: Sim, platform: PriorityKey): number {
   if (platform === 'housing') return sim.map.buildings.filter((b) => b.kind === 'house').length;
-  if (platform === 'food') return sim.stock.food / Math.max(1, sim.agents.length);
+  // Days the stores would last at the town's daily eating.
+  if (platform === 'food') return sim.stock.food / Math.max(1, foodBalance(sim).eat);
   if (platform === 'materials') return sim.stock.wood + sim.stock.stone;
   // Festivals, and the parks, schools and libraries built for the town to share.
   return sim.civic.festivalsHeld + sim.map.buildings.filter((b) => b.kind === 'park' || b.kind === 'school' || b.kind === 'library').length * 2;
 }
 
-const PROMISED: Record<PriorityKey, string> = { housing: 'more homes', food: 'full stores', materials: 'timber and stone to build with', community: 'festivals and a livelier town' };
+export const PROMISED: Record<PriorityKey, string> = { housing: 'more homes', food: 'full stores', materials: 'timber and stone to build with', community: 'festivals and a livelier town' };
 
 /** At the next election: did the sitting mayor deliver? Voters weigh the answer. */
 export function judgePromise(sim: Sim): void {
-  const pr = sim.civic.promise;
+  const c = sim.civic;
+  const pr = c.promise;
   if (!pr || pr.kept !== undefined || pr.mayor !== sim.mayor) return;
+  // A term barely begun (a special election just before the regular one) isn't judged yet.
+  if (sim.time - pr.since < SEASON_DAYS * MIN_PER_DAY) return;
   const mayor = sim.agent(pr.mayor);
   if (!mayor) return;
   const now = measure(sim, pr.platform);
   const kept =
     pr.platform === 'housing' ? now - pr.baseline >= 3
-      : pr.platform === 'food' ? now >= Math.max(4, pr.baseline * 0.9)
+      : pr.platform === 'food' ? now >= Math.max(1.5, pr.baseline * 0.9)
         : pr.platform === 'materials' ? now >= pr.baseline * 1.3
           : now - pr.baseline >= 8;
   pr.kept = kept;
+  c.verdict = { mayor: pr.mayor, platform: pr.platform, kept, year: sim.year };
   const how =
     pr.platform === 'housing' ? `${now - pr.baseline} built`
-      : pr.platform === 'food' ? `${Math.round(now)} days of food in store`
+      : pr.platform === 'food' ? `${now.toFixed(1)} days of food in store`
         : pr.platform === 'materials' ? `${Math.round(now)} wood and stone in store`
           : `${now - pr.baseline} festivals and new places to gather`;
   sim.log(`A year on: Mayor ${first(mayor)} promised ${PROMISED[pr.platform]} (${how}). ${kept ? 'Promise kept.' : 'Promise broken.'}`, 'event', kept ? 'good' : 'bad', mayor).weight = HEADLINE;
@@ -189,7 +203,11 @@ export function approvalOf(sim: Sim, a: Agent): number {
   if (p.festivals === 'twice') v += outgoing ? 6 : 2;
   if (p.bonus === 'generous') v += townPaid ? 6 : 0;
   if (p.bonus === 'thrifty') v -= townPaid ? 8 : 0;
-  if (p.priceCap) v += owner ? -16 : a.money < 40 ? 6 : 1;
+  // The cap only bites in a shortage, when shops would otherwise charge more than the town.
+  if (p.priceCap) {
+    const binding = price(sim, 'food') / BASE_PRICE.food > 1.5;
+    v += owner ? (binding ? -16 : -4) : a.money < 40 ? (binding ? 6 : 2) : binding ? 1 : 0;
+  }
   // The times: a roof, a meal, a wage paid.
   if (sim.town.households[a.household].building < 0) v -= sim.agenda === 'housing' ? 22 : 12;
   if (a.needs.hunger < 25 || sim.stock.food < sim.agents.length * 2) v -= sim.agenda === 'food' ? 14 : 8;
@@ -204,7 +222,7 @@ export function townApproval(sim: Sim): number {
   return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : 50;
 }
 
-/** "Most people back Mayor Elio (62%, rising)". */
+/** "Most people back Mayor Elio (71%, rising)", "Opinion is split on Mayor Elio (47%, falling)". */
 export function approvalLine(sim: Sim): string | null {
   const mayor = mayorOf(sim);
   if (!mayor) return null;
@@ -260,6 +278,13 @@ export function tickCivic(sim: Sim): void {
   }
   festivalPolicy(sim);
   const pr = c.protest;
+  if (pr && !pr.on && sim.time >= pr.at && sim.events.snowstorm) {
+    // Nobody marches in a blizzard; the grievance stands, so it can be called again once it clears.
+    c.protest = null;
+    c.lastProtest = sim.time - 3 * MIN_PER_DAY;
+    sim.log(`The protest outside ${hallName(sim)} was snowed off`, 'event', 'neutral').weight = NOTABLE;
+    return;
+  }
   if (pr && !pr.on && sim.time >= pr.at) {
     pr.on = true;
     sim.log(`The protest is on outside ${hallName(sim)}: "${SLOGANS[pr.grievance][0]}"`, 'event', 'bad').weight = NOTABLE;
@@ -367,11 +392,17 @@ export function recallVote(sim: Sim): boolean {
     sim.mayor = null;
     sim.mayorTerms = 0;
     sim.recalled = mayor.id;
-    sim.snapElection = sim.day + 1;
+    const race = sim.election;
+    const live = !!race && race.year === sim.year && race.stage !== 'done';
+    if (live) {
+      // An election is already under way today: the recalled mayor is off the ballot and tonight's vote decides.
+      race.candidates = race.candidates.filter((x) => x.id !== mayor.id);
+      race.attendees.delete(mayor.id);
+    } else sim.snapElection = sim.day + 1;
     addMemory(sim, mayor, 'recalled');
     think(sim, mayor, 'Recalled. After everything I did for this town.', 'bad');
     say(sim, mayor, '...', 'bad', 6);
-    sim.log(`Mayor ${first(mayor)} was recalled, ${yes} votes to ${no}. A new election tomorrow`, 'event', 'bad', mayor).weight = HEADLINE;
+    sim.log(`Mayor ${first(mayor)} was recalled, ${yes} votes to ${no}. ${live ? 'The election goes ahead without them' : 'A new election tomorrow'}`, 'event', 'bad', mayor).weight = HEADLINE;
     sim.milestone(`${mayor.name} was recalled`);
     return true;
   }
@@ -389,8 +420,10 @@ function festivalPolicy(sim: Sim): void {
     ev.seasonal = null;
   }
   const dayInSeason = sim.day % SEASON_DAYS;
-  // Not over an evening that's already spoken for (an office party, a wedding, a funeral).
-  const busy = !!ev.party || ev.plan.some((e) => e.kind === 'party') || ev.weddings.length > 0 || ev.funerals.length > 0;
+  // Not over an evening that's already spoken for (an office party, a wedding, a funeral, an election rally).
+  const race = sim.election && sim.election.year === sim.year && sim.election.stage !== 'done';
+  const voting = race || sim.snapElection === sim.day || sim.day % YEAR_DAYS === ELECTION_DAY;
+  const busy = !!ev.party || ev.plan.some((e) => e.kind === 'party') || ev.weddings.length > 0 || ev.funerals.length > 0 || voting;
   if (c.policies.festivals === 'twice' && dayInSeason === 0 && sim.hour >= 17 && sim.hour < 17.5 && !ev.festival && !busy && c.feteDay !== sim.day && !ev.snowstorm && sim.treasury >= FETE_COST && mayorOf(sim)) {
     c.feteDay = sim.day;
     sim.treasury -= FETE_COST;

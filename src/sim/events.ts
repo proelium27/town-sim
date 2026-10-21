@@ -2,7 +2,7 @@ import { ageOf } from './agents';
 import { deeds } from './aspirations';
 import { burns, fireAt, lightning, startFire } from './fire';
 import { festivalHeld } from './civic';
-import { BIRTHDAY_HOUR, ELECTION_DAY, MIN_PER_DAY, plural, RALLY_HOUR, RALLY_LENGTH, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
+import { BIRTHDAY_HOUR, MIN_PER_DAY, plural, RALLY_HOUR, RALLY_LENGTH, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
 import { fallIll } from './health';
 import { TRADER_EVERY } from './market';
 import { FESTIVALS, snowing } from './seasons';
@@ -58,8 +58,8 @@ const BIRTHDAY_LATEST = 21;
 
 /**
  * When this evening's park event ends, if one is on or still to come today; else 0. Birthday parties
- * wait for it, so the family isn't split between the two. On election day that's the rally, which
- * ends with the vote.
+ * wait for it, so the family isn't split between the two. On an election day (regular or special) that's the
+ * rally, which ends with the vote.
  */
 export function parkEventUntil(sim: Sim): number {
   const ev = sim.events;
@@ -67,7 +67,7 @@ export function parkEventUntil(sim: Sim): number {
   const s = ev.seasonal;
   if (s && Math.floor(s.at / MIN_PER_DAY) === sim.day) until = Math.max(until, Math.max(s.at, sim.time) + FESTIVAL_LENGTH);
   const race = sim.election;
-  if (race && race.year === sim.year && race.stage !== 'done' && sim.day % YEAR_DAYS === ELECTION_DAY) {
+  if (race && race.year === sim.year && race.stage !== 'done') {
     until = Math.max(until, race.stage === 'rally' ? race.rallyUntil : sim.day * MIN_PER_DAY + RALLY_HOUR * 60 + RALLY_LENGTH);
   }
   return until;

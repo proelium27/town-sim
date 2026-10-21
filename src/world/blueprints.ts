@@ -186,7 +186,8 @@ function stampTownHall(m: TownMap, x: number, y: number, doorTop: boolean, name:
   s.door(5, 0, 'floorWood');
   s.prop('bookshelf', 1, 1, 1, 1);
   s.prop('bookshelf2', 2, 1, 1, 1);
-  s.prop('painting', 5, 1, 1, 1);
+  // (Not on column 5: that's the tile inside the door.)
+  s.prop('painting', 7, 1, 1, 1);
   s.prop('bookshelf', 8, 1, 1, 1);
   s.prop('bookshelf2', 9, 1, 1, 1);
   for (let dx = 3; dx <= 7; dx++) s.prop('tableLong', dx, 3, 1, 1);

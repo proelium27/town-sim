@@ -154,7 +154,7 @@ function warmHere(sim: Sim, a: Agent): boolean {
   return !!room && (room.id !== sim.town.households[a.household].room || sim.fuel[a.household] > 0);
 }
 /** What can wait out a blizzard: anyone doing one of these somewhere outdoors drops it and gets inside. */
-const STORM_DROPS: ActionKind[] = ['chop', 'mine', 'build', 'haul', 'farm', 'fish', 'split', 'pave', 'stroll', 'play', 'mourn', 'read', 'relax', 'socialize', 'party', 'wander'];
+const STORM_DROPS: ActionKind[] = ['chop', 'mine', 'build', 'haul', 'farm', 'fish', 'split', 'pave', 'stroll', 'play', 'mourn', 'read', 'relax', 'socialize', 'party', 'wander', 'protest'];
 
 /** Caught out in a blizzard doing something that can wait. Building materials wait in hand; firewood still goes to the hearth. */
 function caughtOut(sim: Sim, a: Agent): boolean {

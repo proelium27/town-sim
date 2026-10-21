@@ -3,7 +3,7 @@ import { ageOf } from '../src/sim/agents';
 import { type Business, type BusinessKind, BUSINESSES, closeBusiness, FLOAT, neighbourlyDinner, ownedBy, priceAt, sell, settleBusinesses, townMeal, wealthWord } from '../src/sim/business';
 import { ADULT_AGE } from '../src/sim/defs';
 import { die } from '../src/sim/life';
-import { TAX } from '../src/sim/market';
+import { TAX_RATE } from '../src/sim/civic';
 import { completeProject, findSite, proposals, startProject } from '../src/sim/planner';
 import { loadSim, saveSim } from '../src/sim/save';
 import { Sim } from '../src/sim/sim';
@@ -94,8 +94,8 @@ describe('private businesses', () => {
     expect(customer.money).toBe(100 - meal);
     expect(biz.takings).toBe(meal);
     expect(biz.served).toBe(1);
-    expect(sim.treasury - treasury).toBeGreaterThan(meal * TAX);
-    expect(biz.till).toBeLessThan(FLOAT + meal * (1 - TAX));
+    expect(sim.treasury - treasury).toBeGreaterThan(meal * TAX_RATE.normal);
+    expect(biz.till).toBeLessThan(FLOAT + meal * (1 - TAX_RATE.normal));
     // Owners aren't on the town payroll: they draw the till's profit at midnight.
     biz.till = FLOAT + 50;
     const before = owner.money;
