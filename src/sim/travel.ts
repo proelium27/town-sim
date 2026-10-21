@@ -4,8 +4,8 @@ import type { Dream, DreamKey } from './aspirations';
 import { DREAMS } from './aspirations';
 import { ADULT_AGE, MEMORIES, type MemoryKind, MIN_PER_DAY, RETIRE_AGE, ROLES, type RoleKey, SKILL_KEYS, type SkillKey, TRAIT_KEYS, type TraitKey, YEARS_PER_DAY } from './defs';
 import { APTITUDES, type Aptitude } from './careers';
-import { takeInChildren } from './life';
-import { allocateRoles, newHousehold } from './planner';
+import { passOnMoney, takeInChildren } from './life';
+import { allocateRoles, capacity, members, newHousehold } from './planner';
 import { addMemory, first, think } from './social';
 import type { Sim } from './sim';
 import { type Agent, HEADLINE, type Memory, NOTABLE } from './types';
@@ -129,7 +129,10 @@ export function pack(sim: Sim, party: Agent[]): TravelerFile {
  */
 export function sendAway(sim: Sim, party: Agent[]): TravelerFile {
   const file = pack(sim, party);
+  // Whatever won't fit in a purse stays behind with the family, as a death's savings would.
+  const surplus = party.map((a) => a.money - file.people[party.indexOf(a)].money);
   depart(sim, party);
+  party.forEach((a, i) => passOnMoney(sim, a, surplus[i], true));
   const names = party.map(first);
   const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
   sim.log(`${list} set off for another town`, 'family', 'neutral', party[0], party[1]).weight = HEADLINE;
@@ -284,10 +287,15 @@ export function tickTravel(sim: Sim): void {
 /** The cart comes down the east road: the party joins the town with their trades, skills and memories. */
 export function arrive(sim: Sim, file: TravelerFile): Agent[] {
   const m = sim.map;
-  // A home with room for all of them, like newcomers; otherwise they're a household waiting on a house.
-  const homes = sim.town.households.filter((h) => h.building >= 0 && sim.agents.filter((a) => a.household === h.id).length === 0);
+  // A home with beds for all of them (the snuggest that fits), like newcomers; otherwise they're a household waiting on a house.
+  const n = file.people.length;
+  const homes = sim.town.households
+    .filter((h) => h.building >= 0)
+    .map((h) => ({ h, room: capacity(sim, h.id) - members(sim, h.id).length }))
+    .filter((x) => x.room >= n)
+    .sort((x, y) => x.room - y.room);
   const surname = surnameOf(file.people[0].name);
-  const hh = homes[0]?.id ?? newHousehold(sim, `${surname} family`).id;
+  const hh = homes[0]?.h.id ?? newHousehold(sim, `${surname} family`).id;
   const made: Agent[] = [];
   for (const p of file.people) {
     const cell = m.idx(m.w - 1 - made.length, 27);

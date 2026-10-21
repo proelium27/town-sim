@@ -171,7 +171,7 @@ export function proposals(sim: Sim): Proposal[] {
     const mem = members(sim, h.id).filter((a) => !planned.has(a.id));
     if (!mem.length) continue;
     if (h.building < 0) {
-      out.push({ bp: 'house', score: 2.2 * hw, reason: `${mem.map(first).join(' and ')} have nowhere to live`, forAgents: mem, proposer: mem[0], name: homeName(sim, mem[0]) });
+      out.push({ bp: 'house', score: 2.2 * hw, reason: `${mem.map(first).join(' and ')} ${mem.length === 1 ? 'has' : 'have'} nowhere to live`, forAgents: mem, proposer: mem[0], name: homeName(sim, mem[0]) });
     }
   }
   for (const a of adults) {
@@ -759,6 +759,12 @@ export function setRole(sim: Sim, a: Agent, role: RoleKey, building: number | nu
 
 // ------------------------------------------------------------------ tick
 
+/** How many more homes than the usual limit may go up at once for families who have no home. */
+const HOMELESS_EXTRA = 2;
+
+/** A house proposed for people whose household has no building yet. */
+const homelessHouse = (sim: Sim, p: Proposal) => p.bp === 'house' && p.forAgents.some((a) => sim.town.households[a.household].building < 0);
+
 export function tickPlanner(sim: Sim, dt: number): void {
   sim.timers.roles -= dt;
   if (sim.timers.roles <= 0) {
@@ -773,9 +779,12 @@ export function tickPlanner(sim: Sim, dt: number): void {
   checkTier(sim);
   // A bigger town can take on more at once.
   const capacityProjects = Math.min(3 + sim.tier, 1 + Math.floor(builders / 2));
-  if (sim.projects.length >= capacityProjects) return;
+  // Families with no roof over their heads may push past the usual limit (by up to HOMELESS_EXTRA at once).
+  const full = sim.projects.length >= capacityProjects;
+  if (sim.projects.length >= capacityProjects + HOMELESS_EXTRA) return;
   for (const p of proposals(sim)) {
     if (p.score < 0.5) break;
+    if (full && !homelessHouse(sim, p)) continue;
     if (startProject(sim, p)) return;
   }
 }
