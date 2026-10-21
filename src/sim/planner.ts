@@ -1,12 +1,12 @@
 import type { GroundKey } from '../assets/manifest';
 import { BLUEPRINTS, type BlueprintKey } from '../world/blueprints';
 import type { Household } from '../world/town';
-import { ageOf, makeSchedule, newTask, surnameOf } from './agents';
-import { ADULT_AGE, type Bill, billGoods, type Good, GOODS, MIN_PER_DAY, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
+import { ageOf, hoursOf, makeSchedule, newTask, surnameOf } from './agents';
+import { ADULT_AGE, type Bill, billGoods, type Good, GOODS, MIN_PER_DAY, PRIORITY_SHARE, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
 import { foodBalance } from './economy';
 import { bury } from './life';
 import { projectCushion } from './market';
-import { canSupply, CRAFT_ROLES, hasWorkshop, rawOf, RECIPES, shortfall } from './workshop';
+import { canSupply, CRAFT_ROLES, hasWorkshop, rawOf, RECIPES, targetOf, wanted } from './workshop';
 import { addMemory, first, think } from './social';
 import type { Agent, Project } from './types';
 import type { Sim } from './sim';
@@ -179,7 +179,8 @@ function proposals(sim: Sim): Proposal[] {
   const fw = weight(sim, 'food');
   const fb = foodBalance(sim, true);
   const plannedFarms = sim.projects.filter((p) => p.blueprint === 'farm').length;
-  const deficit = fb.eat - fb.produce - plannedFarms * 50;
+  // With food on High the town breaks new fields until it grows a good margin over what it eats.
+  const deficit = fb.eat * (sim.priorities.food === 2 ? 1.3 : 1) - fb.produce - plannedFarms * 50;
   // Nobody breaks new fields in winter; nothing would grow before spring.
   if (sim.season !== 3 && (deficit > 0 || sim.stock.food < sim.agents.length * 2)) {
     const farmer = sim.agents.find((a) => a.role === 'farmer');
@@ -460,58 +461,118 @@ export function completeProject(sim: Sim, pr: Project): void {
 
 // ------------------------------------------------------------------ jobs
 
+/** One line of what the town wants from its flexible workers: a role, how many, and where (null: anywhere). */
+export type RoleSlot = [role: RoleKey, n: number, building: number | null];
 
-/** Shifts people in flexible jobs toward what the town needs right now. */
-export function allocateRoles(sim: Sim): void {
+/** What the town needs of its flexible workers right now, in the order jobs are filled. A role can appear more than once. */
+export function roleDemand(sim: Sim): RoleSlot[] {
   const m = sim.map;
-  const adults = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE && a.role !== 'retired');
-  const pool = adults.filter((a) => ROLES[a.role].flexible);
-  if (!pool.length) return;
   const schools = m.buildings.filter((b) => b.kind === 'school');
   const diners = m.buildings.filter((b) => b.kind === 'cafe' && b.name.includes('Diner'));
   const farms = m.buildings.filter((b) => b.kind === 'farm').length;
   const kids = sim.agents.filter((a) => ageOf(sim, a) >= 5 && ageOf(sim, a) < ADULT_AGE).length;
-  const demand: [RoleKey, number, number | null][] = [];
+  const demand: RoleSlot[] = [];
   for (const s of schools) if (kids) demand.push(['teacher', 1, s.id]);
   for (const d of diners) demand.push(['cook', 1, d.id]);
   const hw = PRIORITY_WEIGHT[sim.priorities.housing];
   const mw = PRIORITY_WEIGHT[sim.priorities.materials];
   const fw = PRIORITY_WEIGHT[sim.priorities.food];
-  demand.push(['farmer', Math.max(1, Math.round(farms * 1.5 * fw)), null]);
+  // A skeleton crew comes first, so no lever set to High can strip the town of the hands that grow, build and gather.
+  demand.push(['farmer', 1, null], ['builder', 1, null], ['woodcutter', 1, null]);
+  // Then the levers tilt the rest of the mix, each claiming no more than its share of the workforce.
+  const pool = sim.agents.filter((a) => ROLES[a.role].flexible && ageOf(sim, a) >= ADULT_AGE).length;
+  const capped = (n: number, k: PriorityKey) => Math.min(n, Math.max(1, Math.round(pool * PRIORITY_SHARE[sim.priorities[k]]))) - 1;
+  // Farms are staffed before building crews, unless housing is the higher priority.
+  const tilt: RoleSlot[] = [['farmer', capped(Math.round(farms * 1.5 * fw), 'food'), null], ['builder', capped(Math.round((1 + sim.projects.length * 0.8) * hw), 'housing'), null]];
+  if (sim.priorities.housing > sim.priorities.food) tilt.reverse();
+  demand.push(tilt[0]);
   if (hasWorkshop(sim)) demand.push(['carpenter', 1, null]);
-  demand.push(['builder', Math.max(1, Math.round((1 + sim.projects.length * 0.8) * hw)), null]);
+  demand.push(tilt[1]);
   // Once there's a workshop, the trades it needs (one carpenter is staffed even before builders, above).
   if (hasWorkshop(sim)) {
     for (const role of CRAFT_ROLES) {
-      const batches = RECIPES.filter((r) => r.role === role).reduce((s, r) => s + shortfall(sim, r) / r.out, 0);
+      // Batches already at a station still count, so starting one doesn't talk the crafter out of a job.
+      const recipes = RECIPES.filter((r) => r.role === role);
+      const batches = recipes.reduce((s, r) => s + wanted(sim, r) / r.out, 0);
+      // Whoever's in the trade keeps it until the shelves hold a full batch over what's wanted.
+      const held = sim.agents.filter((a) => a.role === role && ageOf(sim, a) >= ADULT_AGE).length;
+      const stocked = recipes.every((r) => sim.stock[r.good] >= targetOf(sim, r.good) + r.out);
       if (role === 'carpenter') {
-        if (batches > 6) demand.push(['carpenter', 1, null]);
-      } else if (batches > 0) demand.push([role, 1, null]);
+        if (batches > 6 || (held >= 2 && batches > 2)) demand.push(['carpenter', 1, null]);
+      } else if (batches > 0 || (held && !stocked)) demand.push([role, 1, null]);
     }
   }
   // Autumn and winter need firewood split and carried to every hearth.
   const cold = sim.season >= 2 ? 1 : 0;
   const shop = hasWorkshop(sim) ? 1 : 0;
-  demand.push(['woodcutter', Math.max(1, Math.round((sim.stock.wood < 60 || sim.stock.stone < 40 ? 2 : 1) * mw) + cold + shop), null]);
+  demand.push(['woodcutter', Math.max(1, Math.round((sim.stock.wood < 60 || sim.stock.stone < 40 ? 2 : 1) * mw) + cold + shop) - 1, null]);
+  return demand.filter(([, n]) => n > 0);
+}
 
-  const assigned = new Set<number>();
+/** Unfilled places per demanded role: the total wanted less the adults already doing it (zero or below: full). */
+export function openSlots(sim: Sim, demand: RoleSlot[] = roleDemand(sim)): Map<RoleKey, number> {
+  const open = new Map<RoleKey, number>();
+  for (const [r, n] of demand) open.set(r, (open.get(r) ?? 0) + n);
+  for (const a of sim.agents) if (open.has(a.role) && ageOf(sim, a) >= ADULT_AGE) open.set(a.role, open.get(a.role)! - 1);
+  return open;
+}
+
+/** Someone who changed jobs within a day stays put rather than being stood down again. */
+export const MIN_TENURE = MIN_PER_DAY;
+
+/**
+ * Shifts people in flexible jobs toward what the town needs right now, moving as few as it can:
+ * everyone stays where they are while their trade has room, and only the openings are filled.
+ */
+export function allocateRoles(sim: Sim): void {
+  const adults = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE && a.role !== 'retired');
+  const pool = adults.filter((a) => ROLES[a.role].flexible);
+  if (!pool.length) return;
+  const demand = roleDemand(sim);
+  // How many each line really gets: lines are filled in order until the workforce runs out.
+  let left = pool.length;
+  const quota = demand.map(([, n]) => {
+    const q = Math.min(n, left);
+    left -= q;
+    return q;
+  });
+  // Places a trade can actually fill; someone whose own trade has one isn't held in another job.
+  const open = new Map<RoleKey, number>();
+  demand.forEach(([r], i) => open.set(r, (open.get(r) ?? 0) + quota[i]));
+  for (const a of pool) if (open.has(a.role)) open.set(a.role, open.get(a.role)! - 1);
+  const calledAway = (a: Agent, role: RoleKey) => a.career !== undefined && a.career !== role && (open.get(a.career) ?? 0) > 0;
+  const fits = (a: Agent, [role, , building]: RoleSlot) => a.role === role && (building === null || a.workBuilding === building);
+
+  const line = new Map<number, number>();
+  const taken = (i: number) => [...line.values()].filter((x) => x === i).length;
+  // Everyone stays put while their line has room (those trained for it first).
+  demand.forEach((slot, i) => {
+    const stay = pool.filter((a) => !line.has(a.id) && fits(a, slot) && !calledAway(a, slot[0])).sort((x, y) => Number(y.career === slot[0]) - Number(x.career === slot[0]));
+    for (const a of stay.slice(0, quota[i])) line.set(a.id, i);
+  });
+  // The openings go to those who trained for them, then whoever is spare.
   const changes: string[] = [];
-  for (const [role, n, building] of demand) {
-    // Keep people where they are when possible; then pull from the least-needed.
-    const already = pool.filter((a) => !assigned.has(a.id) && a.role === role && (building === null || a.workBuilding === building));
-    const pick = [...already];
-    for (const a of pool) {
-      if (pick.length >= n) break;
-      if (assigned.has(a.id) || pick.includes(a)) continue;
-      pick.push(a);
+  demand.forEach((slot, i) => {
+    const [role, , building] = slot;
+    let need = quota[i] - taken(i);
+    if (need <= 0) return;
+    const spare = pool.filter((a) => !line.has(a.id));
+    const order = [...spare.filter((a) => a.career === role), ...spare.filter((a) => a.career !== role && !calledAway(a, role)), ...spare.filter((a) => a.career !== role && calledAway(a, role))];
+    for (const a of order) {
+      if (need <= 0) break;
+      line.set(a.id, i);
+      need--;
+      if (fits(a, slot)) continue;
+      setRole(sim, a, role, building);
+      changes.push(`${first(a)} is now a ${ROLES[role].title.toLowerCase()}`);
     }
-    for (const a of pick.slice(0, n)) {
-      assigned.add(a.id);
-      if (a.role !== role || (building !== null && a.workBuilding !== building)) setRole(sim, a, role, building);
-      if (!already.includes(a)) changes.push(`${first(a)} is now a ${ROLES[role].title.toLowerCase()}`);
-    }
-  }
-  for (const a of pool) if (!assigned.has(a.id) && a.role !== 'laborer') {
+  });
+  // Whoever's left over helps out as a laborer, unless they've only just taken up their trade. Spare builders and
+  // crafters keep their trade: they pitch in with the same general work anyway, and are ready when it picks up again.
+  const keeps = (a: Agent) => (a.role === 'builder' && demand.some((slot) => fits(a, slot))) || (CRAFT_ROLES.includes(a.role) && hasWorkshop(sim));
+  for (const a of pool) {
+    if (line.has(a.id) || a.role === 'laborer') continue;
+    if (sim.time - (a.roleSince ?? -Infinity) < MIN_TENURE || keeps(a)) continue;
     setRole(sim, a, 'laborer', null);
     changes.push(`${first(a)} is helping out as a laborer`);
   }
@@ -519,14 +580,17 @@ export function allocateRoles(sim: Sim): void {
 }
 
 export function setRole(sim: Sim, a: Agent, role: RoleKey, building: number | null): void {
+  const was = a.role;
   a.role = role;
+  a.roleSince = sim.time;
   a.workBuilding = building;
   a.deskId = null;
   if (building !== null) {
     const use = role === 'teacher' ? 'teach' : 'work';
     a.deskId = sim.map.props.find((p) => p.building === building && p.use === use)?.id ?? null;
   }
-  a.schedule = makeSchedule(sim, role, a.traits);
+  // Swapping one outdoor trade for another keeps their own hours.
+  if (hoursOf(was) !== hoursOf(role)) a.schedule = makeSchedule(sim, role, a.traits);
   a.task = newTask(sim, a);
 }
 

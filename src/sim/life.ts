@@ -1,6 +1,7 @@
-import { ageOf, createAgent, newTask, stationFor, surnameOf } from './agents';
-import { ADULT_AGE, RETIRE_AGE, ROLES, type RoleKey } from './defs';
+import { ageOf, createAgent, surnameOf } from './agents';
+import { ADULT_AGE, RETIRE_AGE, ROLES } from './defs';
 import { graveSlots } from '../world/blueprints';
+import { beginCareer, chooseCareer, finishApprenticeships } from './careers';
 import { allocateRoles, capacity, familyOf, members, moveTo, newHousehold, setRole } from './planner';
 import { addMemory, first, kinship, rel, say, think } from './social';
 import type { Agent } from './types';
@@ -15,6 +16,7 @@ export function tickLife(sim: Sim, dt: number): void {
   if (sim.timers.life > 0) return;
   sim.timers.life = 120;
   growUp(sim);
+  finishApprenticeships(sim);
   romance(sim);
   births(sim);
   deaths(sim);
@@ -31,17 +33,11 @@ function growUp(sim: Sim): void {
     const age = ageOf(sim, a);
     a.age = Math.floor(age);
     if (a.role === 'child' && age >= ADULT_AGE) {
-      // Some grown-up kids join the office; most go where the town needs hands.
-      const career: RoleKey | null = sim.rng.chance(0.35) ? sim.rng.pick(['engineer', 'designer', 'writer'] as RoleKey[]) : null;
-      if (career) {
-        setRole(sim, a, career, null);
-        a.deskId = stationFor(sim, career, new Set(sim.agents.map((o) => o.deskId ?? -1)));
-        a.task = newTask(sim, a);
-      } else setRole(sim, a, 'laborer', null);
+      // A trade chosen by aptitude, family, role models and what the town needs.
+      beginCareer(sim, a, chooseCareer(sim, a), setRole);
       a.money = 40;
       addMemory(sim, a, 'grewUp');
       think(sim, a, `Eighteen! Time to pull my weight as a ${ROLES[a.role].title.toLowerCase()}.`, 'good');
-      sim.log(`${a.name} came of age and became a ${ROLES[a.role].title.toLowerCase()}`, 'family', 'good', a);
       allocateRoles(sim);
     } else if (a.role !== 'retired' && a.role !== 'child' && age >= RETIRE_AGE) {
       setRole(sim, a, 'retired', null);

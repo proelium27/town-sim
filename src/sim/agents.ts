@@ -1,8 +1,10 @@
 import type { Outfit } from '../assets/loader';
+import type { Prop } from '../world/map';
 import {
   ADULT_AGE, MIN_PER_DAY, NEED_KEYS, RETIRE_AGE, ROLES, type RoleKey, SKILL_KEYS, type SkillKey, TRAITS, TRAIT_KEYS, type TraitKey, YEARS_PER_DAY,
 } from './defs';
 import type { Agent, Schedule, Skill, Task } from './types';
+import { startingAptitude } from './careers';
 import type { Sim } from './sim';
 
 const FIRST = [
@@ -43,6 +45,14 @@ function pickTraits(sim: Sim, inherit: TraitKey[] = []): TraitKey[] {
     out.push(t);
   }
   return out;
+}
+
+/** The kind of hours a role keeps; moving between roles of the same kind keeps a person's own schedule. */
+export function hoursOf(role: RoleKey): string {
+  const def = ROLES[role];
+  if (def.workplace === 'cafe' || def.workplace === 'market' || def.workplace === 'library') return def.workplace;
+  if (def.station === 'labor') return 'labor';
+  return role === 'child' || role === 'retired' || role === 'teacher' || role === 'cook' ? role : 'desk';
 }
 
 export function makeSchedule(sim: Sim, role: RoleKey, traits: TraitKey[]): Schedule {
@@ -168,6 +178,7 @@ export function createAgent(sim: Sim, o: NewAgentOpts): Agent {
     workBuilding: null,
     lastBirthday: 0,
     tool: 0,
+    aptitude: startingAptitude(sim, traits, parents),
   };
   if (namesake) a.namedAfter = namesake.id;
   a.needs.energy = rng.range(70, 95);
@@ -188,18 +199,23 @@ export function createAgent(sim: Sim, o: NewAgentOpts): Agent {
   return a;
 }
 
-/** Fixed desks and counters for the hand-built workplaces. */
-export function stationFor(sim: Sim, role: RoleKey, taken: Set<number>): number | null {
+/** Free desks and counters that suit a role, skipping `taken` (which is left untouched). */
+export function freeStations(sim: Sim, role: RoleKey, taken: Set<number>): Prop[] {
   const m = sim.map;
   const def = ROLES[role];
   const kindOf = (p: { room: number }) => (p.room >= 0 ? m.rooms[p.room].kind : undefined);
-  const spots = m.props.filter((p) => p.use === 'work' && !taken.has(p.id) && (
+  return m.props.filter((p) => p.use === 'work' && !taken.has(p.id) && (
     def.station === 'desk' ? kindOf(p) === 'office'
     : def.station === 'reception' ? kindOf(p) === 'lobby'
     : def.workplace === 'cafe' ? kindOf(p) === 'cafe' && p.building === undefined
     : def.workplace === 'market' ? kindOf(p) === 'shop'
     : def.workplace === 'library' ? kindOf(p) === 'library'
     : false));
+}
+
+/** Fixed desks and counters for the hand-built workplaces: picks one and marks it taken. */
+export function stationFor(sim: Sim, role: RoleKey, taken: Set<number>): number | null {
+  const spots = freeStations(sim, role, taken);
   const pick = spots.length ? sim.rng.pick(spots) : undefined;
   if (pick) taken.add(pick.id);
   return pick?.id ?? null;
@@ -275,6 +291,7 @@ export const hasUmbrella = (a: Agent): boolean => ((a.id * 2654435761) >>> 0) % 
 export function backfillAgent(a: Agent): void {
   a.lastBirthday ??= 0;
   a.tool ??= 0;
+  a.aptitude ??= { hands: 20, numbers: 20, people: 20, outdoors: 20 };
   // Saves from before winter: everyone starts warm.
   a.needs.warmth ??= 100;
 }

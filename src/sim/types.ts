@@ -143,6 +143,15 @@ export interface Agent {
   walkWith?: number;
   /** Wear left on their tools, 0..1; working with tools is faster. */
   tool: number;
+  /** Leanings built up at school and play, 0..100 each, that shape their career. */
+  aptitude: Record<import('./careers').Aptitude, number>;
+  /** The trade they chose when they came of age. */
+  career?: RoleKey;
+  /** Who they're apprenticed to, and until when. */
+  mentor?: number;
+  apprenticeUntil?: number;
+  /** When they last changed jobs (unset: since before anyone kept track). */
+  roleSince?: number;
 }
 
 export interface Project {

@@ -109,6 +109,36 @@ describe('player influence', () => {
     allocateRoles(sim);
     expect(sim.agents.filter((a) => a.role === 'builder').length).toBeGreaterThan(base);
   });
+
+  it('a lever on High tilts the crews without emptying the others', () => {
+    const sim = new Sim(7);
+    sim.run(60);
+    const count = (role: string) => sim.agents.filter((a) => a.role === role).length;
+    allocateRoles(sim);
+    const farmers = count('farmer');
+    sim.priorities.food = 2;
+    allocateRoles(sim);
+    expect(count('farmer')).toBeGreaterThan(farmers);
+    for (const lever of ['food', 'housing', 'materials'] as const) {
+      sim.priorities = { housing: 1, food: 1, materials: 1, community: 1, [lever]: 2 };
+      allocateRoles(sim);
+      for (const role of ['farmer', 'builder', 'woodcutter']) expect(count(role), `${role} with ${lever} on High`).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('with food on High from the start, building and woodcutting carry on', () => {
+    const sim = new Sim(7);
+    sim.priorities.food = 2;
+    const seen = new Set(sim.projects.map((p) => p.id));
+    let started = 0;
+    for (let h = 0; h < 4 * 24; h++) {
+      sim.run(60);
+      for (const p of sim.projects) if (!seen.has(p.id)) { seen.add(p.id); started++; }
+      expect(sim.agents.filter((a) => a.role === 'builder').length).toBeGreaterThanOrEqual(1);
+      expect(sim.agents.filter((a) => a.role === 'woodcutter').length).toBeGreaterThanOrEqual(1);
+    }
+    expect(started).toBeGreaterThanOrEqual(2);
+  }, 300_000);
 });
 
 describe('life and death', () => {

@@ -7,6 +7,7 @@ import { birthdayNames } from './events';
 import { CARRY, HAUL_PAUSE, laborPlan, siteEdges } from './labor';
 import { buildCap, completeProject, shortOf, supplied } from './planner';
 import { chill, HEARTH_FULL, snowing, SPLIT } from './seasons';
+import { learnBoost, lessonAptitude } from './careers';
 import { askFamilyForHelp, BROKE_RETRY, canAffordGroceries, familyAsk, payWage, price, spend } from './market';
 import { canMake, RECIPES, STATION_OF } from './workshop';
 import { clamp } from './rng';
@@ -196,6 +197,8 @@ function updateNeeds(sim: Sim, a: Agent, dt: number, stage: Stage): void {
   a.bladder -= 0.32 * dt * (asleep ? 0.3 : 1);
   if (k === 'coffee' && performing) a.bladder -= 0.4 * dt;
   for (const key of NEED_KEYS) n[key] = clamp(n[key], 0, 100);
+  // Kids playing outside grow a love of the outdoors.
+  if (stage === 'child' && performing && (k === 'play' || k === 'stroll' || k === 'wander') && sim.map.room[a.at] < 0) a.aptitude.outdoors = Math.min(100, a.aptitude.outdoors + 0.03 * dt);
   a.bladder = clamp(a.bladder, 0, 100);
 
   if (n.hunger < 8) addMemory(sim, a, 'starving');
@@ -211,7 +214,13 @@ export const xpToNext = (level: number): number => 120 + level * 90;
 function gainXp(sim: Sim, a: Agent, skill: SkillKey, amount: number): void {
   const s = a.skills[skill];
   if (s.level >= 10) return;
-  s.xp += amount * (a.traits.includes('workaholic') && skill === 'craft' ? 1.25 : 1);
+  // Apprentices learn twice as fast, three times beside their mentor (and get to know them).
+  const boost = learnBoost(sim, a);
+  if (boost === 3 && skill === 'craft') {
+    const m = sim.agent(a.mentor);
+    if (m) bondNearby(sim, a, m, amount * 0.5);
+  }
+  s.xp += amount * boost * (a.traits.includes('workaholic') && skill === 'craft' ? 1.25 : 1);
   const need = xpToNext(s.level);
   if (s.xp >= need) {
     s.xp -= need;
@@ -972,6 +981,12 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       n.fun = Math.min(100, n.fun + 0.1 * dt);
       n.social = Math.min(100, n.social + socialGain(a, 0.15) * dt);
       gainXp(sim, a, sim.rng.pick(SKILL_KEYS), dt * 0.4);
+      // Each minute of lessons builds an aptitude; a teacher at the board makes it count for more.
+      if (Math.floor(sim.time) !== Math.floor(sim.time - dt)) {
+        const k = lessonAptitude(sim, a);
+        const taught = sim.agents.some((t) => t.role === 'teacher' && t.action.kind === 'teach' && t.action.stage === 'perform');
+        a.aptitude[k] = Math.min(100, a.aptitude[k] + (taught ? 0.075 : 0.05));
+      }
       for (const o of others(sim, a, ['learn'], 6)) bondNearby(sim, a, o, dt);
       if (tick() || !inWindow(sim.hour, 8.5, 15)) {
         addMemory(sim, a, 'school');
@@ -1255,7 +1270,8 @@ function pickUp(sim: Sim, a: Agent, kind: Good, amount: number): number {
   return a.carry.amount;
 }
 
-function laborRate(a: Agent): number {
+/** How fast someone gets through physical work: skill, tools, energy and temperament. */
+export function laborRate(a: Agent): number {
   return (a.tool > 0 ? 1.25 : 1) * (0.55 + a.skills.craft.level * 0.07) * (a.needs.energy < 20 ? 0.6 : 1) * (a.traits.includes('workaholic') ? 1.15 : a.traits.includes('slacker') ? 0.8 : 1);
 }
 
