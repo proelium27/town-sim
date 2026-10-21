@@ -42,6 +42,7 @@ npm run build      # typecheck + production bundle
 - **Jobs**: flexible roles (builder, farmer, woodcutter, laborer, teacher, cook) are reassigned as the town's needs change. Office, café, market and library staff keep their jobs.
 - **Generations** (`src/sim/life.ts`): two years pass per game day. Kids are born to couples with a spare bed, go to school once there is one, and come of age at 18; people retire at 66 and die of old age; grief spreads to family and friends.
 - **Family life**: once a calendar year, on the day they were born, people throw a birthday party at home at 18:00: cake on the table, family comes over (friends too for round numbers like 18, 50 or 80). Households sit down to dinner together. Babies are sometimes named after a grandparent who has passed away.
+- **Out and about**: footsteps wear grass into trampled patches and then bare trails along the routes people actually take (and trails are quicker to walk, so they stick); trails nobody uses grass over in a few days. After dinner, couples go for a walk side by side, and on school mornings a grown-up at home walks the little ones to school. Most people carry an umbrella in the rain; the rest hurry and get soaked.
 - **Cemetery**: the first death prompts a town meeting to build one; each death adds a named headstone, and family visit the grave now and then, which eases their grief.
 
 ## What you control

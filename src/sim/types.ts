@@ -30,7 +30,7 @@ export interface Thought {
 export type ActionKind =
   | 'idle' | 'wander' | 'stroll' | 'work' | 'meet' | 'eat' | 'snack' | 'coffee' | 'cook'
   | 'sleep' | 'toilet' | 'shower' | 'socialize' | 'play' | 'music' | 'read' | 'relax' | 'shop' | 'party' | 'repair'
-  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach' | 'mourn';
+  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach' | 'mourn' | 'escort';
 
 export interface Action {
   kind: ActionKind;
@@ -137,6 +137,8 @@ export interface Agent {
   lastBirthday: number;
   /** The late grandparent they were named after. */
   namedAfter?: number;
+  /** Someone they're walking alongside (a partner on a stroll, a parent on the school run). */
+  walkWith?: number;
 }
 
 export interface Project {

@@ -7,6 +7,8 @@ import type { DrawnKey, Prop, TownMap } from '../world/map';
 import { Cell } from '../world/map';
 import { Exteriors, wallTone } from './exteriors';
 import { Lighting } from './lighting';
+import { Smoke } from './particles';
+import { Puddles } from './puddles';
 import { Shading } from './shading';
 
 const WALL_TOP = 0xddd0b8;
@@ -40,6 +42,10 @@ export class WorldView {
   readonly lighting: Lighting;
   /** Roofs and front walls, y-sorted with people; fade to show the rooms inside. */
   readonly exteriors: Exteriors;
+  /** Chimney smoke, above roofs. */
+  readonly smoke = new Smoke();
+  /** Rain puddles on paths and pavement; faded in by how wet the ground is. */
+  readonly puddles: Puddles;
   private sprites = new Map<number, Sprite>();
   private keys = new Map<number, string>();
   private propVersion = -1;
@@ -59,8 +65,9 @@ export class WorldView {
     this.groundTex = Texture.from(this.groundCanvas);
     this.groundTex.source.scaleMode = 'nearest';
     this.shading = new Shading(m);
+    this.puddles = new Puddles(m);
     this.lighting = new Lighting(m);
-    this.root.addChild(new Sprite(this.groundTex), this.shading.layer, this.walls, this.flat, this.sites, this.entities, this.lighting.layer, this.overlay);
+    this.root.addChild(new Sprite(this.groundTex), this.puddles.layer, this.shading.layer, this.walls, this.flat, this.sites, this.entities, this.smoke.layer, this.lighting.layer, this.overlay);
     this.parkCars();
     this.exteriors = new Exteriors(art, m, this.entities);
     this.sync();
@@ -78,7 +85,31 @@ export class WorldView {
     const f = variants[vhash(x, y) % variants.length];
     const step = TILE + SHEETS[f.sheet].spacing;
     const img = this.art.image(f.sheet);
-    this.groundCtx.drawImage(img, f.col * step, f.row * step, TILE, TILE, x * TILE, y * TILE, TILE, TILE);
+    const g = this.groundCtx;
+    g.drawImage(img, f.col * step, f.row * step, TILE, TILE, x * TILE, y * TILE, TILE, TILE);
+    const kind = m.ground[i];
+    if (kind !== 'worn' && kind !== 'trail') return;
+    // Bare patches on trampled grass; grass creeping back in at a trail's edges.
+    const X = x * TILE;
+    const Y = y * TILE;
+    const spot = (n: number, salt: number) => vhash(x * 7 + n, y * 13 + salt);
+    if (kind === 'worn') {
+      g.fillStyle = 'rgba(150, 112, 70, 0.55)';
+      for (let n = 0; n < 9; n++) g.fillRect(X + 2 + (spot(n, 1) % 12), Y + 2 + (spot(n, 2) % 12), 2 + (spot(n, 3) % 2), 1 + (spot(n, 4) % 2));
+      return;
+    }
+    const grassy = (gx: number, gy: number) => m.inBounds(gx, gy) && (m.ground[m.idx(gx, gy)] === 'grass' || m.ground[m.idx(gx, gy)] === 'worn');
+    g.fillStyle = '#5e9a3e';
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      if (!grassy(x + dx, y + dy)) continue;
+      for (let n = 0; n < 6; n++) {
+        const t = spot(n + dx * 3 + dy * 5, 7) % 14;
+        const d = spot(n, 9) % 3;
+        const px = dx === 0 ? X + 1 + t : dx < 0 ? X + d : X + TILE - 1 - d;
+        const py = dy === 0 ? Y + 1 + t : dy < 0 ? Y + d : Y + TILE - 1 - d;
+        g.fillRect(px, py, 1 + (n % 2), 1);
+      }
+    }
   }
 
   /** Top-down walls with a lit top face and a short front face where they meet floor below. */
@@ -149,11 +180,32 @@ export class WorldView {
     this.entities.addChild(s);
   }
 
+  /** Per-frame effects: smoke from homes where someone is cooking, puddles after rain. dt in real seconds. */
+  updateFx(dt: number): void {
+    const sim = this.sim;
+    const fires = new Set<number>();
+    for (const a of sim.agents) {
+      if (a.action.kind !== 'cook' || a.action.stage !== 'perform') continue;
+      const hh = sim.town.households[a.household];
+      if (hh.building >= 0) fires.add(hh.building);
+    }
+    this.smoke.update(dt, this.exteriors.chimneys().filter((c) => fires.has(c.id)));
+    const wet = sim.events.wet ?? 0;
+    const layer = this.puddles.layer;
+    layer.visible = wet > 0.02;
+    layer.alpha = Math.min(1, wet * 1.2);
+    if (layer.visible) this.puddles.sync();
+  }
+
   /** Bring the scene in line with the map. Cheap when nothing changed. */
   sync(): void {
     const m = this.map;
     if (m.groundDirty.length) {
-      for (const i of m.groundDirty) this.paintGround(i);
+      for (const i of m.groundDirty) {
+        this.paintGround(i);
+        this.shading.touch(i);
+        this.puddles.touch(i);
+      }
       m.groundDirty.length = 0;
       this.groundTex.source.update();
     }

@@ -104,8 +104,12 @@ describe('milestone birthdays', () => {
 describe('family dinner', () => {
   it('households sit down to dinner together', () => {
     const sim = new Sim(7);
-    at(sim, 1, 21);
-    expect(sim.agents.filter((a) => a.memories.some((m) => m.kind === 'familyDinner')).length).toBeGreaterThanOrEqual(4);
+    const diners = new Set<number>();
+    for (let k = 0; k < 2 * 48; k++) {
+      sim.run(30);
+      for (const a of sim.agents) if (a.memories.some((m) => m.kind === 'familyDinner')) diners.add(a.id);
+    }
+    expect(diners.size).toBeGreaterThanOrEqual(5);
   }, 60_000);
 });
 

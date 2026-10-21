@@ -84,6 +84,9 @@ export const enum Cell {
 /** Movement cost added per ground type (base step is 1). Roads are crossable but avoided. */
 export const GROUND_COST: Partial<Record<GroundKey, number>> = {
   grass: 0.35,
+  // Worn ground is easier going, so a shortcut, once trodden, keeps getting used.
+  worn: 0.22,
+  trail: 0.12,
   dirt: 0.1,
   asphalt: 8,
   laneH: 8,
@@ -91,6 +94,12 @@ export const GROUND_COST: Partial<Record<GroundKey, number>> = {
   water: 99,
   field: 0.8,
 };
+
+/** Footsteps (fading) before grass looks trampled, and before it's a bare trail. */
+const WORN_AT = 10;
+const TRAIL_AT = 26;
+/** Wear kept per half hour: about a day's half-life. */
+const WEAR_KEEP = 0.985;
 
 /**
  * The town as a tile grid plus rooms, buildings and props. Pure data: no rendering.
@@ -104,6 +113,8 @@ export class TownMap {
   /** Total traversal cost on top of the base step: ground plus props. */
   readonly cost: Float32Array;
   readonly room: Int16Array;
+  /** Footsteps on open ground, fading over time; enough wear tramples grass into a trail. */
+  wear: Float32Array;
   rooms: Room[] = [];
   props: Prop[] = [];
   buildings: Building[] = [];
@@ -118,6 +129,11 @@ export class TownMap {
   groundDirty: number[] = [];
   /** Bumped on any ground change (paths, fields), for baked layers. */
   groundVersion = 0;
+  /**
+   * Bumps when the lawn needs a full repaint. Per-tile ground changes (paving, paths, wear) never
+   * bump it: they reach the renderer through groundDirty and redraw only their own chunks.
+   */
+  lawnVersion = 0;
 
   constructor(
     readonly w: number,
@@ -129,6 +145,7 @@ export class TownMap {
     this.blocked = new Uint8Array(n);
     this.cost = new Float32Array(n);
     this.room = new Int16Array(n).fill(-1);
+    this.wear = new Float32Array(n);
     this.propsAt = new Array(n);
   }
 
@@ -178,6 +195,8 @@ export class TownMap {
     if (this.ground[i] === g) return;
     this.ground[i] = g;
     this.groundDirty.push(i);
+    // Neighbours too: a trail's grassy edges depend on what's next to it.
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) if (this.inBounds(x + dx, y + dy)) this.groundDirty.push(this.idx(x + dx, y + dy));
     this.groundVersion++;
     this.refreshCell(i);
   }
@@ -251,8 +270,31 @@ export class TownMap {
     return this.props.filter((p) => p.use === use);
   }
 
+  /** Someone walked onto this cell. */
+  step(i: number): void {
+    const g = this.ground[i];
+    if ((g !== 'grass' && g !== 'worn' && g !== 'trail') || this.room[i] >= 0) return;
+    const w = (this.wear[i] += 1);
+    if (g === 'grass' && w >= WORN_AT) this.setGround(this.cx(i), this.cy(i), 'worn');
+    else if (g === 'worn' && w >= TRAIL_AT) this.setGround(this.cx(i), this.cy(i), 'trail');
+  }
+
+  /** Wear fades; unused trails grass over again. Call every half hour of game time. */
+  fadeWear(): void {
+    for (let i = 0; i < this.wear.length; i++) {
+      const w = this.wear[i];
+      if (w === 0) continue;
+      const nw = w < 0.05 ? 0 : w * WEAR_KEEP;
+      this.wear[i] = nw;
+      const g = this.ground[i];
+      if (g === 'trail' && nw < TRAIL_AT * 0.4) this.setGround(this.cx(i), this.cy(i), 'worn');
+      else if (g === 'worn' && nw < WORN_AT * 0.4) this.setGround(this.cx(i), this.cy(i), 'grass');
+    }
+  }
+
   /** Rebuilds the prop lookups and per-cell costs from `props` (after loading a save). */
   reindex(): void {
+    if (!this.wear || this.wear.length !== this.w * this.h) this.wear = new Float32Array(this.w * this.h);
     this.byId = new Map(this.props.map((p) => [p.id, p]));
     this.propsAt = new Array(this.w * this.h);
     for (const p of this.props) for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++) {

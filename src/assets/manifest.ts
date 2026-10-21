@@ -38,6 +38,10 @@ const cpx = (x: number, y: number, w: number, h: number): FrameRef => ({ sheet: 
 
 export const GROUND = {
   grass: [c(0, 24), c(1, 24)],
+  /** Grass trampled by feet; painted with bare patches on top of the grass tile. */
+  worn: [c(0, 24), c(1, 24)],
+  /** A desire path worn down to earth; painted with grass creeping in at the edges. */
+  trail: [c(4, 24), c(5, 24)],
   dirt: [c(4, 24), c(5, 24)],
   sand: [c(6, 24), c(7, 24)],
   sidewalk: [c(1, 20), c(2, 20), c(1, 19)],

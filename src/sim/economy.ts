@@ -35,10 +35,11 @@ export function tickEconomy(sim: Sim, dt: number): void {
   }
   for (const p of temporary) if (sim.time >= p.expires!) m.removeProp(p);
 
-  // Forests slowly grow back from their edges.
+  // Forests slowly grow back from their edges, and untrodden trails grass over.
   sim.timers.regrow -= dt;
   if (sim.timers.regrow > 0) return;
   sim.timers.regrow = 30;
+  m.fadeWear();
   const reserved = new Set(sim.projects.flatMap((pr) => cellsOf(sim, pr.x - 1, pr.y - 1, pr.w + 2, pr.h + 2)));
   for (let k = 0; k < 6; k++) {
     const x = sim.rng.int(0, m.w - 1);

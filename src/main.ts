@@ -234,6 +234,7 @@ async function boot(): Promise<void> {
     }
     camera.update(dt);
     world.sync();
+    world.updateFx(speed > 0 ? dt : 0);
     const open = new Set<number>();
     const sel = selected !== null ? sim.agent(selected) : undefined;
     const home = sel ? world.exteriors.buildingAt(Math.round(sel.x), Math.round(sel.y)) : undefined;

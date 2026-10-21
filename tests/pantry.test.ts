@@ -8,7 +8,7 @@ const at = (sim: Sim, day: number, hour: number) => sim.run(day * 1440 + hour * 
 /** A hungry adult at home with money for food and `pantry` meals in the cupboard. */
 function hungryAtHome(pantry: number, solo: boolean) {
   const sim = new Sim(11);
-  at(sim, 1, 19);
+  at(sim, 1, 20);
   const a = sim.agents.find((x) => stageOf(sim, x) === 'adult' && sim.roomOf(x)?.id === sim.town.households[x.household].room)!;
   if (solo) {
     // Everyone else in the house moves next door, so nobody else will restock this pantry.
