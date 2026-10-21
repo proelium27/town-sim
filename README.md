@@ -25,7 +25,7 @@ npm run build      # typecheck + production bundle
 | Tab / Shift+Tab | Cycle through people |
 | F | Follow the selected person |
 | Space | Pause / resume |
-| 1 2 3 | Speed (1× is one game minute per real second) |
+| 1 2 3 | Speed: Normal plays a game day in 8 minutes, Fast in 90 seconds, Fastest in 24 seconds |
 | / | Search the people list |
 | T | Switch the left panel between People and Town |
 | R | Lift every roof to see inside (they also lift when you zoom in or select someone indoors) |
