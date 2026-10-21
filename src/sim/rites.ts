@@ -1,5 +1,5 @@
 import { ageOf } from './agents';
-import { MIN_PER_DAY, ROLES, type SkillKey } from './defs';
+import { DAY_NAMES, MIN_PER_DAY, ROLES, type SkillKey } from './defs';
 import { andList, parkEventUntil } from './events';
 import { capacity, familyOf, members, moveTo } from './planner';
 import { addMemory, FRIEND, first, kinship, rel, say, shiftOpinion, think } from './social';
@@ -48,13 +48,24 @@ export const FUNERAL_HOUR = 10;
 export const FUNERAL_LENGTH = 90;
 /** The closest mourner speaks this long after the funeral starts. */
 const EULOGY_AFTER = 30;
+/** Toddlers don't go to funerals. */
+const MOURNER_AGE = 4;
+/** A funeral for someone buried later is held only if they died within this many days. */
+const LATE_FUNERAL = 10;
 /** A wedding pushed back by a park event still starts if that's over by this hour. */
 const WEDDING_LATEST = 20;
+
+/** Nobody proposes outside these hours. */
+const PROPOSE_FROM = 8;
+const PROPOSE_UNTIL = 22;
 
 const related = (a: Agent, b: Agent) =>
   a.parents.includes(b.id) || b.parents.includes(a.id) || a.parents.some((p) => b.parents.includes(p));
 
 const grieving = (a: Agent) => a.memories.some((m) => m.kind === 'grief' || m.kind === 'heartbroken');
+
+/** Up and about in the waking hours, not asleep or on the way to bed. */
+const awake = (sim: Sim, a: Agent) => sim.hour >= PROPOSE_FROM && sim.hour < PROPOSE_UNTIL && a.action.kind !== 'sleep';
 
 /** The next `hour` o'clock at least `ahead` minutes away. */
 function nextAt(sim: Sim, hour: number, ahead: number): number {
@@ -63,13 +74,24 @@ function nextAt(sim: Sim, hour: number, ahead: number): number {
   return t;
 }
 
-/** "this evening", "tomorrow evening", "tomorrow morning". */
+/** "this evening", "tomorrow evening", "Friday evening", "tomorrow morning". */
 function when(sim: Sim, t: number, part: string): string {
-  return Math.floor(t / MIN_PER_DAY) === sim.day ? `this ${part}` : `tomorrow ${part}`;
+  const ahead = Math.floor(t / MIN_PER_DAY) - sim.day;
+  return ahead <= 0 ? `this ${part}` : ahead === 1 ? `tomorrow ${part}` : `${DAY_NAMES[Math.floor(t / MIN_PER_DAY) % 7]} ${part}`;
+}
+
+/** The first evening at or after `t` with no other wedding on it, so guests aren't split between two. */
+function freeEvening(sim: Sim, t: number, except?: Wedding): number {
+  while (sim.events.weddings.some((o) => o !== except && Math.floor(o.at / MIN_PER_DAY) === Math.floor(t / MIN_PER_DAY))) t += MIN_PER_DAY;
+  return t;
 }
 
 /** Checked a few times a day: new couples start courting, courting couples get engaged or drift apart. */
 export function courtship(sim: Sim): void {
+  for (const a of sim.agents) {
+    const p = a.partner !== null && a.id < a.partner ? sim.agent(a.partner) : undefined;
+    if (p && p.household !== a.household) settleCouple(sim, a, p);
+  }
   for (const a of sim.agents) {
     const c = a.court;
     if (!c) continue;
@@ -90,7 +112,7 @@ export function courtship(sim: Sim): void {
       // Time spent together while courting.
       ra.opinion = Math.min(100, ra.opinion + 1.5);
       rb.opinion = Math.min(100, rb.opinion + 1.5);
-      if (sim.time - c.since >= COURT_MIN && low >= 65 && sim.rng.chance(0.35)) propose(sim, a, b);
+      if (sim.time - c.since >= COURT_MIN && low >= 65 && sim.rng.chance(0.35) && awake(sim, a) && awake(sim, b)) propose(sim, a, b);
     } else if (low < 30) breakUp(sim, a, b);
   }
 
@@ -127,7 +149,7 @@ function propose(sim: Sim, a: Agent, b: Agent): void {
     x.court = { with: x === a ? b.id : a.id, stage: 'engaged', since: sim.time };
     addMemory(sim, x, 'engaged', x === a ? b : a);
   }
-  const at = nextAt(sim, WEDDING_HOUR, 4 * 60);
+  const at = freeEvening(sim, nextAt(sim, WEDDING_HOUR, 4 * 60));
   sim.events.weddings.push({ couple: [a.id, b.id], at, until: at + WEDDING_LENGTH, started: false, guests: new Set() });
   say(sim, asker, `marry me, ${first(other)}?`, 'good', 15);
   say(sim, other, 'yes!', 'good', 15);
@@ -182,7 +204,7 @@ export function weddingNames(sim: Sim, w: Wedding): string {
 
 /** A death with a grave to go to gets a funeral at the cemetery the next morning. */
 export function scheduleFuneral(sim: Sim, dead: Agent, mayor: boolean): void {
-  if (!sim.map.buildings.some((b) => b.kind === 'cemetery')) return;
+  if (!sim.map.buildings.some((b) => b.kind === 'cemetery') || sim.events.funerals.some((f) => f.dead === dead.id)) return;
   const at = nextAt(sim, FUNERAL_HOUR, 8 * 60);
   sim.events.funerals.push({ dead: dead.id, at, until: at + FUNERAL_LENGTH, started: false, mayor, guests: new Set() });
 }
@@ -211,12 +233,16 @@ function startWedding(sim: Sim, w: Wedding): void {
   // Rain, snow or winter cold move it indoors, to whichever of their homes there is.
   const indoors = !!(ev.rain || ev.snowstorm) || sim.season === 3;
   const home = [a, b].map((x) => x.household).find((h) => sim.town.households[h].building >= 0);
-  if (indoors && home !== undefined) w.home = home;
-  // The park is busy with a festival or the rally: start when it's over, or tomorrow.
+  w.home = indoors ? home : undefined;
+  // Another wedding already has this evening, or a festival or the rally has the park (and with it the well-wishers,
+  // even for a wedding at home): start when it's over, or another evening.
   const busy = parkEventUntil(sim);
-  if (w.home === undefined && busy > sim.time) {
-    w.at = busy <= sim.day * MIN_PER_DAY + WEDDING_LATEST * 60 ? busy : w.at + MIN_PER_DAY;
+  const taken = ev.weddings.some((o) => o !== w && o.started);
+  if (taken || busy > sim.time) {
+    const before = Math.floor(w.at / MIN_PER_DAY);
+    w.at = !taken && busy <= sim.day * MIN_PER_DAY + WEDDING_LATEST * 60 ? busy : freeEvening(sim, (sim.day + 1) * MIN_PER_DAY + WEDDING_HOUR * 60, w);
     w.until = w.at + WEDDING_LENGTH;
+    if (Math.floor(w.at / MIN_PER_DAY) !== before) sim.log(`${first(a)} and ${first(b)}'s wedding is put off until ${when(sim, w.at, 'evening')}`, 'family', 'neutral', a, b);
     return;
   }
   w.started = true;
@@ -249,7 +275,10 @@ function endWedding(sim: Sim, w: Wedding): void {
   sim.milestone(`${a.name} and ${b.name} were married`);
 }
 
-/** Newlyweds move in together if one of their homes has room; otherwise the planner finds them one. */
+/**
+ * Newlyweds move in together if either of their homes has room for the other's family; otherwise the planner
+ * builds them one (as a priority), and this is tried again as rooms open up.
+ */
 export function settleCouple(sim: Sim, a: Agent, b: Agent): void {
   if (a.household === b.household) return;
   for (const [stay, go] of [[a, b], [b, a]] as const) {
@@ -272,7 +301,7 @@ function startFuneral(sim: Sim, f: Funeral): void {
   f.started = true;
   f.at = sim.time;
   f.until = sim.time + FUNERAL_LENGTH;
-  sim.log(`Mourners are gathering at the cemetery for ${dead.name}'s funeral`, 'family', 'neutral', dead).weight = NOTABLE;
+  if (sim.agents.some((x) => mourns(x, dead) && ageOf(sim, x) >= MOURNER_AGE)) sim.log(`Mourners are gathering at the cemetery for ${dead.name}'s funeral`, 'family', 'neutral', dead).weight = NOTABLE;
 }
 
 /** The closest mourner present: partner, then a child, a parent, family, then the dearest friend. */
@@ -314,9 +343,9 @@ function speak(sim: Sim, f: Funeral): void {
   const dead = sim.person(f.dead);
   if (!dead) return;
   const s = speakerFor(sim, f, dead);
-  // Nobody here yet: no one to speak, and nothing to wait for.
-  f.speaker = s?.id ?? -1;
+  // Nobody here yet: try again next step, while mourners are still walking over.
   if (!s) return;
+  f.speaker = s.id;
   const words = eulogy(sim, dead, f.mayor);
   say(sim, s, `goodbye, ${first(dead)}`, 'neutral', 10);
   sim.log(
@@ -338,6 +367,11 @@ function endFuneral(sim: Sim, f: Funeral): void {
     for (const o of guests) if (o.id !== g.id) shiftOpinion(sim, g, o, sim.rng.range(0.5, 2));
   }
   sim.log(guests.length ? `${dead.name} was laid to rest. ${guests.length === 1 ? 'One person' : `${guests.length} people`} came to say goodbye` : `${dead.name} was laid to rest with no one there`, 'family', guests.length ? 'neutral' : 'bad', dead).weight = NOTABLE;
+}
+
+/** Someone who died before there was a cemetery is buried when it's built; the funeral follows unless it's long past. */
+export function layToRest(sim: Sim, dead: Agent): void {
+  if (dead.died && sim.time - dead.died.at <= LATE_FUNERAL * MIN_PER_DAY) scheduleFuneral(sim, dead, dead.died.mayor);
 }
 
 export function weddingOf(sim: Sim, id: number): Wedding | undefined {

@@ -161,6 +161,8 @@ export interface Agent {
   roleSince?: number;
   /** Courting or engaged to someone; cleared at the wedding, when partner is set. */
   court?: import('./rites').Courtship;
+  /** When they died, and whether they were mayor then; set only for the dead. */
+  died?: { at: number; mayor: boolean };
 }
 
 export interface Project {
