@@ -10,6 +10,8 @@ export interface Blueprint {
   h: number;
   /** Materials the build consumes. */
   cost: Bill;
+  /** What it takes instead once the town has a workshop: refined materials, and furniture for homes. */
+  refined?: Bill;
   /** Builder-minutes of construction. */
   work: number;
   /** Door column in local coordinates (door sits on the top wall, or bottom when flipped). */
@@ -147,6 +149,23 @@ function stampPark(m: TownMap, x: number, y: number, doorTop: boolean, name: str
   return b;
 }
 
+function stampWorkshop(m: TownMap, x: number, y: number, doorTop: boolean, name: string, time = 0): Building {
+  const [s, b] = begin(m, 'workshop', name, x, y, 11, 8, 5, doorTop, time);
+  s.wallRect(0, 0, 11, 8);
+  const r = s.room(name, 'workshop', 1, 1, 9, 6, 'floorGray', name);
+  b.rooms.push(r.id);
+  s.door(5, 0, 'floorGray');
+  // Stations along the back wall, each worked from the tile in front.
+  s.drawn('sawbench', 1, 6, 2, 1, { use: 'craft', spot: [1, 5, 'down'] });
+  s.drawn('workbench', 4, 6, 2, 1, { use: 'craft', spot: [4, 5, 'down'] });
+  s.drawn('workbench', 6, 6, 2, 1, { use: 'craft', spot: [7, 5, 'down'] });
+  s.drawn('kiln', 9, 6, 1, 1, { use: 'craft', spot: [9, 5, 'down'] });
+  s.drawn('logs', 1, 1, 2, 1);
+  s.drawn('stones', 8, 1, 2, 1);
+  s.drawn('crate', 3, 1, 1, 1);
+  return b;
+}
+
 function stampCemetery(m: TownMap, x: number, y: number, doorTop: boolean, name: string, time = 0): Building {
   const [s, b] = begin(m, 'cemetery', name, x, y, 9, 7, 4, doorTop, time);
   s.fill(0, 0, 9, 7, 'grass');
@@ -166,16 +185,17 @@ export function graveSlots(b: Building): { x: number; y: number }[] {
   return out;
 }
 
-export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park' | 'cemetery', Blueprint> = {
+export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park' | 'cemetery' | 'workshop', Blueprint> = {
   house: {
-    kind: 'house', noun: 'a new home', w: 11, h: 8, cost: { wood: 40, stone: 20 }, work: 360, doorX: 4, outdoor: false,
+    kind: 'house', noun: 'a new home', w: 11, h: 8, cost: { wood: 40, stone: 20 }, refined: { wood: 16, stone: 10, planks: 16, bricks: 8, furniture: 2 }, work: 300, doorX: 4, outdoor: false,
     stamp: (m, x, y, top, name, hh) => stampHouse(m, x, y, top, name, hh ?? 0, true),
   },
   farm: { kind: 'farm', noun: 'a farm', w: 10, h: 7, cost: { wood: 10, stone: 0 }, work: 140, doorX: 4, outdoor: true, stamp: (m, x, y, top, name) => stampFarm(m, x, y, top, name) },
-  storehouse: { kind: 'storehouse', noun: 'a storehouse', w: 7, h: 6, cost: { wood: 25, stone: 10 }, work: 200, doorX: 3, outdoor: false, stamp: (m, x, y, top, name) => stampStorehouse(m, x, y, top, name) },
-  school: { kind: 'school', noun: 'a schoolhouse', w: 11, h: 8, cost: { wood: 40, stone: 30 }, work: 420, doorX: 1, outdoor: false, stamp: (m, x, y, top, name) => stampSchool(m, x, y, top, name) },
-  diner: { kind: 'cafe', noun: 'a diner', w: 11, h: 8, cost: { wood: 35, stone: 25 }, work: 380, doorX: 9, outdoor: false, stamp: (m, x, y, top, name) => stampDiner(m, x, y, top, name) },
+  storehouse: { kind: 'storehouse', noun: 'a storehouse', w: 7, h: 6, cost: { wood: 25, stone: 10 }, refined: { wood: 10, planks: 12, bricks: 6 }, work: 200, doorX: 3, outdoor: false, stamp: (m, x, y, top, name) => stampStorehouse(m, x, y, top, name) },
+  school: { kind: 'school', noun: 'a schoolhouse', w: 11, h: 8, cost: { wood: 40, stone: 30 }, refined: { wood: 12, stone: 10, planks: 20, bricks: 16, furniture: 2 }, work: 420, doorX: 1, outdoor: false, stamp: (m, x, y, top, name) => stampSchool(m, x, y, top, name) },
+  diner: { kind: 'cafe', noun: 'a diner', w: 11, h: 8, cost: { wood: 35, stone: 25 }, refined: { wood: 10, stone: 8, planks: 18, bricks: 14, furniture: 2 }, work: 380, doorX: 9, outdoor: false, stamp: (m, x, y, top, name) => stampDiner(m, x, y, top, name) },
   park: { kind: 'park', noun: 'a little park', w: 8, h: 8, cost: { wood: 6, stone: 8 }, work: 100, doorX: 3, outdoor: true, stamp: (m, x, y, top, name) => stampPark(m, x, y, top, name) },
+  workshop: { kind: 'workshop', noun: 'a workshop', w: 11, h: 8, cost: { wood: 35, stone: 25 }, work: 320, doorX: 5, outdoor: false, stamp: (m, x, y, top, name) => stampWorkshop(m, x, y, top, name) },
   cemetery: { kind: 'cemetery', noun: 'a cemetery', w: 9, h: 7, cost: { wood: 4, stone: 10 }, work: 100, doorX: 4, outdoor: true, stamp: (m, x, y, top, name) => stampCemetery(m, x, y, top, name) },
 };
 

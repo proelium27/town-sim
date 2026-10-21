@@ -4,9 +4,10 @@ import { ageOf, hasUmbrella, newTask } from './agents';
 import { ADULT_AGE, type Good, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
 import { FOOD_PER_CROP } from './economy';
 import { birthdayNames } from './events';
-import { CARRY, laborPlan } from './labor';
+import { CARRY, HAUL_PAUSE, laborPlan, siteEdges } from './labor';
 import { buildCap, completeProject, shortOf, supplied } from './planner';
 import { chill, HEARTH_FULL, snowing, SPLIT } from './seasons';
+import { canMake, RECIPES, STATION_OF } from './workshop';
 import { clamp } from './rng';
 import {
   addMemory, bondNearby, converse, expireMemories, first, FRIEND, kinship, moodTarget, rel, RIVAL, say, shiftOpinion, socialGain, think,
@@ -126,6 +127,9 @@ function randomCellIn(sim: Sim, x: number, y: number, w: number, h: number): num
 
 const roomKind = (sim: Sim, p: Prop) => (p.room >= 0 ? sim.map.rooms[p.room].kind : undefined);
 
+/** Jobs that go faster with tools (they run on laborRate), and so wear them down. */
+const TOOL_WORK: ActionKind[] = ['build', 'chop', 'mine', 'split', 'craft'];
+
 /** Public rooms anyone can warm up in. */
 const WARM_ROOMS = ['cafe', 'library', 'lobby'];
 /** Warming up after the cold, or sheltering from a blizzard. */
@@ -154,7 +158,16 @@ function updateNeeds(sim: Sim, a: Agent, dt: number, stage: Stage): void {
   const k = a.action.kind;
   const performing = a.action.stage === 'perform';
   const asleep = k === 'sleep' && performing;
-  const working = (k === 'work' || k === 'build' || k === 'chop' || k === 'mine' || k === 'farm' || k === 'haul' || k === 'teach' || k === 'split' || k === 'stoke') && performing;
+  const working = (k === 'work' || k === 'build' || k === 'chop' || k === 'mine' || k === 'farm' || k === 'haul' || k === 'teach' || k === 'split' || k === 'stoke' || k === 'craft') && performing;
+  // Tools wear out with use.
+  if (a.tool > 0 && performing && TOOL_WORK.includes(k)) {
+    a.tool -= 0.0012 * dt;
+    if (a.tool <= 0) {
+      a.tool = 0;
+      addMemory(sim, a, 'toolBroke');
+      think(sim, a, 'And there go my tools. Worn right through.', 'bad');
+    }
+  }
   const tired = stage === 'elder' ? 1.25 : stage === 'toddler' ? 1.3 : 1;
   if (!asleep) n.energy -= (working ? 0.075 : 0.06) * dt * tired * (a.traits.includes('earlyBird') && sim.hour > 19 ? 1.4 : 1);
   // The cold makes people hungrier.
@@ -703,6 +716,12 @@ function workOptions(sim: Sim, a: Agent, o: Option[], workTime: boolean, h: numb
         const prop = sim.prop(plan.propId);
         if (prop && sim.reserved.has(prop.id) && sim.reserved.get(prop.id) !== a.id && plan.kind !== 'deposit') return false;
         const ok = start(sim, a, plan.kind, plan.label, plan.reason, target, plan.timer, s, { propId: plan.propId, projectId: plan.projectId, leg: plan.leg, material: plan.material, household: plan.household });
+        // Pick up a fresh set of tools on the way out, if the workshop has made any.
+        if (ok && a.tool <= 0 && sim.stock.tools >= 1 && TOOL_WORK.includes(plan.kind)) {
+          sim.stock.tools -= 1;
+          a.tool = 1;
+          think(sim, a, 'New tools. This will go quicker.', 'good');
+        }
         if (plan.projectId !== undefined) sim.projects.find((p) => p.id === plan.projectId)?.builders.add(a.id);
         return ok;
       },
@@ -782,6 +801,7 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
     case 'mine': return a.action.projectId !== undefined ? 'These rocks have to go before we can build.' : 'Time to break some stone.';
     case 'haul': return `${o.reason}. I'll fetch it from the storehouse.`;
     case 'split': return 'Logs to split before the cold sets in.';
+    case 'craft': return `${o.reason}. Off to the workshop.`;
     case 'stoke': return `${o.reason}. I'll bring them some firewood.`;
     case 'build': return `${a.action.label}. Let's get this up.`;
     case 'farm': return o.reason === 'The crop is ripe' ? 'The crop looks ready. Harvest time.' : 'Watering and weeding.';
@@ -882,23 +902,24 @@ function arriveHaul(sim: Sim, a: Agent): void {
   if (act.leg === 'pickup') {
     const take = Math.min(CARRY, Math.floor(sim.stock[mat]), Math.ceil(shortOf(pr, mat)));
     if (take <= 0) return finish(sim, a);
-    sim.stock[mat] -= take;
-    a.carry = { kind: mat, amount: take };
-    // Second leg: walk it to the site.
-    const m = sim.map;
+    // Find the way to the site before loading up, so a site nobody can reach doesn't send the load
+    // straight back to the store (and the next worker off to fetch it again).
     let best: number[] | null = null;
     let dest = -1;
-    for (let y = pr.y; y < pr.y + pr.h && !best; y++) for (let x = pr.x; x < pr.x + pr.w; x++) {
-      const edge = x === pr.x || y === pr.y || x === pr.x + pr.w - 1 || y === pr.y + pr.h - 1;
-      if (!edge || !m.walkable(x, y)) continue;
-      const path = sim.nav.findPath(a.at, m.idx(x, y), 40000);
-      if (path) {
-        best = path;
-        dest = m.idx(x, y);
+    for (const cell of siteEdges(sim, pr)) {
+      best = sim.nav.findPath(a.at, cell, 40000);
+      if (best) {
+        dest = cell;
         break;
       }
     }
-    if (!best) return finish(sim, a);
+    if (!best) {
+      pr.haulPause = sim.time + HAUL_PAUSE;
+      return finish(sim, a);
+    }
+    sim.stock[mat] -= take;
+    a.carry = { kind: mat, amount: take };
+    // Second leg: walk it to the site.
     act.leg = 'deliver';
     act.label = `Carrying ${mat} to ${pr.name}`;
     act.dest = dest;
@@ -1152,6 +1173,27 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
         finish(sim, a);
       }
       return;
+    case 'craft': {
+      const r = RECIPES.find((x) => x.good === act.material && x.station === STATION_OF[sim.prop(act.propId)?.key ?? '']);
+      if (!r) return finish(sim, a);
+      a.workedToday += dt;
+      a.money += 0.35 * dt;
+      n.work = Math.min(100, n.work + 0.45 * dt);
+      gainXp(sim, a, 'craft', dt * 0.3);
+      act.timer -= dt * (laborRate(a) - 1);
+      if (sim.rng.chance(0.015 * dt)) say(sim, a, r.station === 'saw' ? 'bzzzt' : r.station === 'kiln' ? 'fwoosh' : 'tap tap', 'neutral', 1.5);
+      if (tick()) {
+        if (canMake(sim, r)) {
+          for (const [g, q] of Object.entries(r.inputs)) sim.stock[g as keyof typeof sim.stock] -= q!;
+          // A skilled hand gets a little more out of the same material.
+          sim.stock[r.good] += r.out + (sim.rng.chance(a.skills.craft.level * 0.03) ? 1 : 0);
+          if (sim.rng.chance(0.3)) addMemory(sim, a, 'madeSomething');
+          if (r.good === 'furniture' && sim.rng.chance(0.4)) sim.log(`${first(a)} finished a new piece of furniture`, 'work', 'good', a);
+        }
+        finish(sim, a);
+      }
+      return;
+    }
     case 'deposit':
     case 'haul':
     case 'stoke':
@@ -1201,7 +1243,7 @@ function pickUp(sim: Sim, a: Agent, kind: Good, amount: number): number {
 }
 
 function laborRate(a: Agent): number {
-  return (0.55 + a.skills.craft.level * 0.07) * (a.needs.energy < 20 ? 0.6 : 1) * (a.traits.includes('workaholic') ? 1.15 : a.traits.includes('slacker') ? 0.8 : 1);
+  return (a.tool > 0 ? 1.25 : 1) * (0.55 + a.skills.craft.level * 0.07) * (a.needs.energy < 20 ? 0.6 : 1) * (a.traits.includes('workaholic') ? 1.15 : a.traits.includes('slacker') ? 0.8 : 1);
 }
 
 function performGather(sim: Sim, a: Agent, dt: number, tick: () => boolean): void {

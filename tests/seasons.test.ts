@@ -1,5 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { PRIORITY_WEIGHT } from '../src/sim/defs';
 import { triggerWorldEvent } from '../src/sim/events';
+import { gatherKind, laborPlan } from '../src/sim/labor';
+import type { Agent } from '../src/sim/types';
 import { loadSim, saveSim } from '../src/sim/save';
 import { BURN_PER_HOUR, chill, HEARTH_FULL, tickSeasons, winterReadiness } from '../src/sim/seasons';
 import { Sim } from '../src/sim/sim';
@@ -133,12 +136,15 @@ describe('seasons', () => {
     low.priorities.food = 0;
     // Fewer hands bring in the autumn harvest, so more of it freezes in the fields.
     const short = lowest(low);
-    expect(short.ripeLost).toBeGreaterThan(normal.ripeLost + 20);
+    expect(short.ripeLost).toBeGreaterThan(normal.ripeLost * 1.5);
     expect(short.min).toBeLessThan(normal.min * 0.8);
   }, 300_000);
 
   it('firewood carried to a hearth gets there', () => {
     const sim = winterTown();
+    // With the workshop drawing on the wood, this town reaches winter with an empty woodpile;
+    // stock one so there are deliveries to watch.
+    sim.stock.firewood = Math.max(sim.stock.firewood, 40);
     at(sim, 6, 6);
     // Watch everyone walking firewood to a home: when that errand ends, the load must be by the hearth.
     const out = new Map<number, { action: object; hh: number; fuel: number }>();
@@ -192,7 +198,7 @@ describe('seasons', () => {
 
   it('a blizzard stops the outdoor work: builders, woodcutters and all come inside', () => {
     const sim = winterTown();
-    at(sim, 6, 9);
+    at(sim, 6, 10);
     expect(sim.projects.some((p) => p.builders.size > 0)).toBe(true);
     triggerWorldEvent(sim, 'snowstorm');
     sim.run(30);
@@ -258,5 +264,24 @@ describe('seasons', () => {
     sim.run(180);
     const home = sim.agents.filter((a) => a.household === hh.id);
     expect(home.some((a) => a.memories.some((m) => m.kind === 'coldHome'))).toBe(true);
+  }, 120_000);
+
+  it('gatherers go where the need is worst, not half to each', () => {
+    const sim = winterTown();
+    sim.projects = [];
+    sim.stock.wood = 0;
+    sim.stock.firewood = 0;
+    sim.stock.stone = 60 * PRIORITY_WEIGHT[sim.priorities.materials] - 1;
+    const gatherers = sim.agents.filter((a) => ['woodcutter', 'laborer', 'builder'].includes(a.role) && !a.carry);
+    expect(gatherers.some((a) => a.id % 2)).toBe(true);
+    const kinds = gatherers.map((a) => laborPlan(sim, a)?.kind).filter((k) => k === 'chop' || k === 'mine');
+    expect(kinds.length).toBeGreaterThan(0);
+    // One stone short doesn't pull anyone off the wood with winter coming.
+    expect(kinds.every((k) => k === 'chop')).toBe(true);
+    // When both are about as short, both get worked.
+    const crew = Array.from({ length: 20 }, (_, i) => ({ id: i + 1 }) as Agent);
+    const stone = crew.filter((a) => gatherKind(a, 0.5, 0.5) === 'stone').length;
+    expect(stone).toBeGreaterThanOrEqual(7);
+    expect(stone).toBeLessThanOrEqual(13);
   }, 120_000);
 });

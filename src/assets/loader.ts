@@ -136,7 +136,7 @@ export class Art {
     const cached = this.custom.get(key);
     if (cached) return cached;
     const cv = document.createElement('canvas');
-    const W = key === 'whiteboard' || key === 'chalkboard' ? TILE * 3 : key === 'logs' || key === 'stones' ? TILE * 2 : TILE;
+    const W = key === 'whiteboard' || key === 'chalkboard' ? TILE * 3 : key === 'logs' || key === 'stones' || key === 'sawbench' || key === 'workbench' ? TILE * 2 : TILE;
     cv.width = W;
     cv.height = TILE;
     const g = cv.getContext('2d')!;
@@ -191,6 +191,41 @@ export class Art {
         r(8, 0, 1, 2, '#f2c14e');
         r(10, 0, 1, 2, '#f2c14e');
         r(4, 7, 9, 1, '#c9bfae');
+        break;
+      case 'sawbench':
+        // Trestle with a log on it and a round saw blade.
+        r(2, 8, 28, 3, '#8a5f37');
+        r(3, 11, 2, 4, '#5e3d24');
+        r(27, 11, 2, 4, '#5e3d24');
+        r(4, 5, 16, 3, '#a97a47');
+        r(19, 5, 2, 3, '#d4a56a');
+        r(22, 2, 7, 7, '#9aa3ad');
+        r(23, 3, 5, 5, '#c9d1d8');
+        r(25, 5, 1, 1, '#4f4a45');
+        break;
+      case 'workbench':
+        // Bench with a vice, a hammer and a few planks.
+        r(1, 7, 30, 3, '#a97a47');
+        r(1, 7, 30, 1, '#c08a50');
+        r(2, 10, 2, 5, '#6e4a2e');
+        r(28, 10, 2, 5, '#6e4a2e');
+        r(4, 4, 10, 2, '#d4a56a');
+        r(5, 3, 8, 1, '#e0b679');
+        r(18, 5, 6, 2, '#5f6870');
+        r(20, 3, 2, 2, '#5f6870');
+        r(26, 3, 1, 4, '#8a5f37');
+        r(25, 2, 3, 2, '#7a7f86');
+        break;
+      case 'kiln':
+        // Brick kiln, fire glowing in its mouth.
+        r(2, 3, 12, 12, '#9a5a44');
+        r(3, 2, 10, 1, '#9a5a44');
+        r(3, 5, 10, 1, '#7a4636');
+        r(3, 9, 10, 1, '#7a4636');
+        r(5, 9, 6, 5, '#3a2a20');
+        r(6, 10, 4, 4, '#e8642a');
+        r(7, 11, 2, 3, '#f7d26a');
+        r(6, 0, 4, 2, '#6f6962');
         break;
       case 'bonfire':
         // Crossed logs, flames, a few embers.

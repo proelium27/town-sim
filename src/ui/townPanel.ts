@@ -2,6 +2,7 @@ import { ageOf } from '../sim/agents';
 import { ADULT_AGE, billText, MIN_PER_DAY, SEASON_DAYS, SEASONS, YEAR_DAYS, GOOD_KEYS, GOODS, PRIORITY_KEYS, PRIORITY_LABEL, type PriorityKey } from '../sim/defs';
 import { foodBalance } from '../sim/economy';
 import { winterReadiness, WINTER_STOCK_DAYS } from '../sim/seasons';
+import { chains, hasWorkshop } from '../sim/workshop';
 import { WORLD_EVENTS, type WorldEventKey, triggerWorldEvent } from '../sim/events';
 import { allocateRoles, buildCap, capacity, stageOf } from '../sim/planner';
 import { first } from '../sim/social';
@@ -96,6 +97,24 @@ export class TownPanel {
     });
   }
 
+  /** Production chains: what the workshop makes, how stocked each is, and what's holding it up. */
+  private workshopSection(): string {
+    const sim = this.sim;
+    const shop = hasWorkshop(sim);
+    if (!shop && !sim.projects.some((p) => p.blueprint === 'workshop')) return '';
+    const label = (g: string) => GOODS[g as keyof typeof GOODS].label.toLowerCase();
+    return `<section class="tp-sec">
+        <h3>Workshop <small>${shop ? 'what the trades are making' : 'being built'}</small></h3>
+        <ul class="chains">${chains(sim).map((c) => {
+          const from = Object.keys(c.recipe.inputs).map(label).join(' + ');
+          // While the workshop is still going up, nothing is stuck yet; it's just early.
+          const stuck = shop ? c.stuck : null;
+          const state = stuck ? `<span class="why neg">Stuck: ${esc(stuck)}</span>` : `<span class="why">${c.have >= c.target ? 'stocked' : !shop ? 'waiting for the workshop' : 'in production'}</span>`;
+          return `<li class="${stuck ? 'stuck' : ''}"><span class="lbl">${from} → <b>${label(c.recipe.good)}</b></span><span class="num">${c.have}/${c.target}</span>${state}</li>`;
+        }).join('')}</ul>
+      </section>`;
+  }
+
   update(): void {
     const sim = this.sim;
     const pop = sim.agents;
@@ -110,7 +129,7 @@ export class TownPanel {
     const sig = JSON.stringify([
       pop.length, kids, elders, beds, homeless, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
       sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
-      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), this.resetArmed, sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
+      sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), this.resetArmed, chains(sim).map((c) => [c.have, c.target, c.stuck]), sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
       sim.season >= 2 && Math.round((1 - sim.seasonProgress) * SEASON_DAYS * 10),
     ]);
     if (sig === this.sig) return;
@@ -128,7 +147,7 @@ export class TownPanel {
       <section class="tp-sec">
         <h3>Stores</h3>
         <div class="stores">
-          ${GOOD_KEYS.map((g) => {
+          ${GOOD_KEYS.filter((g) => GOODS[g].hud || sim.stock[g] > 0).map((g) => {
             const rate = g === 'food' ? `<span class="rate num ${net >= 0 ? 'pos' : 'neg'}">${net >= 0 ? '+' : ''}${Math.round(net)}/day</span>` : '<span class="rate"></span>';
             return `<div class="store"><span class="lbl">${GOODS[g].label}</span>${bar(sim.stock[g], GOODS[g].cap, GOODS[g].color)}<span class="num">${Math.round(sim.stock[g])}</span>${rate}</div>`;
           }).join('')}
@@ -136,6 +155,7 @@ export class TownPanel {
         ${ev.drought ? '<p class="warn-line">Drought: nothing is growing.</p>' : ''}
         ${winterLine(sim)}
       </section>
+      ${this.workshopSection()}
       <section class="tp-sec">
         <h3>Priorities <small>what the town meetings lean toward</small></h3>
         <div class="prios">

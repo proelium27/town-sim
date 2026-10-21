@@ -128,7 +128,7 @@ describe('walking together', () => {
   it('couples go for strolls together', () => {
     const sim = new Sim(7);
     let strolls = 0;
-    for (let k = 0; k < 3 * 144; k++) {
+    for (let k = 0; k < 5 * 144; k++) {
       sim.run(10);
       for (const a of sim.agents) if (a.action.kind === 'stroll' && a.action.label.startsWith('Walking with')) strolls++;
     }

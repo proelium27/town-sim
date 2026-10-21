@@ -5,7 +5,7 @@ import type { Building, TownMap } from '../world/map';
 
 type Wall = 'brick' | 'stone' | 'sand' | 'glass' | 'plank';
 type Win = 'wood' | 'wood4' | 'steel' | 'steel4' | 'arch' | 'none';
-type Icon = 'book' | 'bell' | 'bowl' | 'crate';
+type Icon = 'book' | 'bell' | 'bowl' | 'crate' | 'hammer';
 
 /** How one building looks from outside. */
 interface Look {
@@ -62,6 +62,8 @@ function lookFor(b: Building): Look | null {
       return { roof: 'pitched', roofColor: 0xb5583f, wall: 'brick', window: 'wood4', door: 'green', sign: 'bell', chimney: true, facade: 3 };
     case 'storehouse':
       return { roof: 'pitched', roofColor: 0x7a5a3e, wall: 'plank', window: 'none', door: 'barn', sign: 'crate', facade: 2 };
+    case 'workshop':
+      return { roof: 'pitched', roofColor: 0x66625e, wall: 'plank', window: 'wood', door: 'barn', sign: 'hammer', chimney: true, facade: 3 };
     default:
       // Farms and parks are open-air.
       return null;
@@ -453,6 +455,11 @@ export class Exteriors {
         ic(-4, -6, 8, 6, 0xa97a47);
         ic(-4, -3, 8, 1, 0x7a5531);
         ic(-1, -6, 1, 6, 0x7a5531);
+        break;
+      case 'hammer':
+        ic(-4, -7, 6, 3, 0x6f7780);
+        ic(-1, -4, 2, 5, 0x8a5f37);
+        ic(2, -7, 2, 2, 0x4f565d);
         break;
     }
   }
