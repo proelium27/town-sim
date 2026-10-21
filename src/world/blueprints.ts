@@ -133,6 +133,50 @@ function stampDiner(m: TownMap, x: number, y: number, doorTop: boolean, name: st
   return b;
 }
 
+/** A bakery: ovens along the back, a glass counter with the bread, a coffee urn, and a few tables by the window. */
+function stampBakery(m: TownMap, x: number, y: number, doorTop: boolean, name: string, time = 0): Building {
+  const [s, b] = begin(m, 'cafe', name, x, y, 9, 7, 7, doorTop, time);
+  s.wallRect(0, 0, 9, 7);
+  const r = s.room(name, 'cafe', 1, 1, 7, 5, 'floorWood', name);
+  b.rooms.push(r.id);
+  s.door(7, 0, 'floorWood');
+  s.prop('oven', 1, 1, 1, 1);
+  s.prop('oven', 2, 1, 1, 1);
+  s.prop('stove', 3, 1, 1, 1);
+  s.seat('officeChairDown', 2, 2, 'down', 'work');
+  for (let dx = 1; dx <= 4; dx++) s.prop(dx === 3 ? 'counterDrawers' : 'counter', dx, 3, 1, 1);
+  s.drawn('coffee', 4, 3, 1, 1, { use: 'coffee', spot: [4, 4, 'up'] });
+  for (const [tx, ty] of [[6, 3], [3, 5]]) {
+    s.prop('tableRound', tx, ty, 1, 1);
+    s.seat('chairRight', tx - 1, ty, 'right', 'eat');
+    s.seat('chairLeft', tx + 1, ty, 'left', 'eat');
+  }
+  s.prop('plant', 7, 5, 1, 1);
+  return b;
+}
+
+/** A tavern: a long bar with stools, tables, a rug by the piano, and the barkeep behind the taps. */
+function stampTavern(m: TownMap, x: number, y: number, doorTop: boolean, name: string, time = 0): Building {
+  const [s, b] = begin(m, 'tavern', name, x, y, 11, 8, 9, doorTop, time);
+  s.wallRect(0, 0, 11, 8);
+  const r = s.room(name, 'tavern', 1, 1, 9, 6, 'floorWood', name);
+  b.rooms.push(r.id);
+  s.door(9, 0, 'floorWood');
+  s.prop('drinks', 1, 1, 1, 1);
+  s.prop('drinks2', 2, 1, 1, 1);
+  s.seat('officeChairDown', 3, 1, 'down', 'work');
+  for (let dx = 1; dx <= 5; dx++) s.prop('counter', dx, 2, 1, 1);
+  for (let dx = 1; dx <= 5; dx++) s.seat('chairUp', dx, 3, 'up', 'drink');
+  for (const [tx, ty] of [[8, 3], [7, 6], [4, 6]]) {
+    s.prop('tableRound', tx, ty, 1, 1);
+    s.seat('chairRight', tx - 1, ty, 'right', 'drink');
+    s.seat('chairLeft', tx + 1, ty, 'left', 'drink');
+  }
+  s.prop('rugOrange', 1, 5, 2, 2);
+  s.prop('piano', 1, 6, 1, 1);
+  return b;
+}
+
 function stampPark(m: TownMap, x: number, y: number, doorTop: boolean, name: string, time = 0): Building {
   const [s, b] = begin(m, 'park', name, x, y, 8, 8, 3, doorTop, time);
   s.fill(0, 0, 8, 8, 'grass');
@@ -232,7 +276,7 @@ export function graveSlots(b: Building): { x: number; y: number }[] {
   return out;
 }
 
-export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park' | 'cemetery' | 'workshop' | 'clinic' | 'extension' | 'dock' | 'well', Blueprint> = {
+export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park' | 'cemetery' | 'workshop' | 'clinic' | 'extension' | 'dock' | 'well' | 'bakery' | 'tavern', Blueprint> = {
   house: {
     kind: 'house', noun: 'a new home', coins: 40, w: 11, h: 8, cost: { wood: 40, stone: 20 }, refined: { wood: 16, stone: 10, planks: 16, bricks: 8, furniture: 2 }, work: 300, doorX: 4, outdoor: false,
     stamp: (m, x, y, top, name, hh) => stampHouse(m, x, y, top, name, hh ?? 0, true),
@@ -252,6 +296,8 @@ export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'di
     },
   },
   cemetery: { kind: 'cemetery', noun: 'a cemetery', coins: 15, w: 9, h: 7, cost: { wood: 4, stone: 10 }, work: 100, doorX: 4, outdoor: true, stamp: (m, x, y, top, name) => stampCemetery(m, x, y, top, name) },
+  bakery: { kind: 'cafe', noun: 'a bakery', coins: 150, w: 9, h: 7, cost: { wood: 28, stone: 18 }, work: 260, doorX: 7, outdoor: false, stamp: (m, x, y, top, name) => stampBakery(m, x, y, top, name) },
+  tavern: { kind: 'tavern', noun: 'a tavern', coins: 170, w: 11, h: 8, cost: { wood: 34, stone: 18 }, work: 320, doorX: 9, outdoor: false, stamp: (m, x, y, top, name) => stampTavern(m, x, y, top, name) },
   well: { kind: 'well', noun: 'a well', coins: 10, w: 3, h: 3, cost: { wood: 4, stone: 12 }, work: 70, doorX: 1, outdoor: true, stamp: (m, x, y, top, name) => stampWell(m, x, y, top, name) },
   dock: { kind: 'dock', noun: 'a fishing dock', coins: 20, w: 5, h: 3, cost: { wood: 18, stone: 0 }, work: 120, doorX: 2, outdoor: true, stamp: (m, x, y, top, name) => stampDock(m, x, y, top, name) },
 };

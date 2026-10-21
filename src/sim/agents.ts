@@ -52,7 +52,7 @@ export function hoursOf(role: RoleKey): string {
   const def = ROLES[role];
   if (def.workplace === 'cafe' || def.workplace === 'market' || def.workplace === 'library') return def.workplace;
   if (def.station === 'labor') return 'labor';
-  return role === 'child' || role === 'retired' || role === 'teacher' || role === 'cook' ? role : 'desk';
+  return role === 'child' || role === 'retired' || role === 'teacher' || role === 'cook' || role === 'baker' || role === 'innkeeper' ? role : 'desk';
 }
 
 export function makeSchedule(sim: Sim, role: RoleKey, traits: TraitKey[]): Schedule {
@@ -61,6 +61,9 @@ export function makeSchedule(sim: Sim, role: RoleKey, traits: TraitKey[]): Sched
   const def = ROLES[role];
   if (role === 'child') return { wake: 7 + r.range(0, 0.5), sleep: 20.5 + r.range(0, 1), workStart: 8.5, workEnd: 15, lunch: 12 };
   if (role === 'retired') return { wake: 6.5 + r.range(0, 1.5) + shift, sleep: 21.5 + r.range(0, 1) + shift, workStart: 0, workEnd: 0, lunch: 12 + r.range(0, 1) };
+  // Bakers are up before dawn; innkeepers work the evening and sleep in.
+  if (role === 'baker') return { wake: 5 + r.range(0, 0.4), sleep: 21 + r.range(0, 0.5), workStart: 6, workEnd: 14.5, lunch: 11.5 };
+  if (role === 'innkeeper') return { wake: 8.5 + r.range(0, 0.5), sleep: 23.4, workStart: 15.5, workEnd: 22.75, lunch: 13 };
   const workStart =
     def.workplace === 'cafe' ? 7 : def.workplace === 'market' ? 8 : def.workplace === 'library' ? 9
     : def.station === 'labor' ? 7 + r.range(0, 0.75)

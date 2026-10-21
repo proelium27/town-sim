@@ -6,6 +6,7 @@ import { FOOD_PER_CROP } from './economy';
 import { dreamLean } from './aspirations';
 import { catchFor, lakeCells } from './lake';
 import { burningAt, gutted, mend } from './fire';
+import { businessAt, priceAt, sell, TAVERN_CLOSE, TAVERN_OPEN, townMeal } from './business';
 import { birthdayNames } from './events';
 import { funeralOf, mourns, weddingNames, weddingOf, weddingRole } from './rites';
 import { CARRY, HAUL_PAUSE, laborPlan, siteEdges } from './labor';
@@ -19,7 +20,7 @@ import { clamp } from './rng';
 import {
   addMemory, bondNearby, converse, expireMemories, first, FRIEND, kinship, moodTarget, rel, RIVAL, say, shiftOpinion, socialGain, think,
 } from './social';
-import type { Action, ActionKind, Agent } from './types';
+import { type Action, type ActionKind, type Agent, NOTABLE } from './types';
 import type { Sim } from './sim';
 import { laneThreat } from './traffic';
 
@@ -93,6 +94,7 @@ function canUse(sim: Sim, a: Agent, p: Prop): boolean {
     if (wp && ROLES[a.role].workplace !== wp.id && !inWindow(sim.hour, wp.open, wp.close)) return false;
     // Built cafés and schools keep similar hours.
     if (!wp && (room.kind === 'cafe' || room.kind === 'school') && sim.building(p.building)?.id !== a.workBuilding && !inWindow(sim.hour, 7, 20)) return false;
+    if (room.kind === 'tavern' && sim.building(p.building)?.id !== a.workBuilding && !inWindow(sim.hour, TAVERN_OPEN, TAVERN_CLOSE)) return false;
   }
   return true;
 }
@@ -410,6 +412,12 @@ function spotOption(sim: Sim, a: Agent, kind: ActionKind, score: number, reason:
   };
 }
 
+/** "the Café", or a business by its own name ("Rosa's Bakery", "The Old Oak"). */
+function placeName(sim: Sim, p: Prop): string {
+  const biz = businessAt(sim, p.building);
+  return biz ? biz.name : `the ${roomName(sim, p)}`;
+}
+
 function roomName(sim: Sim, p: Prop): string {
   return p.room >= 0 ? sim.map.rooms[p.room].name : 'park';
 }
@@ -585,9 +593,9 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
       if (office && !sim.weekend && loc !== 'home') {
         o.push(spotOption(sim, a, 'eat', s * (workTime ? 1 : 0.6) + (sim.events.pizza ? 0.4 : 0), sim.events.pizza ? 'Free pizza!' : reason, ['eat'], () => (sim.events.pizza ? 'Eating pizza in the kitchen' : 'Lunch in the kitchen'), 24, (p) => roomKind(sim, p) === 'kitchen'));
       }
-      const meal = Math.round(5 + price(sim, 'food') * 1.5);
-      if (a.money >= meal && !evening && !little) {
-        o.push(spotOption(sim, a, 'eat', s * (a.traits.includes('foodie') ? 1.15 : 0.9) + (!homed ? 0.3 : 0), reason, ['eat'], (p) => `Eating at the ${roomName(sim, p)}`, 26, (p) => roomKind(sim, p) === 'cafe', () => spend(sim, a, meal)));
+      // Each place sets its own price (a private bakery's floats with the market); they pay when they sit down.
+      if (a.money >= Math.min(townMeal(sim), 4) && !evening && !little) {
+        o.push(spotOption(sim, a, 'eat', s * (a.traits.includes('foodie') ? 1.15 : 0.9) + (!homed ? 0.3 : 0), reason, ['eat'], (p) => `Eating at ${placeName(sim, p)}`, 26, (p) => roomKind(sim, p) === 'cafe' && a.money >= priceAt(sim, p.building, 'meal')));
       }
     }
     if (n.hunger < 55 && workTime && stage === 'adult') o.push(spotOption(sim, a, 'snack', s * 0.7, 'Quick snack', ['snack'], () => 'Grabbing a snack', 5));
@@ -836,6 +844,14 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
     o.push(spotOption(sim, a, 'shop', 0.85 + (forKid ? kidNeed * 1.2 : 0), forKid ? `Nothing at home for ${first(hungryKid!)}` : 'Fridge is empty', ['shop'], () => 'Shopping for groceries', 14));
   }
 
+  // ---- an evening at the tavern
+  if (!little && !sleepTime && !workTime && !storm && inWindow(h, TAVERN_OPEN + 1, TAVERN_CLOSE - 0.75) && (n.social < 80 || n.fun < 75) && sim.map.buildings.some((b) => b.kind === 'tavern')) {
+    const sweetheart = sim.agent(a.court?.with ?? a.partner ?? undefined);
+    const date = sweetheart?.action.kind === 'drink' ? 0.35 : 0;
+    const s = 0.42 + (1 - n.social / 100) * 0.45 + (1 - n.fun / 100) * 0.3 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.2 : 0) + (sim.weekend ? 0.12 : 0) + date;
+    o.push(spotOption(sim, a, 'drink', s, date ? `Meeting ${first(sweetheart!)} at the tavern` : 'An evening out', ['drink'], (p) => `At ${placeName(sim, p)}`, 60 + sim.rng.range(0, 40), (p) => a.money >= priceAt(sim, p.building, 'drink')));
+  }
+
   // ---- go home at night / stay near home when small
   if ((evening || stage === 'toddler') && loc !== 'home' && homed) {
     o.push(spotOption(sim, a, 'relax', stage === 'toddler' ? 1.2 : 0.7, 'Heading home', ['sit'], () => 'Relaxing at home', 30, homeOnly));
@@ -948,7 +964,7 @@ function decide(sim: Sim, a: Agent, stage: Stage): void {
     const same = opts.find((x) => x.kind === cur.kind);
     currentScore = (same ? same.score : cur.score * 0.8) + INERTIA;
     // Don't abandon things halfway through for marginal gains.
-    if (cur.stage === 'perform' && ['sleep', 'eat', 'shower', 'toilet', 'socialize', 'cook', 'meet', 'play', 'repair', 'party', 'chop', 'mine', 'farm', 'learn'].includes(cur.kind)) currentScore += 0.6;
+    if (cur.stage === 'perform' && ['sleep', 'eat', 'shower', 'toilet', 'socialize', 'cook', 'meet', 'play', 'repair', 'party', 'chop', 'mine', 'farm', 'learn', 'drink'].includes(cur.kind)) currentScore += 0.6;
     if (cur.kind === 'haul' || cur.kind === 'deposit' || cur.kind === 'stoke') currentScore += 1;
     // Don't wander off from someone you're walking with.
     if (a.walkWith !== undefined && cur.stage === 'travel') currentScore += 0.4;
@@ -1003,6 +1019,7 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
     case 'stoke': return `${o.reason}. I'll bring them some firewood.`;
     case 'build': return `${a.action.label}. Let's get this up.`;
     case 'fish': return 'Off to the pier. The fish should be biting.';
+    case 'drink': return o.reason.startsWith('Meeting ') ? `${o.reason}. I hope they save me a seat.` : 'Long day. A drink at the tavern sounds right.';
     case 'firefight': return `${o.reason} Grab a bucket!`;
     case 'mend': return `${o.reason}. Let's get it fixed up.`;
     case 'farm': return o.reason === 'The crop is ripe' ? 'The crop looks ready. Harvest time.' : 'Watering and weeding.';
@@ -1056,7 +1073,7 @@ function arrive(sim: Sim, a: Agent): void {
         say(sim, a, '☹', 'bad');
         return finish(sim, a);
       }
-      if (sim.roomOf(a)?.kind === 'cafe') spend(sim, a, 3);
+      if (sim.roomOf(a)?.kind === 'cafe') sell(sim, a, sim.map.prop(act.propId)?.building, 'coffee');
       break;
     case 'eat': {
       // Kitchens, the café and diners serve from the town's stores.
@@ -1067,9 +1084,13 @@ function arrive(sim: Sim, a: Agent): void {
           return finish(sim, a);
         }
         sim.stock.food -= 1;
+        if (k === 'cafe') sell(sim, a, sim.map.prop(act.propId)?.building, 'meal');
       }
       break;
     }
+    case 'drink':
+      sell(sim, a, sim.map.prop(act.propId)?.building, 'drink');
+      break;
     case 'socialize': {
       const p = sim.agent(act.partnerId);
       if (p && p.action.kind === 'socialize' && p.action.partnerId === a.id) {
@@ -1454,6 +1475,28 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       return performFarm(sim, a, dt, tick);
     case 'fish':
       return performFish(sim, a, dt, tick);
+    case 'drink': {
+      n.fun = Math.min(100, n.fun + 0.6 * dt);
+      n.social = Math.min(100, n.social + socialGain(a, 0.6) * dt);
+      const here = sim.agents.filter((o) => o.id !== a.id && o.action.kind === 'drink' && o.action.stage === 'perform' && Math.abs(o.x - a.x) < 8 && Math.abs(o.y - a.y) < 8);
+      for (const o of here) bondNearby(sim, a, o, dt * 1.5);
+      if (sim.rng.chance(0.015 * dt)) say(sim, a, sim.rng.pick(['cheers!', 'ha!', 'another?', 'to us!']), 'good', 3);
+      // Talk flows (and old grudges come out) over a drink.
+      if (here.length && sim.rng.chance(0.008 * dt)) converse(sim, a, sim.rng.pick(here));
+      // A good player at the piano makes it a music night.
+      const biz = businessAt(sim, sim.map.prop(act.propId)?.building);
+      if (biz && a.skills.music.level >= 4 && here.length >= 2 && biz.musicDay !== sim.day && sim.rng.chance(0.02 * dt)) {
+        biz.musicDay = sim.day;
+        for (const o of [a, ...here]) addMemory(sim, o, 'musicNight');
+        sim.log(`Music night at ${biz.name}: ${first(a)} played the piano`, 'social', 'good', a).weight = NOTABLE;
+      }
+      if (biz?.musicDay === sim.day && a.skills.music.level >= 4 && sim.rng.chance(0.03 * dt)) say(sim, a, '♪♫', 'good', 3);
+      if (tick() || !inWindow(sim.hour, TAVERN_OPEN, TAVERN_CLOSE)) {
+        addMemory(sim, a, 'tavernNight');
+        return finish(sim, a);
+      }
+      return;
+    }
     case 'firefight': {
       if (!sim.fires.some((f) => f.building === act.building)) return finish(sim, a);
       if (act.facing) a.facing = act.facing;

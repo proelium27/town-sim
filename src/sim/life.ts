@@ -1,3 +1,4 @@
+import { inherit, succession } from './business';
 import { ageOf, createAgent, surnameOf } from './agents';
 import { ADULT_AGE, RETIRE_AGE, ROLES } from './defs';
 import { graveSlots } from '../world/blueprints';
@@ -80,6 +81,9 @@ export function die(sim: Sim, a: Agent, cause: string): void {
   if (a.action.propId !== undefined && sim.reserved.get(a.action.propId) === a.id) sim.reserved.delete(a.action.propId);
   const wasMayor = sim.mayor === a.id;
   a.diedAt = sim.time;
+  // Their savings and any business pass to family before they're gone from the list.
+  inherit(sim, a);
+  succession(sim, a);
   sim.agents = sim.agents.filter((x) => x.id !== a.id);
   sim.deceased.push(a);
   sim.populationVersion++;

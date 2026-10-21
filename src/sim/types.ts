@@ -30,7 +30,7 @@ export interface Thought {
 export type ActionKind =
   | 'idle' | 'wander' | 'stroll' | 'work' | 'meet' | 'eat' | 'snack' | 'coffee' | 'cook'
   | 'sleep' | 'toilet' | 'shower' | 'socialize' | 'play' | 'music' | 'read' | 'relax' | 'shop' | 'party' | 'repair'
-  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach' | 'mourn' | 'escort' | 'split' | 'stoke' | 'craft' | 'rest' | 'care' | 'pave' | 'fish' | 'firefight' | 'mend';
+  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach' | 'mourn' | 'escort' | 'split' | 'stoke' | 'craft' | 'rest' | 'care' | 'pave' | 'fish' | 'firefight' | 'mend' | 'drink';
 
 export interface Action {
   kind: ActionKind;
@@ -200,6 +200,9 @@ export interface Project {
   stalled?: number;
   /** No one fetches goods for it before this time: the last load found no way onto the site. */
   haulPause?: number;
+  /** A private business: who paid for it and will run it, and what they borrowed. */
+  owner?: number;
+  loan?: number;
 }
 
 export type ActivityKind = 'work' | 'social' | 'life' | 'event' | 'build' | 'family';

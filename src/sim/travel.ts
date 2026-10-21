@@ -5,6 +5,7 @@ import { DREAMS } from './aspirations';
 import { ADULT_AGE, MEMORIES, type MemoryKind, MIN_PER_DAY, RETIRE_AGE, ROLES, type RoleKey, SKILL_KEYS, type SkillKey, TRAIT_KEYS, type TraitKey, YEARS_PER_DAY } from './defs';
 import { APTITUDES, type Aptitude } from './careers';
 import { takeInChildren } from './life';
+import { succession } from './business';
 import { allocateRoles, newHousehold } from './planner';
 import { addMemory, first, think } from './social';
 import type { Sim } from './sim';
@@ -141,6 +142,7 @@ export function sendAway(sim: Sim, party: Agent[]): TravelerFile {
 /** Takes people out of town, tidying every tie the town keeps to them. Shared by journeys and hard-times leaving. */
 export function depart(sim: Sim, party: Agent[]): void {
   const ids = new Set(party.map((a) => a.id));
+  for (const a of party) succession(sim, a);
   for (const a of party) {
     if (a.action.propId !== undefined && sim.reserved.get(a.action.propId) === a.id) sim.reserved.delete(a.action.propId);
   }
