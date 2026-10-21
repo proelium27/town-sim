@@ -57,6 +57,7 @@ npm run build      # typecheck + production bundle
 - **Priorities** (Town view, `T`): Housing, Food, Wood & stone, Community, each Low / Normal / High. They weight what town meetings choose and how many people work each job.
 - **World events** (Town view): hold a festival, a bumper harvest, send newcomers (even if there's no room, which forces a housing push), call a trader, a drought, a storm, a blizzard, an outbreak.
 - **Saving** (Town view): the town autosaves to your browser every game hour and reopens where you left off. Export downloads a save file, Import loads one, New town starts over (click twice). A `?seed=N` link opens a scratch town that is never saved.
+- **While you were away** (`src/sim/digest.ts`, `src/ui/away.ts`): come back after a minute or more with the tab hidden or closed, and the town catches up on the time you were gone at the speed it was running (up to one game day, fast-forwarding on screen in about a second), then a card tells you what happened: births, deaths, elections, new buildings, disasters first, then love, coming of age and town meetings, six lines at most, plus anything to worry about right now (people with nowhere to live, winter stores running short). Leaving it running untouched for ten minutes, on a second monitor say, gets the same card when you next touch the mouse or keyboard. A checkbox on the card turns catching up off.
 
 ## Calendar
 

@@ -9,7 +9,8 @@ import { ActivityLog } from './ui/activity';
 import { Hud } from './ui/hud';
 import { Inspector } from './ui/inspector';
 import { TownPanel } from './ui/townPanel';
-import { readSave, Saves } from './ui/saves';
+import { readAway, readSave, Saves } from './ui/saves';
+import { Away } from './ui/away';
 import { Tracker } from './ui/tracker';
 
 /** Real milliseconds per sim step at 1x: 20 steps per second, so one game minute per real second. */
@@ -119,10 +120,13 @@ async function boot(): Promise<void> {
     isFollowing: () => following,
   });
 
+  const away = new Away(sim, { speed: () => speed, select: (id) => select(id, true), openLog: () => activity.toggle(true) });
+
   const speedEl = document.getElementById('speed')!;
   const setSpeed = (s: number) => {
     if (s > 0) lastSpeed = s;
     speed = s;
+    saves.speed = s;
     for (const b of speedEl.querySelectorAll('button')) b.setAttribute('aria-pressed', String(Number(b.dataset.speed) === s));
   };
   speedEl.addEventListener('click', (e) => {
@@ -153,8 +157,9 @@ async function boot(): Promise<void> {
     e.preventDefault();
     camera.zoomAt(...local(e), Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)));
   }, { passive: false });
+  for (const ev of ['pointerdown', 'pointermove', 'keydown', 'wheel']) window.addEventListener(ev, () => away.input(), { passive: true });
   cv.addEventListener('pointerdown', (e) => {
-    drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false };
+    drag ={ x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false };
   });
   window.addEventListener('pointermove', (e) => {
     const hit = e.target === cv ? people.pick(...local(e), camera) : null;
@@ -187,7 +192,10 @@ async function boot(): Promise<void> {
       e.preventDefault();
       setSpeed(speed ? 0 : lastSpeed);
     } else if (e.key >= '1' && e.key <= '3') setSpeed(Number(e.key));
-    else if (e.code === 'Escape') select(null);
+    else if (e.code === 'Escape') {
+      if (away.open && !away.busy) away.close();
+      else select(null);
+    }
     else if (e.code === 'KeyF' && selected !== null) following = !following;
     else if (e.code === 'KeyP') tracker.toggle();
     else if (e.code === 'KeyT') tracker.setView(tracker.view === 'town' ? 'people' : 'town');
@@ -212,7 +220,10 @@ async function boot(): Promise<void> {
   app.ticker.add((tk) => {
     const dtMs = Math.min(250, tk.deltaMS);
     const dt = dtMs / 1000;
-    if (speed > 0) {
+    if (away.busy) {
+      away.frame();
+      acc = 0;
+    } else if (speed > 0) {
       acc += dtMs * speed;
       let n = 0;
       while (acc >= STEP_MS && n < MAX_STEPS_PER_FRAME) {
@@ -253,7 +264,8 @@ async function boot(): Promise<void> {
     }
   });
   refreshUi();
-  Object.assign(window, { sim, camera, select, setSpeed });
+  if (saved?.sim) away.resume(readAway());
+  Object.assign(window, { sim, camera, select, setSpeed, away });
 }
 
 boot();

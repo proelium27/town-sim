@@ -1,7 +1,7 @@
 import { MEMORIES, type MemoryKind, NEED_KEYS, NEEDS, type NeedKey, type TraitKey } from './defs';
 import { clamp } from './rng';
 import { exposure } from './health';
-import type { Agent, Relation, Tone } from './types';
+import { NOTABLE, type Agent, type Relation, type Tone } from './types';
 import type { Sim } from './sim';
 
 export const FRIEND = 35;
@@ -155,11 +155,11 @@ export function shiftOpinion(sim: Sim, a: Agent, b: Agent, delta: number): void 
   const other = rel(b, a).opinion;
   if (kin) {
     if (before > RIVAL && r.opinion <= RIVAL) {
-      sim.log(`${first(a)} has fallen out with their ${kin} ${first(b)}`, 'family', 'bad', a, b);
+      sim.log(`${first(a)} has fallen out with their ${kin} ${first(b)}`, 'family', 'bad', a, b).weight = NOTABLE;
       addMemory(sim, a, 'newRival', b);
       think(sim, a, `Family or not, ${first(b)} and I aren't speaking.`, 'bad');
     } else if (before <= RIVAL && r.opinion > RIVAL) {
-      sim.log(`${first(a)} made up with their ${kin} ${first(b)}`, 'family', 'good', a, b);
+      sim.log(`${first(a)} made up with their ${kin} ${first(b)}`, 'family', 'good', a, b).weight = NOTABLE;
       think(sim, a, `Things are better with ${first(b)} again. Family is family.`, 'good');
     }
   } else if (before < FRIEND && r.opinion >= FRIEND && other >= FRIEND) {

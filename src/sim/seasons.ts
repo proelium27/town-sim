@@ -1,6 +1,7 @@
 import { MIN_PER_DAY, SEASONS } from './defs';
 import { addMemory, think } from './social';
 import type { Sim } from './sim';
+import { HEADLINE, NOTABLE } from './types';
 
 /** Hearth fuel a home burns per game hour at full chill. */
 export const BURN_PER_HOUR = 0.25;
@@ -71,7 +72,7 @@ export function tickSeasons(sim: Sim, dt: number): void {
   const first = sim.seasonSeen === -1;
   sim.seasonSeen = season;
   if (first) return;
-  sim.log(`${SEASONS[season]} has come to Northwind`, 'event', 'neutral');
+  sim.log(`${SEASONS[season]} has come to Northwind`, 'event', 'neutral').weight = NOTABLE;
   sim.milestone(`${SEASONS[season]}, year ${sim.year}`);
   if (season === 3) {
     // Whatever is still in the fields, ripe or not, is lost: the harvest has to be in before the frost.
@@ -84,7 +85,7 @@ export function tickSeasons(sim: Sim, dt: number): void {
       p.growth = 0;
     }
     const lost = [ripe && `${ripe} ripe`, green && `${green} unripe`].filter(Boolean).join(' and ');
-    sim.log(lost ? `First frost: ${lost} ${ripe + green === 1 ? 'crop' : 'crops'} froze in the fields` : 'First frost. The fields are bare until spring', 'event', lost ? 'bad' : 'neutral');
+    sim.log(lost ? `First frost: ${lost} ${ripe + green === 1 ? 'crop' : 'crops'} froze in the fields` : 'First frost. The fields are bare until spring', 'event', lost ? 'bad' : 'neutral').weight = lost ? HEADLINE : NOTABLE;
     for (const a of sim.agents) {
       if (a.role === 'child') {
         addMemory(sim, a, 'snowDay');

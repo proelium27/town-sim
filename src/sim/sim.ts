@@ -175,10 +175,13 @@ export class Sim {
     return m.roomAt(m.cx(a.at), m.cy(a.at));
   }
 
-  log(text: string, kind: ActivityKind, tone: Tone = 'neutral', a?: Agent, b?: Agent): void {
-    this.activity.push({ t: this.time, text, kind, tone, agentId: a?.id, otherId: b?.id });
+  /** Adds a line to the feed. Set `weight` on the returned entry to put it in the away digest. */
+  log(text: string, kind: ActivityKind, tone: Tone = 'neutral', a?: Agent, b?: Agent): Activity {
+    const e: Activity = { t: this.time, text, kind, tone, agentId: a?.id, otherId: b?.id };
+    this.activity.push(e);
     if (this.activity.length > 500) this.activity.splice(0, this.activity.length - 500);
     this.activityVersion++;
+    return e;
   }
 
   milestone(text: string): void {

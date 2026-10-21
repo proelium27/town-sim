@@ -3,7 +3,7 @@ import { openSlots } from './planner';
 import { ADULT_AGE, MIN_PER_DAY, ROLES, type RoleKey, type TraitKey } from './defs';
 import { addMemory, first, kinship, think } from './social';
 import type { Sim } from './sim';
-import type { Agent } from './types';
+import { NOTABLE, type Agent } from './types';
 
 export type Aptitude = 'hands' | 'numbers' | 'people' | 'outdoors';
 export const APTITUDES: Aptitude[] = ['hands', 'numbers', 'people', 'outdoors'];
@@ -131,9 +131,9 @@ export function beginCareer(sim: Sim, a: Agent, pick: CareerPick, setRole: (sim:
     const kin = kinship(sim, a, mentor);
     think(sim, a, `I'm learning to be a ${title} from ${first(mentor)}.`, 'good');
     think(sim, mentor, `${first(a)} is apprenticing with me. Time to pass it on.`, 'good');
-    sim.log(`${a.name} came of age and is apprenticing as a ${title} under ${kin ? `their ${kin} ` : ''}${first(mentor)} (${pick.why})`, 'family', 'good', a, mentor);
+    sim.log(`${a.name} came of age and is apprenticing as a ${title} under ${kin ? `their ${kin} ` : ''}${first(mentor)} (${pick.why})`, 'family', 'good', a, mentor).weight = NOTABLE;
   } else {
-    sim.log(`${a.name} came of age and became a ${title} (${pick.why})`, 'family', 'good', a);
+    sim.log(`${a.name} came of age and became a ${title} (${pick.why})`, 'family', 'good', a).weight = NOTABLE;
   }
 }
 
@@ -155,6 +155,6 @@ export function finishApprenticeships(sim: Sim): void {
     think(sim, a, `Apprenticeship done${m ? `. Thanks, ${first(m)}` : ''}. I know what I'm doing now.`, 'good');
     const trade = ROLES[a.career ?? a.role].title.toLowerCase();
     const now = a.career && a.career !== a.role && ROLES[a.role].flexible ? ` (helping out as a ${ROLES[a.role].title.toLowerCase()} for now)` : '';
-    sim.log(`${first(a)} finished their apprenticeship as a ${trade}${now}`, 'work', 'good', a, m);
+    sim.log(`${first(a)} finished their apprenticeship as a ${trade}${now}`, 'work', 'good', a, m).weight = NOTABLE;
   }
 }
