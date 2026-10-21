@@ -3,6 +3,7 @@ import { ADULT_AGE, billText, MIN_PER_DAY, SEASON_DAYS, SEASONS, YEAR_DAYS, GOOD
 import { foodBalance } from '../sim/economy';
 import { winterReadiness, WINTER_STOCK_DAYS } from '../sim/seasons';
 import { BASE_PRICE, price, TRADER_EVERY } from '../sim/market';
+import { TIER_AT, TIERS } from '../sim/growth';
 import { chains, hasWorkshop } from '../sim/workshop';
 import { WORLD_EVENTS, type WorldEventKey, triggerWorldEvent } from '../sim/events';
 import { allocateRoles, buildCap, capacity, stageOf } from '../sim/planner';
@@ -153,7 +154,7 @@ export class TownPanel {
     const net = fb.produce - fb.eat;
     const projects = sim.projects.map((p) => ({ p, stage: stageOf(sim, p) }));
     const sig = JSON.stringify([
-      pop.length, kids, elders, beds, homeless, sick, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
+      pop.length, kids, elders, beds, homeless, sick, sim.tier, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
       sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
       sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), this.resetArmed, Math.round(sim.treasury / 5), sim.lastLedger, (['food', 'firewood', 'tools'] as const).map((g) => price(sim, g)), hasWorkshop(sim), chains(sim).map((c) => [c.have, c.target, c.stuck]), sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
       sim.season >= 2 && Math.round((1 - sim.seasonProgress) * SEASON_DAYS * 10),
@@ -164,6 +165,7 @@ export class TownPanel {
     const ev = sim.events;
     this.root.innerHTML = `
       <section class="tp-sec">
+        <p class="tier-line"><b>Northwind ${TIERS[sim.tier].toLowerCase()}</b>${sim.tier + 1 < TIERS.length ? ` · becomes a ${TIERS[sim.tier + 1].toLowerCase()} at ${TIER_AT[sim.tier + 1][0]} people and ${TIER_AT[sim.tier + 1][1]} buildings` : ''}</p>
         <dl class="tp-stats">
           <div><dt>People</dt><dd class="num">${pop.length}</dd><span>${plural(kids, 'kid')}, ${elders} retired${sick ? `, <b class="neg">${sick} sick</b>` : ''}</span></div>
           <div><dt>Homes</dt><dd class="num">${homes.length}</dd><span>${plural(beds, 'bed')}${homeless ? `, <b class="neg">${homeless} homeless</b>` : ''}</span></div>

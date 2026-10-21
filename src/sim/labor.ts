@@ -1,6 +1,7 @@
 import type { Prop } from '../world/map';
 import { billGoods, type Good, GOODS, goodNoun, PRIORITY_WEIGHT } from './defs';
 import { buildCap, clutter, shortOf, stageOf, supplied } from './planner';
+import { paveFrontier } from './growth';
 import { chill, FIREWOOD_STOCK, HEARTH_FULL, SPLIT } from './seasons';
 import { canMake, CRAFT_ROLES, hasWorkshop, RECIPES, shortfall, stationProps } from './workshop';
 import type { ActionKind, Agent, Project } from './types';
@@ -236,6 +237,25 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
       }
       return null;
     });
+  }
+
+  // A town paves its dirt paths, spreading out from the streets, a stone a tile.
+  if (!storm && sim.tier >= 1 && builderish && sim.stock.stone >= 20) {
+    const frontier = paveFrontier(sim);
+    if (frontier.length) {
+      add(0.5, () => {
+        const near = frontier
+          .filter((i) => !sim.agents.some((o) => o.action.kind === 'pave' && o.action.dest === i))
+          .sort((i, j) => Math.hypot(m.cx(i) - a.x, m.cy(i) - a.y) - Math.hypot(m.cx(j) - a.x, m.cy(j) - a.y))
+          .slice(0, 2);
+        for (const cell of near) {
+          const path = cell === a.at ? [] : sim.nav.findPath(a.at, cell, 40000);
+          if (!path) continue;
+          return { kind: 'pave', label: 'Paving the path', reason: `${sim.tier === 1 ? 'A town' : 'A city'} should have proper paths`, dest: cell, path, timer: 6, score: 0.5 };
+        }
+        return null;
+      });
+    }
   }
 
   // Firewood: split logs at the storehouse and carry it to hearths that are running low.

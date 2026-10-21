@@ -30,7 +30,7 @@ export interface Thought {
 export type ActionKind =
   | 'idle' | 'wander' | 'stroll' | 'work' | 'meet' | 'eat' | 'snack' | 'coffee' | 'cook'
   | 'sleep' | 'toilet' | 'shower' | 'socialize' | 'play' | 'music' | 'read' | 'relax' | 'shop' | 'party' | 'repair'
-  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach' | 'mourn' | 'escort' | 'split' | 'stoke' | 'craft' | 'rest' | 'care';
+  | 'chop' | 'mine' | 'haul' | 'build' | 'farm' | 'deposit' | 'learn' | 'teach' | 'mourn' | 'escort' | 'split' | 'stoke' | 'craft' | 'rest' | 'care' | 'pave';
 
 export interface Action {
   kind: ActionKind;
@@ -172,6 +172,8 @@ export interface Project {
   doorTop: boolean;
   /** Grass cells that become a dirt path from the door to the street on completion. */
   path: number[];
+  /** A wing added to an existing house rather than a new building. */
+  extends?: import('./growth').ExtensionSite;
   need: Bill;
   delivered: Bill;
   work: number;

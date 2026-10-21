@@ -92,6 +92,7 @@ export function loadSim(text: string): Sim {
     delete b.host;
     delete b.age;
   }
+  sim.tier ??= 0;
   sim.hardDays ??= [];
   sim.ledger = { ...emptyLedger(), ...sim.ledger };
   sim.lastLedger = { ...emptyLedger(), ...sim.lastLedger };

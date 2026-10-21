@@ -143,7 +143,7 @@ function warmHere(sim: Sim, a: Agent): boolean {
   return !!room && (room.id !== sim.town.households[a.household].room || sim.fuel[a.household] > 0);
 }
 /** What can wait out a blizzard: anyone doing one of these somewhere outdoors drops it and gets inside. */
-const STORM_DROPS: ActionKind[] = ['chop', 'mine', 'build', 'haul', 'farm', 'split', 'stroll', 'play', 'mourn', 'read', 'relax', 'socialize', 'party', 'wander'];
+const STORM_DROPS: ActionKind[] = ['chop', 'mine', 'build', 'haul', 'farm', 'split', 'pave', 'stroll', 'play', 'mourn', 'read', 'relax', 'socialize', 'party', 'wander'];
 
 /** Caught out in a blizzard doing something that can wait. Building materials wait in hand; firewood still goes to the hearth. */
 function caughtOut(sim: Sim, a: Agent): boolean {
@@ -161,7 +161,7 @@ function updateNeeds(sim: Sim, a: Agent, dt: number, stage: Stage): void {
   const k = a.action.kind;
   const performing = a.action.stage === 'perform';
   const asleep = k === 'sleep' && performing;
-  const working = (k === 'work' || k === 'build' || k === 'chop' || k === 'mine' || k === 'farm' || k === 'haul' || k === 'teach' || k === 'split' || k === 'stoke' || k === 'craft') && performing;
+  const working = (k === 'work' || k === 'build' || k === 'chop' || k === 'mine' || k === 'farm' || k === 'haul' || k === 'teach' || k === 'split' || k === 'stoke' || k === 'craft' || k === 'pave') && performing;
   // Tools wear out with use.
   if (a.tool > 0 && performing && TOOL_WORK.includes(k)) {
     a.tool -= 0.0012 * dt;
@@ -845,6 +845,7 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
     case 'mine': return a.action.projectId !== undefined ? 'These rocks have to go before we can build.' : 'Time to break some stone.';
     case 'haul': return `${o.reason}. I'll fetch it from the storehouse.`;
     case 'split': return 'Logs to split before the cold sets in.';
+    case 'pave': return 'These muddy paths could use some stone.';
     case 'rest': return 'I need to lie down for a while.';
     case 'care': return `I'll go and see how ${o.reason.split(' ')[0]} is doing.`;
     case 'craft': return `${o.reason}. Off to the workshop.`;
@@ -872,7 +873,7 @@ function urgent(sim: Sim, a: Agent): boolean {
 }
 
 /** What someone off sick stops doing at once, whatever stage it's at. */
-const SICK_STOPS: ActionKind[] = ['work', 'teach', 'learn', 'build', 'chop', 'mine', 'farm', 'haul', 'split', 'stoke', 'craft', 'meet'];
+const SICK_STOPS: ActionKind[] = ['work', 'teach', 'learn', 'build', 'chop', 'mine', 'farm', 'haul', 'split', 'stoke', 'craft', 'pave', 'meet'];
 
 // ------------------------------------------------------------------ performing
 
@@ -1287,6 +1288,22 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
         finish(sim, a);
       }
       return;
+    case 'pave': {
+      a.workedToday += dt;
+      payWage(sim, a, 0.3 * dt);
+      gainXp(sim, a, 'craft', dt * 0.2);
+      if (sim.rng.chance(0.02 * dt)) say(sim, a, 'tock', 'neutral', 1);
+      if (tick()) {
+        const x = sim.map.cx(a.at);
+        const y = sim.map.cy(a.at);
+        if ((sim.map.ground[a.at] === 'dirt' || sim.map.ground[a.at] === 'trail') && sim.stock.stone >= 1) {
+          sim.stock.stone -= 1;
+          sim.map.setGround(x, y, 'sidewalk');
+        }
+        finish(sim, a);
+      }
+      return;
+    }
     case 'craft': {
       const r = RECIPES.find((x) => x.good === act.material && x.station === STATION_OF[sim.prop(act.propId)?.key ?? '']);
       if (!r) return finish(sim, a);

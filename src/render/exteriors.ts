@@ -105,6 +105,8 @@ interface Exterior {
   chimney?: { x: number; y: number };
   /** Winter snow over the roof, a sibling of the view so the cached roof stays untouched. */
   snow: Graphics;
+  /** The building's `extended` count when this was drawn. */
+  ver: number;
 }
 
 /**
@@ -128,6 +130,18 @@ export class Exteriors {
 
   /** Builds exteriors for any buildings that have appeared since last time. */
   sync(): void {
+    // A house that grew a wing gets redrawn at its new size.
+    for (let k = 0; k < this.list.length; k++) {
+      const e = this.list[k];
+      if (e.ver === (e.b.extended ?? 0)) continue;
+      const alpha = e.alpha;
+      e.view.destroy({ children: true });
+      e.snow.destroy();
+      const look = lookFor(e.b);
+      if (!look) continue;
+      this.list[k] = this.build(e.b, look);
+      this.list[k].alpha = alpha;
+    }
     if (this.count === this.map.buildings.length) return;
     this.count = this.map.buildings.length;
     const have = new Set(this.list.map((e) => e.b.id));
@@ -340,7 +354,7 @@ export class Exteriors {
     snow.zIndex = view.zIndex + 0.01;
     snow.visible = this.snowing;
     this.parent.addChild(snow);
-    return { b, view, alpha: 1, windows: behind, chimney: chimney && { x: chimney.x + 4, y: chimney.y - 1 }, snow };
+    return { b, view, alpha: 1, windows: behind, chimney: chimney && { x: chimney.x + 4, y: chimney.y - 1 }, snow, ver: b.extended ?? 0 };
   }
 
   /** Shingled gable roof seen from the south: lit upper slope, shaded lower slope, ridge, eave. */

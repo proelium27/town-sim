@@ -74,6 +74,19 @@ describe('off sick', () => {
     expect(pupil.action.kind).not.toBe('learn');
     expect(farmer.action.kind).not.toBe('farm');
   }, 120_000);
+
+  it('a paver puts down the stones when too ill to carry on', () => {
+    const sim = new Sim(7);
+    sim.run(1440 + 10 * 60 - sim.time);
+    const a = sim.agents.find((x) => x.role === 'laborer' || x.role === 'builder')!;
+    a.action = { ...idle(sim, a), kind: 'pave', label: 'Paving the path', stage: 'perform', timer: 999 };
+    a.thinkIn = 999;
+    fallIll(sim, a, 'cold', '');
+    a.illness!.severity = 0.45;
+    a.illness!.age = 0.25 * 0.6 * 1440;
+    sim.run(2);
+    expect(a.action.kind).not.toBe('pave');
+  }, 120_000);
 });
 
 describe('care', () => {

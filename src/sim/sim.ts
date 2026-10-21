@@ -46,6 +46,8 @@ export class Sim {
   ledger = emptyLedger();
   lastLedger = emptyLedger();
   ledgerDay = 0;
+  /** 0 village, 1 town, 2 city. */
+  tier = 0;
   /** When the last outbreak began (or -Infinity). */
   outbreak = -Infinity;
   /** Consecutive days each household has been broke and miserable. */
