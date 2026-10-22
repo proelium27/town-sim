@@ -1,5 +1,5 @@
 import type { Building, BuildingKind } from '../world/map';
-import { replan } from './ai';
+import { canFight, replan } from './ai';
 import { addMemory, first, think } from './social';
 import { Rng } from './rng';
 import type { Sim } from './sim';
@@ -34,6 +34,27 @@ export const WELL_REACH = 25;
 const SPREAD = 3;
 export const REPAIR_WORK = 180;
 export const REPAIR_WOOD = 20;
+/**
+ * Burn damage below this is just soot: nobody goes out to repair it (the soot tint is too faint to see), and it
+ * fades over the next day or so on its own.
+ */
+export const REPAIR_AT = 0.05;
+/**
+ * How hard a fire is to put out. A bucket line has only so many places: past LINE_MAX people there's nowhere to stand,
+ * so a crowd doesn't help. Each person beats back BEAT of the fire's heat a minute (a well close by makes that go
+ * further, rain further still) against GROW of its own, and the building takes DAMAGE of its fabric a minute at full
+ * heat. Measured over triggered fires (two seeds, a home by day, at night, in rain and in drought, each with and without
+ * a well), the old 0.0025 a head with no cap and 0.004 damage put every fire out in 10-33 minutes at 0-2% damage, with
+ * 8-11 people on the line. Now a daytime crew with a well saves the house in about half an hour with a visible scorch;
+ * a drought fire is harder, and two or three people at night can't hold one.
+ */
+export const LINE_MAX = 7;
+const BEAT = 0.002;
+const GROW = 0.011;
+const DAMAGE = 0.012;
+/** Sleepers this close (tiles) to a fire wake to the shouting, as do sleepers this close to anyone who is already up and answering it. */
+export const SLEEPER_RADIUS = 25;
+export const NEIGHBOUR_RADIUS = 14;
 
 /** Daily odds that a fire starts somewhere in town. A few in-game years apart on average. */
 function dailyOdds(sim: Sim): number {
@@ -107,20 +128,67 @@ export function lightning(sim: Sim): void {
   if (roofs.length && sim.rng.chance(0.25)) startFire(sim, sim.rng.pick(roofs), 'lightning');
 }
 
-/** Minutes between shouts of "Fire!" while it burns, for anyone who missed the last one. */
-const ALARM_EVERY = 10;
+/** Minutes between shouts of "Fire!" for people nearby; the whole town is called every fifth shout. */
+const ALARM_EVERY = 2;
+
+const centreOf = (b: Building) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+
+/** Up and answering the fire: on the bucket line, heading for it, or getting clear. */
+const answering = (a: Agent) => a.action.kind === 'firefight' || a.action.reason === 'Fire!';
+
+/** Everyone on the bucket line or heading for it, at this building. */
+export function lineSize(sim: Sim, building: number): number {
+  return sim.agents.filter((a) => a.action.kind === 'firefight' && a.action.building === building).length;
+}
 
 /**
- * Raises the alarm: everyone who'd answer it drops what they're doing and thinks again, which sends the able with
- * buckets and gets the young, the old and the ill out. People asleep only hear it from close by.
+ * Whether someone would hear the alarm for this building. Anyone up hears it from across the town; someone asleep
+ * hears it from SLEEPER_RADIUS tiles, or from NEIGHBOUR_RADIUS of anyone already up and answering it.
  */
-function alarm(sim: Sim, b: Building): void {
+export function hearsAlarm(sim: Sim, a: Agent, b: Building): boolean {
+  const c = centreOf(b);
+  const d = Math.hypot(a.x - c.x, a.y - c.y);
+  if (a.action.kind !== 'sleep') return d <= 60;
+  if (d <= SLEEPER_RADIUS) return true;
+  return sim.agents.some((o) => o !== a && answering(o) && Math.hypot(o.x - a.x, o.y - a.y) <= NEIGHBOUR_RADIUS);
+}
+
+/**
+ * Raises the alarm. Only those who'd answer it are called: whoever is inside the burning building, and the able-bodied
+ * (not children, the old or the ill, who are left to carry on, or to sleep). Sleepers hear it when close, or when a
+ * neighbour who is already up shouts, so the word spreads from house to house. Nobody is woken once the line is full.
+ */
+function alarm(sim: Sim, b: Building, everyone: boolean): void {
+  const called: Agent[] = [];
+  const sleepers: Agent[] = [];
   for (const a of sim.agents) {
-    if (a.action.kind === 'firefight' || a.action.reason === 'Fire!') continue;
     const room = sim.roomOf(a);
     const inside = !!room && b.rooms.includes(room.id);
-    const d = Math.hypot(a.x - (b.x + b.w / 2), a.y - (b.y + b.h / 2));
-    if (inside || d <= (a.action.kind === 'sleep' ? 15 : 60)) replan(sim, a);
+    if (answering(a)) {
+      called.push(a);
+      continue;
+    }
+    if (inside) {
+      replan(sim, a);
+      continue;
+    }
+    if (!canFight(sim, a)) continue;
+    if (a.action.kind === 'sleep') sleepers.push(a);
+    else if (everyone && hearsAlarm(sim, a, b)) replan(sim, a);
+  }
+  // The shout passes from house to house: each wave of sleepers woken calls the sleepers beside them.
+  const c = centreOf(b);
+  let asleep = sleepers;
+  for (let wave = 0; wave < 3 && asleep.length && called.length < LINE_MAX; wave++) {
+    const distance = (a: Agent) => Math.hypot(a.x - c.x, a.y - c.y);
+    const heard = asleep
+      .filter((a) => distance(a) <= SLEEPER_RADIUS || called.some((o) => Math.hypot(o.x - a.x, o.y - a.y) <= NEIGHBOUR_RADIUS))
+      .sort((x, y) => distance(x) - distance(y))
+      .slice(0, LINE_MAX - called.length);
+    if (!heard.length) break;
+    for (const a of heard) replan(sim, a);
+    called.push(...heard);
+    asleep = asleep.filter((a) => !heard.includes(a));
   }
 }
 
@@ -135,6 +203,11 @@ export function tickFires(sim: Sim, dt: number): void {
   sim.timers.fire -= dt;
   if (sim.timers.fire <= 0) {
     sim.timers.fire = 60;
+    // A scorch too slight to be worth a repair fades on its own.
+    for (const b of sim.map.buildings) {
+      const d = b.damage ?? 0;
+      if (d > 0 && d < REPAIR_AT && !fireAt(sim, b.id)) b.damage = Math.max(0, d - 0.004);
+    }
     const dice = new Rng(sim.seed * 6151 + Math.floor(sim.time / 60) * 92821);
     dice.next(); // a fresh generator's first draw runs low; skip it
     if (dice.chance(dailyOdds(sim) / 24)) {
@@ -150,14 +223,14 @@ export function tickFires(sim: Sim, dt: number): void {
     }
     if (sim.time >= (f.alarm ?? 0)) {
       f.alarm = sim.time + ALARM_EVERY;
-      alarm(sim, b);
+      alarm(sim, b, Math.floor((sim.time - f.started + 0.5) / ALARM_EVERY) % 5 === 0);
     }
     const rain = !!sim.events.rain;
-    const grow = 0.008 * (dry(sim) ? 1.5 : 1) * (b.sturdy ? 0.6 : 1) * (rain ? 0.4 : 1);
+    const grow = GROW * (dry(sim) ? 1.5 : 1) * (b.sturdy ? 0.6 : 1) * (rain ? 0.4 : 1);
     const water = (wellNear(sim, b) ? 1.7 : 1) * (rain ? 1.3 : 1);
-    const beat = fighters(sim, f).reduce((s, a) => s + 0.0025 * (1 + a.skills.athletics.level * 0.03) * water, 0);
+    const beat = fighters(sim, f).slice(0, LINE_MAX).reduce((s, a) => s + BEAT * (1 + a.skills.athletics.level * 0.03) * water, 0);
     f.heat = Math.min(1, f.heat + (grow - beat) * dt);
-    b.damage = Math.min(1, (b.damage ?? 0) + 0.004 * f.heat * dt);
+    b.damage = Math.min(1, (b.damage ?? 0) + DAMAGE * f.heat * dt);
     if (f.heat > 0.6) {
       for (const n of sim.map.buildings) {
         if (n === b || !burns(n) || fireAt(sim, n.id) || gap(b, n) > SPREAD) continue;

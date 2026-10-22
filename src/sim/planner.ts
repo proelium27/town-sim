@@ -250,7 +250,8 @@ export function proposals(sim: Sim): Proposal[] {
   // After a fire, wells: water close at hand is what saves a building. One for every eight homes or so.
   const homes = sim.map.buildings.filter((b) => b.kind === 'house').length;
   if (sim.firesEver > 0 && count('well') < Math.max(1, Math.ceil(homes / 8))) {
-    out.push({ bp: 'well', score: 0.95 * cw, reason: 'the fire showed we need water close at hand', forAgents: [], proposer: charismatic(), name: `${['Market', 'Green', 'Hill', 'Corner'][count('well') % 4]} Well` });
+    // A priority, whatever the community lever says: ahead of new homes, and started even with another project going.
+    out.push({ bp: 'well', score: 1.6, rush: true, reason: 'the fire showed we need water close at hand', forAgents: [], proposer: charismatic(), name: `${['Market', 'Green', 'Hill', 'Corner'][count('well') % 4]} Well` });
   }
   // A workshop once the town is big enough to keep one busy and has the timber to spare.
   if (sim.agents.length >= 22 && count('workshop') === 0 && sim.stock.wood >= 40) {

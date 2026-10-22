@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { burns, fireAt, gap, GUTTED, startFire } from '../src/sim/fire';
+import { stageOf } from '../src/sim/ai';
+import { burns, fireAt, gap, GUTTED, LINE_MAX, NEIGHBOUR_RADIUS, REPAIR_AT, SLEEPER_RADIUS, startFire } from '../src/sim/fire';
+import { laborPlan } from '../src/sim/labor';
 import { proposals } from '../src/sim/planner';
 import { loadSim, saveSim } from '../src/sim/save';
 import { Sim } from '../src/sim/sim';
+import type { Agent } from '../src/sim/types';
 import type { Building } from '../src/world/map';
 
 const at = (sim: Sim, day: number, hour: number) => sim.run(day * 1440 + hour * 60 - sim.time);
@@ -41,7 +44,12 @@ describe('fire', () => {
     }
     expect(fireAt(sim, b.id)).toBeUndefined();
     expect(crew).toBeGreaterThanOrEqual(3);
+    // A bucket line has only so many places.
+    expect(crew).toBeLessThanOrEqual(LINE_MAX);
     expect(b.damage).toBeLessThan(GUTTED);
+    // A scorch you can see (the soot tint) and a repair job, not a clean escape.
+    expect(b.damage).toBeGreaterThan(0.08);
+    expect(b.damage).toBeLessThan(0.4);
     expect(sim.agents.some((a) => a.memories.some((m) => m.kind === 'foughtFire'))).toBe(true);
     expect(sim.activity.some((e) => new RegExp(`The fire at the ${b.name} is out, after \\d+ people fought it`).test(e.text))).toBe(true);
   }, 60_000);
@@ -58,9 +66,9 @@ describe('fire', () => {
     // Everyone who lives there is up: out of the house, or at it with a bucket.
     for (const a of family) expect(a.action.kind, a.name).not.toBe('sleep');
     expect(sim.agents.filter((a) => a.action.kind === 'firefight').length).toBeGreaterThanOrEqual(2);
-    // Folk asleep across town sleep through it.
-    const far = sim.agents.filter((a) => Math.hypot(a.x - (b.x + b.w / 2), a.y - (b.y + b.h / 2)) > 15 && a.household !== hh.id);
-    expect(far.some((a) => a.action.kind === 'sleep')).toBe(true);
+    // The bucket line has only so many places, and the young are left to sleep: not the whole town is up.
+    expect(sim.agents.filter((a) => a.action.kind === 'firefight').length).toBeLessThanOrEqual(LINE_MAX);
+    expect(sim.agents.some((a) => a.action.kind === 'sleep' && a.household !== hh.id)).toBe(true);
     // Nobody goes back in while it burns; once it's out, back to bed.
     while (fireAt(sim, b.id)) {
       sim.run(1);
@@ -113,11 +121,142 @@ describe('fire', () => {
     expect(sim.time - t0).toBeLessThan(3 * 60);
     expect(mended).toBeGreaterThan(0);
     // The rest gets done when the builders are free, and finishes with a line in the feed.
-    b.damage = 0.01;
+    b.damage = 0.1;
     sim.time = 1440 + 9 * 60;
     for (let k = 0; k < 48 && b.damage; k++) sim.run(30);
+    // (Mended outright, or mended below the point worth a repair and left to fade.)
     expect(b.damage).toBe(0);
-    expect(sim.activity.some((e) => e.text === `The ${b.name} is repaired`)).toBe(true);
+  }, 120_000);
+
+  /** A walkable cell outside any building near (x, y), searched outward. */
+  const cellNear = (sim: Sim, x: number, y: number) => {
+    for (let r = 0; r < 12; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const cx = Math.round(x + dx);
+          const cy = Math.round(y + dy);
+          if (sim.map.walkable(cx, cy) && sim.map.room[sim.map.idx(cx, cy)] < 0) return sim.map.idx(cx, cy);
+        }
+      }
+    }
+    throw new Error('no free ground');
+  };
+  const place = (sim: Sim, a: Agent, cell: number) => {
+    a.at = cell;
+    a.x = a.px = sim.map.cx(cell);
+    a.y = a.py = sim.map.cy(cell);
+    a.path = [];
+  };
+  /** Someone able to fight a fire and asleep, from a household other than the burning home's. */
+  const sleeper = (sim: Sim, not: number[]) => sim.agents.find((a) => stageOf(sim, a) === 'adult' && a.action.kind === 'sleep' && !not.includes(a.household))!;
+
+  it('a night fire in a quiet corner is heard past the old 15 tiles, and neighbours wake neighbours', () => {
+    const sim = new Sim(7);
+    at(sim, 1, 2);
+    const b = homeOf(sim);
+    const hh = sim.town.households.find((h) => h.building === b.id)!;
+    const cx = b.x + b.w / 2;
+    const cy = b.y + b.h / 2;
+    const near = sleeper(sim, [hh.id]);
+    const far = sim.agents.find((a) => a !== near && stageOf(sim, a) === 'adult' && a.action.kind === 'sleep' && a.household !== hh.id && a.household !== near.household)!;
+    // Everyone else is off at the far edge of town, out of earshot. One sleeper is 20 tiles off, past the old 15; another is
+    // 10 further out, beyond even the new radius but within a neighbour's call of the first.
+    const away = cellNear(sim, sim.map.w - 3, 27);
+    for (const a of sim.agents) if (a !== near && a !== far && !(sim.roomOf(a) && b.rooms.includes(sim.roomOf(a)!.id))) place(sim, a, away);
+    place(sim, near, cellNear(sim, cx + 20, cy));
+    place(sim, far, cellNear(sim, cx + 20 + NEIGHBOUR_RADIUS - 4, cy));
+    expect(Math.hypot(near.x - cx, near.y - cy)).toBeGreaterThan(15);
+    expect(Math.hypot(far.x - cx, far.y - cy)).toBeGreaterThan(SLEEPER_RADIUS);
+    startFire(sim, b, 'an ember from the hearth');
+    sim.run(5);
+    expect(near.action.kind, 'sleeper at 20 tiles').not.toBe('sleep');
+    expect(far.action.kind, 'the sleeper past the radius, woken by the one in between').not.toBe('sleep');
+  }, 60_000);
+
+  it('the alarm leaves children, elders and the ill asleep; they are only turned out of the burning building', () => {
+    const sim = new Sim(7);
+    at(sim, 1, 2);
+    const b = homeOf(sim);
+    const hh = sim.town.households.find((h) => h.building === b.id)!;
+    const kid = sim.agents.find((a) => a.role === 'child' && a.action.kind === 'sleep' && a.household !== hh.id)!;
+    place(sim, kid, cellNear(sim, b.x + b.w / 2, b.y + b.h + 8));
+    kid.needs.hunger = 100;
+    kid.mealReady = true; // a plate cooked earlier and never eaten
+    startFire(sim, b, 'an ember from the hearth');
+    for (let k = 0; k < 6; k++) sim.run(5);
+    expect(kid.action.kind).toBe('sleep');
+    // The ones who live there are another matter: out they go.
+    for (const a of sim.agents.filter((x) => x.household === hh.id && stageOf(sim, x) !== 'adult')) {
+      expect(a.action.kind === 'sleep' && sim.roomOf(a) && b.rooms.includes(sim.roomOf(a)!.id), a.name).toBeFalsy();
+    }
+  }, 60_000);
+
+  it('a full plate goes cold: someone with a full stomach does not keep sitting down to eat', () => {
+    const sim = new Sim(7);
+    at(sim, 0, 18);
+    const kid = sim.agents.find((a) => a.role === 'child')!;
+    kid.needs.hunger = 100;
+    kid.mealReady = true;
+    kid.thinkIn = 0;
+    sim.run(30);
+    expect(kid.mealReady).toBe(false);
+    expect(kid.action.kind === 'eat' && kid.action.reason === 'Food is ready').toBe(false);
+  }, 60_000);
+
+  it('barely-scorched buildings are left to fade rather than sending builders out', () => {
+    const sim = new Sim(7);
+    at(sim, 0, 9);
+    const b = homeOf(sim);
+    b.damage = REPAIR_AT / 2;
+    const builders = sim.agents.filter((a) => a.role === 'builder' || a.role === 'laborer');
+    expect(builders.length).toBeGreaterThan(0);
+    for (const a of builders) expect(laborPlan(sim, a)?.kind === 'mend', a.name).toBeFalsy();
+    sim.run(6 * 60);
+    expect(b.damage).toBeLessThan(REPAIR_AT / 2);
+  }, 60_000);
+
+  it('with only two or three up at night, a fire gets away from them and burns the house out', () => {
+    const sim = new Sim(7);
+    at(sim, 1, 2);
+    const b = homeOf(sim);
+    const crew = sim.agents.filter((a) => stageOf(sim, a) === 'adult').sort((x, y) => Math.hypot(x.x - b.x, x.y - b.y) - Math.hypot(y.x - b.x, y.y - b.y)).slice(0, 3);
+    // Everyone else is asleep well out of earshot.
+    const away = cellNear(sim, sim.map.w - 3, 27);
+    for (const a of sim.agents) if (!crew.includes(a) && !(sim.roomOf(a) && b.rooms.includes(sim.roomOf(a)!.id))) place(sim, a, away);
+    startFire(sim, b, 'an ember from the hearth');
+    burnDown(sim, b, 400);
+    expect(b.damage).toBeGreaterThanOrEqual(GUTTED);
+  }, 120_000);
+
+  it('a drought fire is harder to fight than the same fire in an ordinary spring', () => {
+    const damageAfter = (drought: boolean) => {
+      const sim = new Sim(7);
+      at(sim, 0, 11);
+      if (drought) sim.events.drought = { until: sim.time + 3 * 1440 };
+      const b = homeOf(sim);
+      startFire(sim, b, 'the dry heat');
+      burnDown(sim, b, 300);
+      return b.damage ?? 0;
+    };
+    const calm = damageAfter(false);
+    expect(damageAfter(true)).toBeGreaterThan(calm);
+  }, 120_000);
+
+  it('the first well after a fire is a priority: it outranks new homes and may start past the project limit', () => {
+    const sim = new Sim(7);
+    startFire(sim, homeOf(sim), 'test');
+    const list = proposals(sim);
+    const well = list.find((p) => p.bp === 'well')!;
+    expect(well.rush).toBe(true);
+    expect(list.filter((p) => p.bp === 'house' || p.bp === 'extension').every((p) => well.score > p.score)).toBe(true);
+  });
+
+  it('the town meeting has a well under way within a couple of hours of a fire, with other projects going', () => {
+    const sim = new Sim(11);
+    at(sim, 1, 11);
+    startFire(sim, homeOf(sim), 'test');
+    sim.run(150);
+    expect(sim.projects.some((p) => p.blueprint === 'well') || sim.map.buildings.some((b) => b.kind === 'well')).toBe(true);
   }, 120_000);
 
   it('after a fire, a town meeting wants a well', () => {

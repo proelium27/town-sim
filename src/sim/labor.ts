@@ -2,7 +2,7 @@ import type { Facing } from '../assets/manifest';
 import type { Prop } from '../world/map';
 import { billGoods, type Good, GOODS, goodNoun, PRIORITY_WEIGHT } from './defs';
 import { buildCap, clutter, shortOf, stageOf, supplied } from './planner';
-import { gutted, GUTTED } from './fire';
+import { gutted, GUTTED, REPAIR_AT } from './fire';
 import { paveFrontier } from './growth';
 import { chill, FIREWOOD_STOCK, HEARTH_FULL, SPLIT } from './seasons';
 import { canMake, CRAFT_ROLES, hasWorkshop, RECIPES, shortfall, stationProps } from './workshop';
@@ -311,7 +311,7 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
 
   // Repairing fire damage: a gutted home first (its family has nowhere to sleep), then anything scorched.
   if (!storm && builderish && sim.stock.wood >= 2) {
-    const hurt = m.buildings.filter((b) => (b.damage ?? 0) > 0 && !sim.fires.some((f) => f.building === b.id));
+    const hurt = m.buildings.filter((b) => (b.damage ?? 0) >= REPAIR_AT && !sim.fires.some((f) => f.building === b.id));
     const home = (b: (typeof hurt)[number]) => sim.town.households.some((h) => h.building === b.id);
     for (const b of hurt.sort((x, y) => (y.damage ?? 0) - (x.damage ?? 0)).slice(0, 2)) {
       // A family without a bed outranks any new build; a gutted workshop or shop comes next.

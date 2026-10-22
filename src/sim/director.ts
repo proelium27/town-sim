@@ -30,6 +30,8 @@ export interface Shot {
 const NEWS_WINDOW = 45;
 /** Arguments and new friendships are moments: only worth it while they're happening. */
 const MOMENT_WINDOW = 6;
+/** A fire outranks every other shot: the camera cuts to it at once, whatever it was showing. */
+export const FIRE_SHOT = 60;
 /** A key shown this recently (game minutes) is held back so the camera roams. */
 const REPEAT_WINDOW = 150;
 
@@ -101,7 +103,7 @@ export function candidates(sim: Sim, rand: () => number = Math.random): Shot[] {
   }
   for (const f of sim.fires) {
     const b = sim.building(f.building);
-    if (b) out.push({ key: `fire:${b.id}`, kind: 'gathering', x: b.x + b.w / 2, y: b.y + b.h / 2, span: 22, caption: `Fire at the ${b.name}!`, score: 32, hold: 15 });
+    if (b) out.push({ key: `fire:${b.id}`, kind: 'gathering', x: b.x + b.w / 2, y: b.y + b.h / 2, span: 22, caption: `Fire at the ${b.name}!`, score: FIRE_SHOT, hold: 15 });
   }
   const cemetery = sim.map.buildings.find((b) => b.kind === 'cemetery');
   for (const f of ev.funerals) {
@@ -183,3 +185,6 @@ export function urgent(sim: Sim, s: Shot, shown: ReadonlyMap<string, number>): b
   const t = shown.get(s.key);
   return s.score >= 26 && (t === undefined || sim.time - t > REPEAT_WINDOW);
 }
+
+/** A shot that cuts in on anything, even a shot that is itself urgent, and without waiting out the minimum hold. */
+export const breaking = (s: Shot): boolean => s.score >= FIRE_SHOT;

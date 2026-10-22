@@ -5,7 +5,7 @@ import { ADULT_AGE, type Good, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_
 import { FOOD_PER_CROP } from './economy';
 import { dreamLean } from './aspirations';
 import { catchFor, lakeCells } from './lake';
-import { burningAt, gutted, mend } from './fire';
+import { burningAt, gutted, hearsAlarm, LINE_MAX, lineSize, mend } from './fire';
 import { birthdayNames } from './events';
 import { funeralOf, mourns, weddingNames, weddingOf, weddingRole } from './rites';
 import { CARRY, HAUL_PAUSE, laborPlan, siteEdges } from './labor';
@@ -36,6 +36,11 @@ export function stageOf(sim: Sim, a: Agent): Stage {
   if (age < 4) return 'toddler';
   if (age < ADULT_AGE) return 'child';
   return a.role === 'retired' ? 'elder' : 'adult';
+}
+
+/** Who the fire alarm calls out: grown-ups who aren't elderly or ill. The rest are left to sleep (or get out of the burning building). */
+export function canFight(sim: Sim, a: Agent): boolean {
+  return stageOf(sim, a) === 'adult' && !offSick(a);
 }
 
 // ------------------------------------------------------------------ time helpers
@@ -525,8 +530,8 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
     }
     if (weak) continue;
     const d = Math.hypot(a.x - (b.x + b.w / 2), a.y - (b.y + b.h / 2));
-    // Asleep, only the shouting next door wakes you.
-    if (d > 60 || (a.action.kind === 'sleep' && d > 15 && !inside)) continue;
+    // Asleep, only the shouting nearby wakes you; and a full bucket line has no room for more.
+    if (!inside && (!hearsAlarm(sim, a, b) || (a.action.kind !== 'firefight' && lineSize(sim, b.id) >= LINE_MAX))) continue;
     const score = 2.3 - d * 0.004;
     o.push({ kind: 'firefight', score, reason: `Fire at the ${b.name}!`, begin: () => joinBucketLine(sim, a, b, score) });
   }
@@ -561,6 +566,8 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   const breakfast = inWindow(h, a.schedule.wake, a.schedule.wake + 1.2);
   const dinner = inWindow(h, 18, 20.5);
   const pantry = sim.pantry[a.household] ?? 0;
+  // A plate that was cooked for someone who has since eaten (or been called away from the table) goes cold.
+  if (a.mealReady && n.hunger >= 90 && a.action.kind !== 'eat') a.mealReady = false;
   if (a.mealReady) {
     o.push(spotOption(sim, a, 'eat', 1.4, 'Food is ready', ['eat'], () => 'Eating at home', 22, homeOnly));
   } else if (n.hunger < 75) {
