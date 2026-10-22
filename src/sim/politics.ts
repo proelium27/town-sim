@@ -197,7 +197,7 @@ function vote(sim: Sim, e: ElectionState): void {
   e.stage = 'done';
   sim.lastElection = { year: e.year, winner: winnerId, platform, votes };
   addMemory(sim, winner, 'wonElection');
-  say(sim, winner, 'thank you, Northwind!', 'good', 8);
+  say(sim, winner, `thank you, ${sim.name}!`, 'good', 8);
   for (const c of e.candidates) {
     const loser = sim.agent(c.id);
     if (loser && c.id !== winnerId) addMemory(sim, loser, 'lostElection');
