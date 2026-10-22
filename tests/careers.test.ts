@@ -142,9 +142,12 @@ describe('career openings', () => {
     // Before, four to six moves a day, with crafters stood down to labor and taken back within hours.
     expect(sim.map.buildings.some((b) => b.kind === 'workshop')).toBe(true);
     expect(flips).toBe(0);
-    // A builder lent to a short-handed craft and back within the day now and then is fine; seed-tuned (2 to 3).
-    expect(backs).toBeLessThanOrEqual(3);
-    expect(moves / days).toBeLessThan(2.5);
+    // A builder lent to a short-handed craft and back within the day now and then is fine; seed-tuned (2 to 4). Four since
+    // the lake: autumn's fishers are promised ahead of the building crew, and one builder-woodcutter swap (day 5.5 to 5.8,
+    // no craft involved) comes of that; there are still no crafter flips.
+    expect(backs).toBeLessThanOrEqual(4);
+    // 2.57 a day with the lake's seasonal fishers (autumn's go on, spring's come off), well under the four to six of before.
+    expect(moves / days).toBeLessThan(3);
   }, 300_000);
 
   it('swapping one outdoor trade for another keeps their own hours', () => {
