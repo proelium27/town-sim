@@ -48,3 +48,9 @@ Many tests are tuned to one seed's storyline ("on seed 7, a grown-up walks a kid
 - The repository is public.
 - To reproduce the CI typecheck faithfully, run `npm ci && npx tsc --noEmit` in a copy outside the home folder. A stray `~/node_modules/@types/node` once made local typechecks pass while CI failed.
 - Work on a branch and open a PR. Never push to `main`, and merge only when the user says so.
+
+## The Field Guide
+
+The Townsfolk Field Guide (https://claude.ai/artifact/2VXbbXZaYU2JshkrKHgF22) is the game's wiki: every system, how it plays and how the parts connect.
+- Whenever a feature is merged into `main`, update it in the same session. Read it first with the Artifact tool's `read` action, change only the sections the feature touches (add a section for a new system), and republish it to that same URL so the link stays the same.
+- Describe what's on `main`, not what's still in an open PR. If a merge changes numbers the guide quotes (rates, costs, thresholds), update them from the code.
