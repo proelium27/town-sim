@@ -1,7 +1,6 @@
 import { ageOf } from './agents';
-import { MIN_PER_DAY, SEASON_DAYS, SEASONS, YEAR_DAYS } from './defs';
+import { MIN_PER_DAY, ROLES, SEASON_DAYS, SEASONS, type SkillKey, YEAR_DAYS } from './defs';
 import { andList } from './events';
-import { eulogy } from './rites';
 import type { Sim } from './sim';
 import { first } from './social';
 import { type Agent, HEADLINE } from './types';
@@ -24,6 +23,8 @@ export interface Annal {
   year: number;
   pop: number;
   buildings: number;
+  /** Who kept the chronicle that year (the last office writer seen), so a page never credits someone who wasn't there. */
+  writer?: { id: number; name: string };
 }
 
 const yearOf = (t: number) => Math.floor(t / (YEAR_DAYS * MIN_PER_DAY)) + 1;
@@ -40,6 +41,11 @@ export function tickChronicle(sim: Sim): void {
     sim.chronicleSeen = sim.activityVersion;
   }
   if (sim.annals[sim.annals.length - 1]?.year !== sim.year) sim.annals.push({ year: sim.year, pop: sim.agents.length, buildings: sim.map.buildings.length });
+  const annal = sim.annals[sim.annals.length - 1];
+  if (!annal.writer || !sim.agent(annal.writer.id)) {
+    const writer = sim.agents.find((a) => a.role === 'writer');
+    if (writer) annal.writer = { id: writer.id, name: writer.name };
+  }
 }
 
 export interface YearPage {
@@ -64,6 +70,12 @@ export function yearPage(sim: Sim, year: number): YearPage {
   const weddings = counted(/ were married$/);
   const built = counted(/^Built /);
   const left = sim.history.filter((h) => yearOf(h.t) === year && h.text.endsWith(` left ${sim.name}`)).length;
+  const arrivals = sim.chronicle
+    .filter((e) => yearOf(e.t) === year)
+    .reduce((sum, e) => {
+      const m = /^(?:A family|Newcomers|A newcomer) arrived: (.*?)(?:, with nowhere to live yet)?$/.exec(e.text);
+      return sum + (m ? m[1].split(', ').length : 0);
+    }, 0);
 
   const parts: string[] = [];
   if (pop0 !== undefined && pop1 !== undefined) {
@@ -72,6 +84,7 @@ export function yearPage(sim: Sim, year: number): YearPage {
   const n = (k: number, one: string, many: string) => (k === 1 ? `one ${one}` : `${k} ${many}`);
   const counts = [
     births && n(births, 'birth', 'births'),
+    arrivals && n(arrivals, 'newcomer', 'newcomers'),
     weddings && n(weddings, 'wedding', 'weddings'),
     deaths && n(deaths, 'death', 'deaths'),
     built && n(built, 'new building', 'new buildings'),
@@ -82,8 +95,8 @@ export function yearPage(sim: Sim, year: number): YearPage {
 
   const lines = sim.chronicle.filter((e) => yearOf(e.t) === year).map((e) => ({ season: seasonOf(e.t), text: e.text, agentId: e.agentId, otherId: e.otherId }));
 
-  // The office writer keeps the chronicle, if the town has one.
-  const writer = sim.agents.find((a) => a.role === 'writer');
+  // The office writer who kept the chronicle that year, if the town had one then.
+  const writer = start?.writer;
   const byline = writer ? `Kept by ${writer.name}, writer` : 'Pieced together from the town records';
   const closing =
     births > deaths && births >= 2 ? 'More cradles than graves.'
@@ -99,21 +112,66 @@ export function years(sim: Sim): number[] {
   return Array.from({ length: sim.year }, (_, i) => sim.year - i);
 }
 
-/** "Bram Ellis, Year 1–Year 4, aged 81. Bram worked as a carpenter and raised 3 children. Survived by …" */
-export function obituary(sim: Sim, dead: Agent): string {
-  const born = dead.birth >= 0 ? `born in Year ${yearOf(dead.birth)}` : `born before ${sim.name} was founded`;
-  const died = dead.diedAt !== undefined ? `died in Year ${yearOf(dead.diedAt)}` : 'since passed away';
-  // The age is already in the first sentence.
-  const words = eulogy(sim, dead, false).filter((w) => !w.startsWith('lived to'));
-  const life = words.length ? ` ${first(dead)} ${andList(words)}.` : '';
+/** Several ways to say each skill, so a page of obituaries doesn't repeat itself; one is chosen by who the person was. */
+const SKILL_WORDS: Record<SkillKey, string[]> = {
+  craft: ['could make anything with their hands', 'had a gift for making things', 'built things to last'],
+  cooking: ['cooked like nobody else', 'never let a guest leave hungry', 'was known for their table'],
+  charisma: ['could talk anyone round', 'was never short of a friend', 'had a way with people'],
+  athletics: ['never sat still', 'could outwalk anyone in town', 'was always on the move'],
+  music: ['filled the house with music', 'kept the town singing', 'never went a day without a tune'],
+};
+
+/** The skill that set them apart from the rest of the town, not just their highest: craft tops almost everyone's list. */
+export function standout(sim: Sim, dead: Agent): string | undefined {
+  const everyone = [...sim.agents, ...sim.deceased.filter((d) => d.id !== dead.id), dead];
+  let best: { key: SkillKey; edge: number } | undefined;
+  for (const key of Object.keys(SKILL_WORDS) as SkillKey[]) {
+    const level = dead.skills[key].level;
+    const mean = everyone.reduce((sum, a) => sum + a.skills[key].level, 0) / everyone.length;
+    const edge = level - mean;
+    if (level >= 5 && edge >= 1 && (!best || edge > best.edge)) best = { key, edge };
+  }
+  const words = best && SKILL_WORDS[best.key];
+  return words && words[dead.id % words.length];
+}
+
+/** What can be said of a life: the trade (their former trade, if retired and known), what stood out, family. */
+function lifeWords(sim: Sim, dead: Agent): string[] {
+  const out: string[] = [];
+  const trade = dead.role === 'retired' ? dead.career : dead.role === 'child' ? undefined : dead.role;
+  if (trade && trade !== 'retired' && trade !== 'child') {
+    const t = ROLES[trade].title.toLowerCase();
+    out.push(`worked as ${/^[aeiou]/.test(t) ? 'an' : 'a'} ${t}`);
+  }
+  const skill = standout(sim, dead);
+  if (skill) out.push(skill);
+  const kids = dead.children.length;
+  if (kids) out.push(`raised ${kids === 1 ? 'a child' : `${kids} children`}`);
+  const grandkids = new Set(dead.children.flatMap((id) => sim.person(id)?.children ?? [])).size;
+  if (grandkids) out.push(`saw ${grandkids === 1 ? 'a grandchild' : `${grandkids} grandchildren`} born`);
+  return out;
+}
+
+/** Who someone leaves behind, as they stand at the moment of death. */
+export function survivorsOf(sim: Sim, dead: Agent): string[] {
   const partner = sim.agent(dead.partner ?? undefined);
   const kids = dead.children.filter((id) => sim.agent(id)).length;
   const grandkids = new Set(dead.children.flatMap((id) => sim.person(id)?.children ?? []).filter((id) => sim.agent(id))).size;
-  const left = [
+  return [
     partner && `${first(partner)}`,
     kids && (kids === 1 ? 'a child' : `${kids} children`),
     grandkids && (grandkids === 1 ? 'a grandchild' : `${grandkids} grandchildren`),
   ].filter(Boolean) as string[];
+}
+
+/** "Bram Ellis, Year 1–Year 4, aged 81. Bram worked as a carpenter and raised 3 children. Survived by …" */
+export function obituary(sim: Sim, dead: Agent): string {
+  const born = dead.birth >= 0 ? `born in Year ${yearOf(dead.birth)}` : `born before ${sim.name} was founded`;
+  const died = dead.diedAt !== undefined ? `died in Year ${yearOf(dead.diedAt)}` : 'since passed away';
+  const words = lifeWords(sim, dead);
+  const life = words.length ? ` ${first(dead)} ${andList(words)}.` : '';
+  // Written down at death; older saves work it out from who is alive now.
+  const left = dead.survivors ?? survivorsOf(sim, dead);
   return `${dead.name}, ${born}, ${died} at ${dead.age}.${life}${left.length ? ` Survived by ${andList(left)}.` : ''}`;
 }
 
@@ -154,7 +212,9 @@ export function familyTree(sim: Sim, id: number): FamilyTree | null {
   const who = (ids: number[]) => [...new Set(ids)].map((i) => sim.person(i) ?? sim.departed.find((d) => d.id === i)).filter((x): x is Agent => !!x);
   const parents = who(a.parents);
   const children = who(a.children);
-  const partner = a.partner !== null ? who([a.partner])[0] : undefined;
+  // A widow or widower keeps their late partner on the tree: die() clears the survivor's link, but not the dead one's.
+  const late = a.partner === null ? sim.deceased.filter((d) => d.partner === a.id).sort((x, y) => (y.diedAt ?? 0) - (x.diedAt ?? 0))[0] : undefined;
+  const partner = a.partner !== null ? who([a.partner])[0] : late;
   return {
     person: node(sim, a),
     partner: partner && node(sim, partner),

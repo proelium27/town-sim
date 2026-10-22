@@ -2,15 +2,15 @@ import type { GroundKey } from '../assets/manifest';
 import { BLUEPRINTS, type BlueprintKey } from '../world/blueprints';
 import type { Household } from '../world/town';
 import { ageOf, hoursOf, makeSchedule, newTask, surnameOf } from './agents';
-import { ADULT_AGE, type Bill, billGoods, type Good, GOODS, MIN_PER_DAY, PRIORITY_SHARE, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
+import { ADULT_AGE, type Bill, billGoods, type Good, GOODS, MIN_PER_DAY, PRIORITY_SHARE, PRIORITY_WEIGHT, ROLES, SEASON_DAYS, type PriorityKey, type RoleKey, YEAR_DAYS } from './defs';
 import { foodBalance } from './economy';
-import { BUSINESSES, founderFor, openBusiness } from './business';
-import { BASE_PRICE } from './market';
+import { BUSINESSES, type BusinessKind, buildCost, founderFor, openBusiness } from './business';
 import { checkTier, EXTENSION_W, extensionSite, type ExtensionSite, stampExtension } from './growth';
 import { bury } from './life';
 import { projectCushion } from './market';
 import { agendaWeight } from './politics';
 import { deeds, dreaming } from './aspirations';
+import { layToRest } from './rites';
 import { canSupply, CRAFT_ROLES, hasWorkshop, rawOf, RECIPES, targetOf, wanted } from './workshop';
 import { addMemory, first, think } from './social';
 import { HEADLINE, NOTABLE, type Agent, type Project } from './types';
@@ -134,6 +134,8 @@ export interface Proposal {
   extends?: ExtensionSite;
   /** A private business: the founder pays and will run it. */
   owner?: Agent;
+  /** Time-critical: may start one project past the town's usual limit (the dock before the first frost). */
+  rush?: boolean;
 }
 
 /**
@@ -175,7 +177,7 @@ export function proposals(sim: Sim): Proposal[] {
     const mem = members(sim, h.id).filter((a) => !planned.has(a.id));
     if (!mem.length) continue;
     if (h.building < 0) {
-      out.push({ bp: 'house', score: 2.2 * hw, reason: `${mem.map(first).join(' and ')} have nowhere to live`, forAgents: mem, proposer: mem[0], name: homeName(sim, mem[0]) });
+      out.push({ bp: 'house', score: 2.2 * hw, reason: `${mem.map(first).join(' and ')} ${mem.length === 1 ? 'has' : 'have'} nowhere to live`, forAgents: mem, proposer: mem[0], name: homeName(sim, mem[0]) });
     }
   }
   for (const a of adults) {
@@ -184,9 +186,9 @@ export function proposals(sim: Sim): Proposal[] {
     const fam = familyOf(sim, a);
     const sharedHome = a.household === p.household && members(sim, a.household).every((m) => fam.includes(m));
     if (sharedHome) continue;
-    // A couple living apart, or sharing with housemates, wants a place of their own.
+    // A couple living apart, or sharing with housemates, wants a place of their own; apart is pressing.
     const dream = dreaming(a, 'home') || dreaming(p, 'home') ? 1.25 : 1;
-    out.push({ bp: 'house', score: 1.45 * hw * dream, reason: `${first(a)} and ${first(p)} want a home of their own`, forAgents: fam, proposer: a, name: homeName(sim, a), near: familyHome(sim, [a, p]) });
+    out.push({ bp: 'house', score: (a.household === p.household ? 1.45 : 2.1) * hw * dream, reason: `${first(a)} and ${first(p)} want a home of their own`, forAgents: fam, proposer: a, name: homeName(sim, a), near: familyHome(sim, [a, p]) });
   }
   for (const h of sim.town.households) {
     if (h.building < 0) continue;
@@ -230,7 +232,9 @@ export function proposals(sim: Sim): Proposal[] {
     const fisherly = sim.agents.find((a) => a.role === 'farmer') ?? charismatic();
     const winterSoon = sim.season === 1 || sim.season === 2;
     if (winterSoon || deficit > 0) {
-      out.push({ bp: 'dock', score: (0.7 + (sim.season === 2 ? 0.5 : 0) + (deficit > 0 ? 0.3 : 0)) * fw, reason: winterSoon ? "fish don't stop at the first frost" : 'the lake is full of fish', forAgents: [], proposer: fisherly, name: 'Lakeside Dock' });
+      // The nearer the frost, the more it matters: in autumn it outranks a new home (1.2), and from late summer it's a
+      // rush job, started even with the school still going up, so it's built before winter.
+      out.push({ bp: 'dock', score: (0.7 + (sim.season === 1 ? 0.2 : 0) + (sim.season === 2 ? 1.2 : 0) + (deficit > 0 ? 0.3 : 0)) * fw, reason: winterSoon ? "fish don't stop at the first frost" : 'the lake is full of fish', forAgents: [], proposer: fisherly, name: 'Lakeside Dock', rush: sim.season === 2 || (sim.season === 1 && sim.day % YEAR_DAYS >= SEASON_DAYS * 1.5) });
     }
   }
 
@@ -254,13 +258,14 @@ export function proposals(sim: Sim): Proposal[] {
   // After a fire, wells: water close at hand is what saves a building. One for every eight homes or so.
   const homes = sim.map.buildings.filter((b) => b.kind === 'house').length;
   if (sim.firesEver > 0 && count('well') < Math.max(1, Math.ceil(homes / 8))) {
-    out.push({ bp: 'well', score: 0.95 * cw, reason: 'the fire showed we need water close at hand', forAgents: [], proposer: charismatic(), name: `${['Market', 'Green', 'Hill', 'Corner'][count('well') % 4]} Well` });
+    // A priority, whatever the community lever says: ahead of new homes, and started even with another project going.
+    out.push({ bp: 'well', score: 1.6, rush: true, reason: 'the fire showed we need water close at hand', forAgents: [], proposer: charismatic(), name: `${['Market', 'Green', 'Hill', 'Corner'][count('well') % 4]} Well` });
   }
   // Private businesses: someone with savings and the trade for it proposes a place of their own.
   for (const kind of ['bakery', 'tavern'] as const) {
     const def = BUSINESSES[kind];
-    // One once the town is big enough, a second past another 20 people; going up counts too.
-    const have = sim.businesses.filter((b) => b.kind === kind && b.owner !== null).length + sim.projects.filter((pr) => pr.blueprint === kind).length;
+    // One once the town is big enough, a second past another 20 people; going up counts too, and so does a place the town took over.
+    const have = sim.businesses.filter((b) => b.kind === kind).length + sim.projects.filter((pr) => pr.blueprint === kind).length;
     if (sim.agents.length < def.pop || have >= Math.min(2, 1 + Math.floor((sim.agents.length - def.pop) / 20))) continue;
     const founder = founderFor(sim, kind);
     if (!founder) continue;
@@ -495,13 +500,14 @@ export function startProject(sim: Sim, p: Proposal): Project | null {
   const bp = BLUEPRINTS[p.bp];
   // The treasury has to be able to pay for it and still meet payroll; a home for the homeless gets built on credit,
   // and a cemetery for the unburied only has to be affordable.
-  const urgent = p.bp === 'house' && p.forAgents.some((a) => sim.town.households[a.household].building < 0);
+  const urgent = p.bp === 'house' && p.forAgents.some((a) => sim.town.households[a.household].building < 0 || (a.partner !== null && sim.agent(a.partner)?.household !== a.household));
   const cushion = p.bp === 'cemetery' && sim.unburied.length ? 0 : projectCushion(sim);
   // A founder pays for the plot and the materials themselves, and borrows what their savings don't cover.
-  const total = p.owner ? bp.coins + Object.entries(bp.cost).reduce((s, [g, n]) => s + (n ?? 0) * BASE_PRICE[g as Good], 0) : 0;
+  const total = p.owner ? buildCost(p.bp as BusinessKind) : 0;
   const own = p.owner ? Math.min(total, Math.max(0, Math.floor(p.owner.money - 20))) : 0;
   const loan = total - own;
-  if (p.owner ? sim.treasury - loan < cushion : sim.treasury - bp.coins < cushion && !urgent) return null;
+  // (A rush job, cheap and with the frost coming, only has to leave half the usual cushion.)
+  if (p.owner ? sim.treasury - loan < cushion : sim.treasury - bp.coins < (p.rush ? cushion / 2 : cushion) && !urgent) return null;
   const wing = p.extends;
   const site = wing ? { x: wing.x, y: wing.y, doorTop: true, path: [], cost: 0 } : findSite(sim, p.bp, p.near);
   if (!site) return null;
@@ -536,6 +542,7 @@ export function startProject(sim: Sim, p: Proposal): Project | null {
     extends: wing,
     owner: p.owner?.id,
     loan: p.owner ? loan : undefined,
+    rush: p.rush,
   };
   sim.projects.push(pr);
   const who = p.proposer;
@@ -600,6 +607,7 @@ export function completeProject(sim: Sim, pr: Project): void {
   if (pr.blueprint === 'cemetery') {
     const laid = sim.unburied.filter((id) => bury(sim, id));
     sim.unburied = sim.unburied.filter((id) => !laid.includes(id));
+    for (const id of laid) layToRest(sim, sim.person(id)!);
     if (laid.length) sim.log(`${laid.map((id) => sim.person(id)!.name).join(', ')} ${laid.length > 1 ? 'were' : 'was'} laid to rest at ${pr.name}`, 'family', 'neutral').weight = NOTABLE;
   }
   if (pr.blueprint !== 'house') allocateRoles(sim);
@@ -644,6 +652,14 @@ function finishExtension(sim: Sim, pr: Project, wing: ExtensionSite): void {
 /** One line of what the town wants from its flexible workers: a role, how many, and where (null: anywhere). */
 export type RoleSlot = [role: RoleKey, n: number, building: number | null];
 
+/**
+ * Mouths to a fisher in autumn and in winter (the catch through the ice is about half as big, so it takes more of them).
+ * Played out, a fisher lands about 4-7 food a day in autumn and 3-5 through the ice, against 2.35 eaten a head, so this is
+ * 2 fishers at 20 people (15-20% of intake) and 3 (autumn) or 4 (winter) at 40 (15-20%); it was a flat 2, which was
+ * 9-15 food/day, 20% at 20 people and 10% at 40.
+ */
+export const FISHER_SHARE = [14, 10];
+
 /** What the town needs of its flexible workers right now, in the order jobs are filled. A role can appear more than once. */
 export function roleDemand(sim: Sim): RoleSlot[] {
   const m = sim.map;
@@ -666,24 +682,43 @@ export function roleDemand(sim: Sim): RoleSlot[] {
   // Farms are staffed before building crews, unless housing is the higher priority.
   const tilt: RoleSlot[] = [['farmer', capped(Math.round(farms * 1.5 * fw), 'food'), null], ['builder', capped(Math.round((1 + sim.projects.length * 0.8) * hw), 'housing'), null]];
   if (sim.priorities.housing > sim.priorities.food) tilt.reverse();
-  // Fishers: the lake adds to the harvest rather than taking hands from it, so outside winter they're staffed after
-  // the farm and building crews. Two (the places at the end of the pier) from autumn, when the fish are what lasts the
-  // winter; before that, one only if the town eats more than it grows or the stores are thin; the food lever nudges
-  // it. In winter nothing grows, so they come before the farm crew, whose fields are bare.
+  // Fishers: the lake adds to the harvest rather than taking hands from it, so in spring and summer they're staffed
+  // after the farm and building crews. From autumn, when the fish are what lasts the winter, they're promised ahead of
+  // the building crew (in winter, when nothing grows, ahead of the farm crew as well). How many is sized by the town:
+  // before autumn one if the town eats more than it grows or the stores are thin; in autumn a fisher for every
+  // FISHER_SHARE[0] mouths (never fewer than two), in winter, when the catch is thinner, one for every FISHER_SHARE[1].
+  // The food lever adds or removes one, and no dock takes more fishers than it has places for.
   const fishers: RoleSlot[] = [];
   const docks = m.buildings.filter((b) => b.kind === 'dock');
   if (docks.length) {
     const fb = foodBalance(sim);
     const hungry = fb.eat > fb.produce || sim.stock.food < sim.agents.length * 4;
-    const base = sim.season >= 2 ? 2 : hungry ? 1 : 0;
-    const n = Math.max(0, Math.min(2, base + (sim.priorities.food === 2 ? 1 : sim.priorities.food === 0 ? -1 : 0)));
-    for (const d of docks) fishers.push(['fisher', n, d.id]);
+    const base = sim.season >= 2 ? Math.max(2, Math.ceil(sim.agents.length / FISHER_SHARE[sim.season - 2])) : hungry ? 1 : 0;
+    let left = Math.max(0, base + (sim.priorities.food === 2 ? 1 : sim.priorities.food === 0 ? -1 : 0));
+    for (const d of docks) {
+      const n = Math.min(left, m.props.filter((p) => p.building === d.id && p.use === 'fish').length);
+      left -= n;
+      fishers.push(['fisher', n, d.id]);
+    }
   }
-  if (sim.season === 3) for (const slot of fishers) demand.push(slot);
-  demand.push(tilt[0]);
-  if (hasWorkshop(sim)) demand.push(['carpenter', 1, null]);
-  demand.push(tilt[1]);
-  if (sim.season !== 3) for (const slot of fishers) demand.push(slot);
+  let fishersIn = false;
+  const addFishers = () => {
+    if (fishersIn) return;
+    fishersIn = true;
+    for (const slot of fishers) demand.push(slot);
+  };
+  if (sim.season === 3) addFishers();
+  // In autumn the harvest still needs hands, so only the first fisher goes ahead of the farm crew; the rest come before the builders.
+  if (sim.season === 2 && fishers.length && fishers[0][1] > 0) {
+    demand.push(['fisher', 1, fishers[0][2]]);
+    fishers[0] = ['fisher', fishers[0][1] - 1, fishers[0][2]];
+  }
+  for (const slot of tilt) {
+    if (sim.season === 2 && slot[0] === 'builder') addFishers();
+    demand.push(slot);
+    if (slot === tilt[0] && hasWorkshop(sim)) demand.push(['carpenter', 1, null]);
+  }
+  addFishers();
   // Once there's a workshop, the trades it needs (one carpenter is staffed even before builders, above).
   if (hasWorkshop(sim)) {
     for (const role of CRAFT_ROLES) {
@@ -794,6 +829,12 @@ export function setRole(sim: Sim, a: Agent, role: RoleKey, building: number | nu
 
 // ------------------------------------------------------------------ tick
 
+/** How many more homes than the usual limit may go up at once for families who have no home. */
+const HOMELESS_EXTRA = 2;
+
+/** A house proposed for people whose household has no building yet. */
+const homelessHouse = (sim: Sim, p: Proposal) => p.bp === 'house' && p.forAgents.some((a) => sim.town.households[a.household].building < 0);
+
 export function tickPlanner(sim: Sim, dt: number): void {
   sim.timers.roles -= dt;
   if (sim.timers.roles <= 0) {
@@ -808,9 +849,18 @@ export function tickPlanner(sim: Sim, dt: number): void {
   checkTier(sim);
   // A bigger town can take on more at once.
   const capacityProjects = Math.min(3 + sim.tier, 1 + Math.floor(builders / 2));
-  if (sim.projects.length >= capacityProjects) return;
+  // A rush job (the dock before the frost, wells after a fire) doesn't wait for a big project like the school to
+  // finish, and doesn't hold up the rest either while it's going: it sits outside the limit, one at a time. (Counted
+  // inside it, a dock whose lot took three days to clear kept a town of 18 from building a single home.) Families with
+  // no roof over their heads may push past the limit by up to HOMELESS_EXTRA at once.
+  const regular = sim.projects.filter((pr) => !pr.rush).length;
+  const rushing = sim.projects.length - regular;
+  const full = regular >= capacityProjects;
+  const roomForHomeless = regular < capacityProjects + HOMELESS_EXTRA;
+  if (!roomForHomeless && rushing) return;
   for (const p of proposals(sim)) {
     if (p.score < 0.5) break;
+    if (p.rush ? rushing > 0 : full && !(roomForHomeless && homelessHouse(sim, p))) continue;
     if (startProject(sim, p)) return;
   }
 }

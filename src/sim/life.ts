@@ -6,6 +6,7 @@ import { beginCareer, chooseCareer, finishApprenticeships } from './careers';
 import { tickTownHealth } from './health';
 import { allocateRoles, capacity, members, moveTo, newHousehold, setRole } from './planner';
 import { dreaming, tickAspirations } from './aspirations';
+import { survivorsOf } from './chronicle';
 import { courtship, scheduleFuneral } from './rites';
 import { addMemory, first, kinship, think } from './social';
 import { HEADLINE, NOTABLE, type Agent } from './types';
@@ -42,6 +43,10 @@ function growUp(sim: Sim): void {
       think(sim, a, `Eighteen! Time to pull my weight as a ${ROLES[a.role].title.toLowerCase()}.`, 'good');
       allocateRoles(sim);
     } else if (a.role !== 'retired' && a.role !== 'child' && age >= RETIRE_AGE) {
+      // Remember the trade they are leaving behind, for the obituary.
+      a.career ??= a.role;
+      // A place of their own is handed on (to a partner or grown child) or sold to the town before they put their feet up.
+      succession(sim, a, 'retired');
       setRole(sim, a, 'retired', null);
       think(sim, a, 'Retirement. I could get used to this.', 'good');
       sim.log(`${a.name} retired at ${Math.floor(age)}`, 'family', 'neutral', a).weight = NOTABLE;
@@ -82,10 +87,13 @@ export function die(sim: Sim, a: Agent, cause: string): void {
   const wasMayor = sim.mayor === a.id;
   a.diedAt = sim.time;
   // Their savings and any business pass to family before they're gone from the list.
+  // (the business first: if the town buys it, the owner's payout is part of what they leave)
+  succession(sim, a, 'died');
   inherit(sim, a);
-  succession(sim, a);
   sim.agents = sim.agents.filter((x) => x.id !== a.id);
+  a.died = { at: sim.time, mayor: wasMayor };
   sim.deceased.push(a);
+  a.survivors = survivorsOf(sim, a);
   sim.populationVersion++;
   const partner = sim.agent(a.partner ?? undefined);
   if (partner) partner.partner = null;
@@ -108,6 +116,25 @@ export function die(sim: Sim, a: Agent, cause: string): void {
   if (bury(sim, a.id)) scheduleFuneral(sim, a, wasMayor);
   else sim.unburied.push(a.id);
   takeInChildren(sim);
+}
+
+/**
+ * Hands money on from someone who is gone (or going): to their partner if they're still in town, else their children
+ * who are, else the treasury. Behind means they're alive and left it behind rather than died.
+ */
+export function passOnMoney(sim: Sim, a: Agent, amount: number, behind = false): void {
+  const money = Math.floor(Math.max(0, amount));
+  if (money <= 0) return;
+  const partner = sim.agent(a.partner ?? undefined);
+  const heirs = partner ? [partner] : a.children.map((id) => sim.agent(id)).filter((k): k is Agent => !!k && k.id !== a.id);
+  if (!heirs.length) {
+    sim.treasury += money;
+    sim.ledger.sales += money;
+    if (money >= 20) sim.log(`${first(a)} left $${money}${behind ? ' behind' : ''} to the town`, 'family', 'neutral', a).weight = NOTABLE;
+    return;
+  }
+  for (const h of heirs) h.money += money / heirs.length;
+  if (money >= 20) sim.log(`${first(a)} left $${money}${behind ? ' behind' : ''} to ${heirs.map(first).join(' and ')}`, 'family', 'neutral', heirs[0], a).weight = NOTABLE;
 }
 
 const isMinor = (sim: Sim, a: Agent) => ageOf(sim, a) < ADULT_AGE;

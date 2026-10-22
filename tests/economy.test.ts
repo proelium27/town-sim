@@ -210,6 +210,8 @@ describe('the town economy over a few weeks', () => {
         }
       }
       expect(low).toBeGreaterThan(50);
+      // Measured: seed 3 shares $337 over these 14 days and seed 7 $500 (a rush dock that held the only project slot
+      // had cut seed 3's to $46).
       expect(bonuses).toBeGreaterThan(50);
       expect(longest).toBeLessThan(2);
     }, 600_000);

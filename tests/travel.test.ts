@@ -4,7 +4,8 @@ import { ADULT_AGE } from '../src/sim/defs';
 import { addMemory } from '../src/sim/social';
 import { loadSim, saveSim } from '../src/sim/save';
 import { Sim } from '../src/sim/sim';
-import { cantTravel, expectCart, JOURNEY, partyFor, PURSE_MAX, readTravelers, sendAway, type TravelerFile } from '../src/sim/travel';
+import { capacity, members, tickPlanner } from '../src/sim/planner';
+import { arrive, cantTravel, expectCart, JOURNEY, partyFor, PURSE_MAX, readTravelers, sendAway, type TravelerFile } from '../src/sim/travel';
 import type { Agent } from '../src/sim/types';
 
 /** A household with a couple and at least one child, from a town a few days old. */
@@ -153,5 +154,63 @@ describe('travelers between towns', () => {
     expect(again.travelSeen).toEqual([file.id]);
     again.run(JOURNEY + 5);
     expect(again.agents.some((a) => a.name === file.people[0].name || a.name === `${file.people[0].name} II`)).toBe(true);
+  }, 120_000);
+
+  it('savings over the purse stay behind with the partner, else the children, else the town', () => {
+    const { sim } = familyTown();
+    const grown = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE && !a.illness);
+    const withPartner = grown.find((a) => a.partner !== null && sim.agent(a.partner) && !sim.agent(a.partner)!.illness)!;
+    const partner = sim.agent(withPartner.partner!)!;
+    withPartner.money = 1802;
+    const partnerBefore = partner.money;
+    const file = sendAway(sim, [withPartner]);
+    expect(file.people[0].money).toBe(PURSE_MAX);
+    expect(partner.money).toBeCloseTo(partnerBefore + 1602, 5);
+    expect(sim.activity.some((e) => new RegExp(`left \\$1602 behind to ${partner.name.split(' ')[0]}`).test(e.text))).toBe(true);
+
+    // Nobody to leave it with: the treasury gets it, and nothing vanishes from the world.
+    const alone = grown.find((a) => a.partner === null && a.children.every((id) => !sim.agent(id)) && a.id !== withPartner.id)!;
+    expect(alone).toBeDefined();
+    alone.money = 1000;
+    const world = () => sim.agents.reduce((n, a) => n + a.money, 0) + sim.treasury;
+    const before = world();
+    const file2 = sendAway(sim, [alone]);
+    expect(file2.people[0].money).toBe(PURSE_MAX);
+    expect(world() + file2.people[0].money).toBeCloseTo(before, 5);
+    expect(sim.activity.some((e) => /left \$800 behind to the town/.test(e.text))).toBe(true);
+  }, 60_000);
+
+  it('a lone traveler with nowhere to live gets a home proposed with the right verb, even when the town is busy', () => {
+    const { sim: home } = familyTown();
+    const solo = roundTrip(sendAway(home, [home.agents.find((a) => ageOf(home, a) >= ADULT_AGE && !a.illness && a.partner === null)!]));
+    const there = new Sim(3);
+    there.run(1440 + 8 * 60);
+    const [guest] = arrive(there, solo);
+    expect(there.town.households[guest.household].building).toBeLessThan(0);
+    // Fill the town's building capacity with other work: a family without a roof still gets its house.
+    const busy = there.projects[0];
+    expect(busy).toBeDefined();
+    while (there.projects.length < 3) there.projects.push({ ...busy, id: there.nextProjectId++, builders: new Set() });
+    const had = there.projects.length;
+    there.timers.plan = 0;
+    tickPlanner(there, 1);
+    const house = there.projects.find((p) => p.forAgents.includes(guest.id));
+    expect(there.projects.length).toBeGreaterThan(had);
+    expect(house?.blueprint).toBe('house');
+    expect(house?.reason).toBe(`${guest.name.split(' ')[0]} has nowhere to live`);
+  }, 120_000);
+
+  it('a cart takes a spare bed in a home that is not empty before waiting on a house', () => {
+    const { sim: home } = familyTown();
+    const file = roundTrip(sendAway(home, [home.agents.find((a) => ageOf(home, a) >= ADULT_AGE && !a.illness && a.partner === null)!]));
+    const there = new Sim(3);
+    there.run(1440 + 8 * 60);
+    const h = there.town.households.find((x) => x.building >= 0 && members(there, x.id).length >= 2 && capacity(there, x.id) >= members(there, x.id).length)!;
+    expect(h).toBeDefined();
+    sendAway(there, [members(there, h.id).find((a) => ageOf(there, a) >= ADULT_AGE && !a.illness)!]);
+    expect(capacity(there, h.id) - members(there, h.id).length).toBeGreaterThanOrEqual(1);
+    const [guest] = arrive(there, file);
+    expect(there.town.households[guest.household].building).toBeGreaterThanOrEqual(0);
+    expect(there.activity.some((x) => /nowhere to live yet/.test(x.text))).toBe(false);
   }, 120_000);
 });

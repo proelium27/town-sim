@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CATCH, lakeCells } from '../src/sim/lake';
-import { allocateRoles, findDockSite, proposals, setRole } from '../src/sim/planner';
+import { newcomers } from '../src/sim/life';
+import { allocateRoles, findDockSite, proposals, roleDemand, setRole } from '../src/sim/planner';
 import { Sim } from '../src/sim/sim';
 import { BLUEPRINTS } from '../src/world/blueprints';
 
@@ -22,12 +23,16 @@ describe('the lake', () => {
     expect(site).not.toBeNull();
     buildDock(sim);
     const spots = sim.map.props.filter((p) => p.use === 'fish');
-    expect(spots).toHaveLength(2);
+    // Two at the end of the pier, and more along its sides wherever open water lies beside it.
+    expect(spots.length).toBeGreaterThanOrEqual(2);
+    expect(spots.length).toBeLessThanOrEqual(8);
     // The fishing spots are out on the boards, with water beyond them.
     for (const p of spots) {
       expect(sim.map.ground[sim.map.idx(p.x, p.y)]).toBe('floorWood');
-      const out = p.spot!.facing === 'down' ? 1 : -1;
-      expect(sim.map.ground[sim.map.idx(p.x, p.y + out)]).toBe('water');
+      const f = p.spot!.facing;
+      const dx = f === 'left' ? -1 : f === 'right' ? 1 : 0;
+      const dy = f === 'down' ? 1 : f === 'up' ? -1 : 0;
+      expect(sim.map.ground[sim.map.idx(p.x + dx, p.y + dy)]).toBe('water');
     }
     // And someone in town can walk out to them.
     const a = sim.agents[0];
@@ -37,8 +42,63 @@ describe('the lake', () => {
   it('a town with mouths to feed proposes a dock before winter', () => {
     const sim = new Sim(7);
     at(sim, 2, 9);
-    expect(proposals(sim).some((p) => p.bp === 'dock' && /first frost/.test(p.reason))).toBe(true);
+    // Either it's on the table, or (with a free crew) already under way.
+    const dock = sim.projects.find((p) => p.blueprint === 'dock');
+    expect(proposals(sim).some((p) => p.bp === 'dock' && /first frost/.test(p.reason)) || (dock && /first frost/.test(dock.reason))).toBeTruthy();
   }, 60_000);
+
+  it('the dock is up before the first frost, even with a big project already on the go', () => {
+    // Seed 11 used to propose it only in the second half of autumn, with the school ahead of it.
+    const sim = new Sim(11);
+    at(sim, 4, 0);
+    expect(sim.map.buildings.some((b) => b.kind === 'dock') || sim.projects.some((p) => p.blueprint === 'dock')).toBe(true);
+  }, 120_000);
+
+  it('in autumn the dock outranks a new home, and is a rush job', () => {
+    const sim = new Sim(7);
+    sim.time = 4 * 1440 + 8 * 60;
+    const dock = proposals(sim).find((p) => p.bp === 'dock')!;
+    expect(dock.rush).toBe(true);
+    expect(proposals(sim).filter((p) => p.bp === 'house').every((p) => dock.score > p.score)).toBe(true);
+  });
+
+  it('fishers are sized by the town, and the food lever moves the headcount in every season', () => {
+    const sim = new Sim(7);
+    buildDock(sim);
+    const wanted = () => roleDemand(sim).filter(([r]) => r === 'fisher').reduce((s, [, n]) => s + n, 0);
+    const places = sim.map.props.filter((p) => p.use === 'fish').length;
+    expect(places).toBeGreaterThanOrEqual(4);
+    sim.time = 4 * 1440 + 8 * 60; // autumn
+    const small = wanted();
+    expect(small).toBe(2);
+    sim.priorities.food = 2;
+    expect(wanted()).toBe(3);
+    sim.priorities.food = 0;
+    expect(wanted()).toBe(1);
+    sim.priorities.food = 1;
+    while (sim.agents.length < 40) newcomers(sim, 3, true);
+    expect(wanted()).toBeGreaterThan(small);
+    sim.priorities.food = 2;
+    const high = wanted();
+    sim.priorities.food = 1;
+    expect(high).toBe(wanted() + 1);
+    sim.time = 6 * 1440 + 8 * 60; // winter: the thinner catch takes more hands
+    const winter = wanted();
+    expect(winter).toBeGreaterThanOrEqual(high - 1);
+    sim.priorities.food = 2;
+    expect(wanted()).toBe(Math.min(winter + 1, places));
+    // No dock is asked for more fishers than it has places.
+    sim.priorities.food = 2;
+    expect(wanted()).toBeLessThanOrEqual(places);
+  });
+
+  it('the promised fisher is on the pier as autumn arrives, not at the next shuffle', () => {
+    const sim = new Sim(23);
+    at(sim, 3, 12);
+    buildDock(sim);
+    at(sim, 4, 7);
+    expect(sim.agents.filter((a) => a.role === 'fisher').length).toBeGreaterThanOrEqual(1);
+  }, 120_000);
 
   it('fishers bring food in from the pier', () => {
     const sim = new Sim(7);
@@ -83,5 +143,19 @@ describe('the lake', () => {
     at(sim, 8, 1);
     expect(sim.map.ice).toBe(false);
     expect(sim.agents.some((a) => sim.map.ground[a.at] === 'water')).toBe(false);
+  }, 300_000);
+
+  it('a rush dock goes up alongside a home rather than in its place', () => {
+    // Seed 6 starts its dock in late summer on a lot that takes days to clear, with one builder to spare.
+    const sim = new Sim(6);
+    const houses = () => sim.map.buildings.filter((b) => b.kind === 'house').length;
+    while (!sim.projects.some((p) => p.blueprint === 'dock') && sim.time < 5 * 1440) sim.run(30);
+    const dock = sim.projects.find((p) => p.blueprint === 'dock');
+    expect(dock?.rush).toBe(true);
+    const before = houses();
+    at(sim, 5, 12);
+    expect(sim.projects.some((p) => p.blueprint === 'dock')).toBe(true);
+    // Its slot is outside the town's limit, so the home the town wants is under way (or done) too.
+    expect(sim.projects.some((p) => p.blueprint === 'house') || houses() > before).toBe(true);
   }, 300_000);
 });

@@ -164,8 +164,8 @@ describe('elections across towns', () => {
     // any change to town life: measured over seeds 1-8 with the lake in, 2 of 8. A town whose worry was solved (food,
     // once there's fishing) tends to vote for whoever runs on the next one. The bar is that it happens at all.
     expect(results.filter((r) => r.reelected).length).toBeGreaterThanOrEqual(1);
-    // Mostly close races. Since mayors are judged on their promises, a broken one can hand a challenger a landslide
-    // (seed 5, year 2: 13-6-6): measured 3 of 16 races across seeds 1-8, all 3 of them in these four seeds.
-    expect(results.filter((r) => r.landslide).length).toBeLessThanOrEqual(3);
+    // A winner with twice the runner-up's votes counts as a landslide, which in a three-way race of ~18 voters can be
+    // 10-4-2. Measured with fire in: 6 of 16 over seeds 1-8 (4 of them in these four seeds), platforms still varied.
+    expect(results.filter((r) => r.landslide).length).toBeLessThanOrEqual(4);
   });
 });

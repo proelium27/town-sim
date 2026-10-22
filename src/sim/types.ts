@@ -171,6 +171,10 @@ export interface Agent {
   diedAt?: number;
   /** The town they came from, for travelers. */
   from?: string;
+  /** Who they left behind, written down when they died so the obituary doesn't change as others pass on. */
+  survivors?: string[];
+  /** When they died, and whether they were mayor then; set only for the dead. */
+  died?: { at: number; mayor: boolean };
 }
 
 export interface Project {
@@ -203,6 +207,8 @@ export interface Project {
   /** A private business: who paid for it and will run it, and what they borrowed. */
   owner?: number;
   loan?: number;
+  /** Started as a rush job, outside the town's usual project limit. */
+  rush?: boolean;
 }
 
 export type ActivityKind = 'work' | 'social' | 'life' | 'event' | 'build' | 'family';

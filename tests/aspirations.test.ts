@@ -5,8 +5,8 @@ import { ADULT_AGE } from '../src/sim/defs';
 import { triggerWorldEvent } from '../src/sim/events';
 import { die } from '../src/sim/life';
 import { Sim } from '../src/sim/sim';
-import { rel } from '../src/sim/social';
-import { HEADLINE, type Agent } from '../src/sim/types';
+import { addMemory, rel } from '../src/sim/social';
+import { HEADLINE, NOTABLE, type Agent } from '../src/sim/types';
 
 const adult = (sim: Sim, ok: (a: Agent) => boolean = () => true) => sim.agents.find((a) => ageOf(sim, a) >= 20 && a.role !== 'retired' && ok(a))!;
 
@@ -86,4 +86,97 @@ describe('life aspirations', () => {
     sim.run(200);
     expect(sim.agents.some((a) => deeds(a).festivals === 1)).toBe(true);
   }, 60_000);
+
+  it('dreams are weighted by how reachable they are for this person and this town', () => {
+    const sim = new Sim(7);
+    const a = adult(sim, (x) => x.role !== 'child');
+    // A city is only a hope once the town is a town and nearly big enough.
+    expect(DREAMS.city.weight(sim, a)).toBe(0);
+    sim.tier = 1;
+    expect(DREAMS.city.weight(sim, a)).toBe(0);
+    sim.agents.push(...Array.from({ length: 20 }, () => sim.agents[0]));
+    expect(DREAMS.city.weight(sim, a)).toBeGreaterThan(0);
+    sim.agents.length -= 20;
+    // Mastery needs working years ahead; so does a big family.
+    a.role = 'carpenter';
+    a.skills.craft.level = 2;
+    a.birth = sim.time - (25 / 2) * 1440;
+    expect(DREAMS.master.weight(sim, a)).toBeGreaterThan(0);
+    expect(DREAMS.family.weight(sim, a)).toBeGreaterThan(0);
+    a.birth = sim.time - (50 / 2) * 1440;
+    expect(DREAMS.master.weight(sim, a)).toBe(0);
+    expect(DREAMS.family.weight(sim, a)).toBe(0);
+  });
+
+  it('a city dream is let go when the dreamer will not live to see it', () => {
+    const sim = new Sim(7);
+    const a = adult(sim);
+    a.dream = { key: 'city', since: sim.time };
+    a.birth = sim.time - (80 / 2) * 1440;
+    tickAspirations(sim);
+    expect(a.dream.lost).toBe(sim.time);
+    expect(a.memories.some((m) => m.kind === 'dreamFaded')).toBe(true);
+  });
+
+  it('when the town becomes a city, its dreamers share one headline and each keep a memory', () => {
+    const sim = new Sim(7);
+    const dreamers = sim.agents.filter((a) => ageOf(sim, a) >= 20).slice(0, 3);
+    for (const a of dreamers) a.dream = { key: 'city', since: sim.time };
+    sim.tier = 2;
+    const before = sim.activity.length;
+    tickAspirations(sim);
+    const lines = sim.activity.slice(before).filter((e) => /dream come true|their dream/.test(e.text));
+    expect(lines.map((e) => e.text)).toEqual(['3 people saw their dream come true: Northwind is a city']);
+    expect(lines[0].weight).toBe(HEADLINE);
+    for (const a of dreamers) {
+      expect(a.dream!.done).toBe(sim.time);
+      expect(a.memories.some((m) => m.kind === 'dreamCameTrue')).toBe(true);
+    }
+  });
+
+  it('a lone city dreamer still gets their own line', () => {
+    const sim = new Sim(7);
+    const a = adult(sim);
+    a.dream = { key: 'city', since: sim.time };
+    sim.tier = 2;
+    tickAspirations(sim);
+    expect(sim.activity.some((e) => e.text === `A dream come true: ${a.name} saw Northwind become a city`)).toBe(true);
+  });
+
+  it('marrying comes true when the wedding is over, not when the ceremony starts', () => {
+    const sim = new Sim(7);
+    const [a, b] = sim.agents.filter((x) => ageOf(sim, x) >= 20 && x.partner === null);
+    a.dream = { key: 'love', since: sim.time };
+    a.partner = b.id;
+    b.partner = a.id;
+    sim.events.weddings.push({ couple: [a.id, b.id], at: sim.time, until: sim.time + 120, started: true, guests: new Set() });
+    tickAspirations(sim);
+    expect(a.dream.done).toBeUndefined();
+    sim.events.weddings = [];
+    tickAspirations(sim);
+    expect(a.dream.done).toBe(sim.time);
+  });
+
+  it('a home of their own is worth a mention, not a headline', () => {
+    const sim = new Sim(7);
+    const a = adult(sim);
+    a.dream = { key: 'home', since: sim.time };
+    addMemory(sim, a, 'movedIn');
+    tickAspirations(sim);
+    const line = sim.activity.find((e) => e.text === `A dream come true: ${a.name} moved into a home of their own`)!;
+    expect(line.weight).toBe(NOTABLE);
+  });
+
+  it('letting go of finding love is a quiet fade, not a peace made with a rival', () => {
+    const sim = new Sim(7);
+    const a = adult(sim, (x) => x.partner === null);
+    a.dream = { key: 'love', since: sim.time };
+    a.birth = sim.time - (62 / 2) * 1440;
+    tickAspirations(sim);
+    expect(a.dream.lost).toBe(sim.time);
+    expect(a.memories.some((m) => m.kind === 'dreamFaded')).toBe(true);
+    const line = sim.activity.find((e) => e.text.startsWith(`${a.name.split(' ')[0]} let go of a dream:`))!;
+    expect(line.tone).toBe('neutral');
+    expect(line.weight ?? 0).toBeLessThan(NOTABLE);
+  });
 });

@@ -1,11 +1,11 @@
 import type { Facing } from '../assets/manifest';
 import type { Prop, UseKind } from '../world/map';
 import { ageOf, hasUmbrella, newTask } from './agents';
-import { ADULT_AGE, type Good, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
+import { ADULT_AGE, type Good, type MemoryKind, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
 import { FOOD_PER_CROP } from './economy';
 import { dreamLean } from './aspirations';
 import { catchFor, lakeCells } from './lake';
-import { burningAt, gutted, mend } from './fire';
+import { burningAt, gutted, hearsAlarm, LINE_MAX, lineSize, mend } from './fire';
 import { businessAt, priceAt, sell, TAVERN_CLOSE, TAVERN_OPEN, townMeal } from './business';
 import { hallName, protestArea, SLOGANS } from './civic';
 import { birthdayNames } from './events';
@@ -38,6 +38,11 @@ export function stageOf(sim: Sim, a: Agent): Stage {
   if (age < 4) return 'toddler';
   if (age < ADULT_AGE) return 'child';
   return a.role === 'retired' ? 'elder' : 'adult';
+}
+
+/** Who the fire alarm calls out: grown-ups who aren't elderly or ill. The rest are left to sleep (or get out of the burning building). */
+export function canFight(sim: Sim, a: Agent): boolean {
+  return stageOf(sim, a) === 'adult' && !offSick(a);
 }
 
 // ------------------------------------------------------------------ time helpers
@@ -414,6 +419,10 @@ function spotOption(sim: Sim, a: Agent, kind: ActionKind, score: number, reason:
 }
 
 /** "the Café", or a business by its own name ("Rosa's Bakery", "The Old Oak"). */
+/** Memories left by a gathering that has just ended, and how much they send people to the tavern. */
+const AFTER_PARTY: MemoryKind[] = ['festival', 'birthday', 'wedding', 'party'];
+const AFTER_PARTY_PULL = 0.45;
+
 function placeName(sim: Sim, p: Prop): string {
   const biz = businessAt(sim, p.building);
   return biz ? biz.name : `the ${roomName(sim, p)}`;
@@ -534,8 +543,8 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
     }
     if (weak) continue;
     const d = Math.hypot(a.x - (b.x + b.w / 2), a.y - (b.y + b.h / 2));
-    // Asleep, only the shouting next door wakes you.
-    if (d > 60 || (a.action.kind === 'sleep' && d > 15 && !inside)) continue;
+    // Asleep, only the shouting nearby wakes you; and a full bucket line has no room for more.
+    if (!inside && (!hearsAlarm(sim, a, b) || (a.action.kind !== 'firefight' && lineSize(sim, b.id) >= LINE_MAX))) continue;
     const score = 2.3 - d * 0.004;
     o.push({ kind: 'firefight', score, reason: `Fire at the ${b.name}!`, begin: () => joinBucketLine(sim, a, b, score) });
   }
@@ -570,6 +579,8 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   const breakfast = inWindow(h, a.schedule.wake, a.schedule.wake + 1.2);
   const dinner = inWindow(h, 18, 20.5);
   const pantry = sim.pantry[a.household] ?? 0;
+  // A plate that was cooked for someone who has since eaten (or been called away from the table) goes cold.
+  if (a.mealReady && n.hunger >= 90 && a.action.kind !== 'eat') a.mealReady = false;
   if (a.mealReady) {
     o.push(spotOption(sim, a, 'eat', 1.4, 'Food is ready', ['eat'], () => 'Eating at home', 22, homeOnly));
   } else if (n.hunger < 75) {
@@ -596,7 +607,7 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
       }
       // Each place sets its own price (a private bakery's floats with the market); they pay when they sit down.
       if (a.money >= Math.min(townMeal(sim), 4) && !evening && !little) {
-        o.push(spotOption(sim, a, 'eat', s * (a.traits.includes('foodie') ? 1.15 : 0.9) + (!homed ? 0.3 : 0), reason, ['eat'], (p) => `Eating at ${placeName(sim, p)}`, 26, (p) => roomKind(sim, p) === 'cafe' && a.money >= priceAt(sim, p.building, 'meal')));
+        o.push(spotOption(sim, a, 'eat', s * (a.traits.includes('foodie') ? 1.15 : 0.9) + (!homed ? 0.3 : 0), reason, ['eat'], (p) => `Eating at ${placeName(sim, p)}`, 26, (p) => roomKind(sim, p) === 'cafe' && a.money >= priceAt(sim, p.building, 'meal', a)));
       }
     }
     if (n.hunger < 55 && workTime && stage === 'adult') o.push(spotOption(sim, a, 'snack', s * 0.7, 'Quick snack', ['snack'], () => 'Grabbing a snack', 5));
@@ -852,11 +863,13 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   }
 
   // ---- an evening at the tavern
-  if (!little && !sleepTime && !workTime && !storm && inWindow(h, TAVERN_OPEN + 1, TAVERN_CLOSE - 0.75) && (n.social < 80 || n.fun < 75) && sim.map.buildings.some((b) => b.kind === 'tavern')) {
+  // When a festival or a party breaks up everyone is full up on company, but a good few drift to the tavern for one more.
+  const afterParty = a.memories.some((m) => AFTER_PARTY.includes(m.kind) && sim.time - m.created < 150);
+  if (!little && !sleepTime && !workTime && !storm && inWindow(h, TAVERN_OPEN + 1, TAVERN_CLOSE - 0.75) && (n.social < 80 || n.fun < 75 || afterParty) && sim.map.buildings.some((b) => b.kind === 'tavern')) {
     const sweetheart = sim.agent(a.court?.with ?? a.partner ?? undefined);
     const date = sweetheart?.action.kind === 'drink' ? 0.35 : 0;
-    const s = 0.42 + (1 - n.social / 100) * 0.45 + (1 - n.fun / 100) * 0.3 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.2 : 0) + (sim.weekend ? 0.12 : 0) + date;
-    o.push(spotOption(sim, a, 'drink', s, date ? `Meeting ${first(sweetheart!)} at the tavern` : 'An evening out', ['drink'], (p) => `At ${placeName(sim, p)}`, 60 + sim.rng.range(0, 40), (p) => a.money >= priceAt(sim, p.building, 'drink')));
+    const s = (afterParty ? AFTER_PARTY_PULL : 0) + 0.42 + (1 - n.social / 100) * 0.45 + (1 - n.fun / 100) * 0.3 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.2 : 0) + (sim.weekend ? 0.12 : 0) + date;
+    o.push(spotOption(sim, a, 'drink', s, date ? `Meeting ${first(sweetheart!)} at the tavern` : 'An evening out', ['drink'], (p) => `At ${placeName(sim, p)}`, 60 + sim.rng.range(0, 40), (p) => a.money >= priceAt(sim, p.building, 'drink', a)));
   }
 
   // ---- go home at night / stay near home when small
@@ -1342,8 +1355,8 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       n.energy = Math.min(100, n.energy + 0.06 * dt);
       for (const o of others(sim, a, ['relax'], 4)) bondNearby(sim, a, o, dt);
       if (tick()) {
-        // Warming up lasts until they're warm (or the hearth gives out).
-        if (act.reason.startsWith('Cold (') && n.warmth < 60 && chill(sim) > 0 && warmHere(sim, a)) act.timer = 10;
+        // Warming up lasts until they're warm (or the hearth gives out), sheltering from a storm that's blown over too.
+        if (isWarmUp(act) && n.warmth < 60 && chill(sim) > 0 && warmHere(sim, a)) act.timer = 10;
         else finish(sim, a);
       }
       return;

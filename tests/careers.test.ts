@@ -119,9 +119,10 @@ describe('career openings', () => {
   }, 120_000);
 
   it('people settle into their jobs instead of being rotated every few hours', () => {
-    // A seed whose town builds its workshop early, so the trades are in the mix.
-    const sim = new Sim(3);
-    const days = 14;
+    // A seed whose town builds its workshop early, so the trades are in the mix: seed 7's goes up on day 11 (seed 3's,
+    // the old choice, waits until day 20 behind its bakery and the homes it needs).
+    const sim = new Sim(7);
+    const days = 16;
     const was = new Map(sim.agents.map((a) => [a.id, { role: a.role, since: sim.time, from: '' }]));
     let moves = 0;
     let flips = 0;
@@ -142,11 +143,13 @@ describe('career openings', () => {
     // Before, four to six moves a day, with crafters stood down to labor and taken back within hours.
     expect(sim.map.buildings.some((b) => b.kind === 'workshop')).toBe(true);
     expect(flips).toBe(0);
-    // A builder lent to a short-handed craft and back within the day now and then is fine; seed-tuned (2 to 4). With
-    // private businesses in, seed 3 also sees a carpenter sent to the woods and back when the workshop's second
-    // carpenter slot comes and goes with the plank stock (day 12), the allocator's own jitter rather than a new churn.
+    // A builder lent to a short-handed craft and back within the day now and then is fine; seed-tuned (2 to 4). Four since
+    // the lake: autumn's fishers are promised ahead of the building crew, and one builder-woodcutter swap (day 5.5 to 5.8,
+    // no craft involved) comes of that; with private businesses in, a carpenter can also be sent to the woods and back
+    // when the workshop's second carpenter slot comes and goes with the plank stock. There are still no crafter flips.
     expect(backs).toBeLessThanOrEqual(4);
-    expect(moves / days).toBeLessThan(2.5);
+    // 2.57 a day with the lake's seasonal fishers (autumn's go on, spring's come off), well under the four to six of before.
+    expect(moves / days).toBeLessThan(3);
   }, 300_000);
 
   it('swapping one outdoor trade for another keeps their own hours', () => {
