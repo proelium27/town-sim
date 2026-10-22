@@ -73,7 +73,7 @@ export function tickSeasons(sim: Sim, dt: number): void {
   const first = sim.seasonSeen === -1;
   sim.seasonSeen = season;
   if (first) return;
-  sim.log(`${SEASONS[season]} has come to Northwind`, 'event', 'neutral').weight = NOTABLE;
+  sim.log(`${SEASONS[season]} has come to ${sim.name}`, 'event', 'neutral').weight = NOTABLE;
   sim.milestone(`${SEASONS[season]}, year ${sim.year}`);
   // The town's needs shift with the season (fishers from autumn), so jobs are looked over now, not at the next six-hourly pass.
   allocateRoles(sim);
