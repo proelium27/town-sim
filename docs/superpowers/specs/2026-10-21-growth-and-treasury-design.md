@@ -16,7 +16,7 @@ The clock was already sped up in PR #17: Fastest now runs 60 game minutes per re
 
 ## Goals
 
-- About 200 people within an hour of play, growing steadily rather than in a burst followed by a plateau.
+- About 200 people within an hour of play, growing the way real towns do: in booms and plateaus (see "Growth shape"), not in a straight line, and never stalling for good.
 - Buildings keep going up for the whole hour.
 - The treasury visibly grows as the town grows, because growth pays for itself the way it does in a real town.
 - Individual relationships stay followable at 200 people.
@@ -82,7 +82,18 @@ A real town is not everyone's employer. Most people work for private businesses;
   - Families arrive, not just single laborers.
   - Newcomers get their own home instead of filling a family's spare beds.
 - **Births** make up about one-third: couples can have more than two children, and extensions are built as the family grows rather than after it is overcrowded.
-- **Pacing:** 200 people in 150 game days is about +1.3 people per day overall.
+- **Pacing:** about 200 people by the end of an hour at Fastest (150 game days), reached through the growth shape below, not at a constant rate.
+
+### Growth shape: a staircase of S-curves (agreed)
+
+Real towns grow slowly at first, boom once something makes them attractive and growth feeds on itself, then level off as land, housing and jobs run short, until a new opportunity starts the next boom. Occasional setbacks knock them back. Townsfolk should feel the same:
+
+- **Each tier is a stage.** A village grows slowly. An unlock starts a boom: the town builds ahead of demand, newcomers come faster, and more people pay for more services, which draws more people. The boom levels off as housing, jobs and land catch up, and the town plateaus until the next unlock.
+- **Unlocks that start a boom**, for example: the workshop, a trade route, the town charter, new land opening up at a tier.
+- **Setbacks** make dips: an outbreak, a harsh winter, hard times. Growth recovers afterwards.
+- **Over an hour** the player sees two or three booms, not a steady climb, and ends around a couple hundred people.
+
+Left to the builder: which events count as unlocks, how strong each boom is, and how long the plateaus last. Measure the shape on several seeds (population per day over 150 days) and check that each town shows distinct booms and plateaus rather than a straight line or one early burst.
 
 ## Constraints
 
