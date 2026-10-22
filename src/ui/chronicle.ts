@@ -4,7 +4,7 @@ import { esc } from './util';
 
 type View = 'years' | 'family';
 
-/** The town's chronicle: year pages written from the town's records, obituaries, and family trees. */
+/** The town chronicle: year pages written from the town's records, obituaries, and family trees. */
 export class ChronicleBook {
   private el: HTMLElement;
   private view: View = 'years';
@@ -60,13 +60,13 @@ export class ChronicleBook {
   update(): void {
     if (!this.open) return;
     const s = this.sim;
-    const sig = JSON.stringify([this.view, this.focus, s.chronicle.length, s.history.length, s.year, s.agents.length, s.deceased.length, this.view === 'years' ? 0 : s.day]);
+    const sig = JSON.stringify([this.view, this.focus, s.name, s.chronicle.length, s.history.length, s.year, s.agents.length, s.deceased.length, this.view === 'years' ? 0 : s.day]);
     if (sig === this.sig) return;
     this.sig = sig;
     const scroll = this.el.querySelector('.bk-body')?.scrollTop ?? 0;
     this.el.innerHTML = `
       <header class="bk-head">
-        <h2>The ${esc(s.name)} Chronicle</h2>
+        <h2>The ${esc(this.sim.name)} Chronicle</h2>
         <div class="seg" role="tablist" aria-label="Chronicle">
           <button role="tab" data-act="view" data-view="years" aria-selected="${this.view === 'years'}">Years</button>
           <button role="tab" data-act="view" data-view="family" aria-selected="${this.view === 'family'}">Families</button>

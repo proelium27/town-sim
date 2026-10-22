@@ -1,6 +1,6 @@
 import { loadSim, saveSim } from '../sim/save';
 import type { Sim } from '../sim/sim';
-import { hhmm } from './util';
+import { download, hhmm } from './util';
 
 const KEY = 'townsfolk.save';
 /** A save that failed to load is moved here, so starting fresh never overwrites it. Holds the most recent one. */
@@ -203,13 +203,4 @@ export class Saves {
     clearAway();
     location.href = location.pathname;
   }
-}
-
-function download(text: string, name: string): void {
-  const a = Object.assign(document.createElement('a'), {
-    href: URL.createObjectURL(new Blob([text], { type: 'application/json' })),
-    download: name,
-  });
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }

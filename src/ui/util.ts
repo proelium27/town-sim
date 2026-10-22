@@ -37,3 +37,13 @@ export function linkNames(sim: Sim, e: Activity): string {
   }
   return html;
 }
+
+/** Hands the player a JSON file. */
+export function download(text: string, name: string): void {
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([text], { type: 'application/json' })),
+    download: name,
+  });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}

@@ -77,6 +77,8 @@ export function loadSim(text: string): Sim {
   // Anything added since the save was made starts from a sensible default.
   sim.stock = { ...emptyStock(), ...sim.stock };
   sim.departed ??= [];
+  sim.expected ??= [];
+  sim.travelSeen ??= [];
   for (const a of [...sim.agents, ...sim.deceased, ...sim.departed]) {
     backfillAgent(a);
     // Per-person backfills that set a need go before this generic fallback, or it would fill the need first.
@@ -111,6 +113,8 @@ export function loadSim(text: string): Sim {
     const { classic: _, ...neutral } = CLASSIC;
     sim.character = { ...neutral, ...sim.character };
   }
+  // Named before the player could rename it: the character's name (the original Northwind's, for the oldest saves).
+  if (!('name' in rest)) sim.name = sim.character.name;
   // The Sim starts at 0 terms, so check the file itself: a mayor in an older save has served one term.
   if (!('mayorTerms' in rest)) sim.mayorTerms = sim.mayor === null ? 0 : 1;
   sim.ledger = { ...emptyLedger(), ...sim.ledger };

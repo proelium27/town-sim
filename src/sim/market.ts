@@ -1,6 +1,7 @@
 import { type Good, GOOD_KEYS, goodNoun, MIN_PER_DAY, ROLES, SEASON_DAYS } from './defs';
 import { addMemory, first, kinship, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
+import { depart } from './travel';
 import { HEADLINE, NOTABLE, type Agent } from './types';
 import type { Household } from '../world/town';
 import { targetOf } from './workshop';
@@ -238,19 +239,8 @@ export function tickMarket(sim: Sim): void {
 function leaveTown(sim: Sim, fam: Agent[], h: Household): void {
   sim.hardDays[h.id] = 0;
   const home = h.name;
-  for (const a of fam) {
-    if (a.action.propId !== undefined && sim.reserved.get(a.action.propId) === a.id) sim.reserved.delete(a.action.propId);
-    for (const o of sim.agents) if (o.partner === a.id && !fam.includes(o)) o.partner = null;
-  }
-  const ids = new Set(fam.map((a) => a.id));
-  sim.agents = sim.agents.filter((a) => !ids.has(a.id));
-  sim.departed.push(...fam);
-  sim.populationVersion++;
   const names = fam.map(first).join(', ');
   sim.log(`Hard times: ${names} packed up and left the ${home}`, 'family', 'bad', fam[0]).weight = HEADLINE;
-  if (fam.some((a) => a.id === sim.mayor)) {
-    sim.mayor = null;
-    sim.log(`${sim.name} is without a mayor until the next election`, 'event', 'bad').weight = HEADLINE;
-  }
+  depart(sim, fam);
   sim.milestone(`${names} left ${sim.name}`);
 }

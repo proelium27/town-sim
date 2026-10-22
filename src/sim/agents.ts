@@ -90,6 +90,13 @@ function uniqueFirst(sim: Sim): string {
   return free.length ? sim.rng.pick(free) : `${sim.rng.pick(FIRST)} ${String.fromCharCode(65 + sim.rng.int(0, 25))}.`;
 }
 
+/** The name, with a numeral if someone in town (living, dead or moved away) already had it: "Ada Okafor II". */
+export function distinctName(sim: Sim, name: string): string {
+  const bare = name.replace(SUFFIX, '');
+  const prior = [...sim.agents, ...sim.deceased, ...sim.departed].filter((d) => d.name.replace(SUFFIX, '') === bare).map((d) => ordinalOf(d.name));
+  return prior.length ? `${bare} ${NUMERALS[Math.min(NUMERALS.length - 1, Math.max(...prior) + 1)]}` : name;
+}
+
 export interface NewAgentOpts {
   role: RoleKey;
   household: number;

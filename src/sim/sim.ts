@@ -14,6 +14,7 @@ import { tickPolitics } from './politics';
 import { tickRites } from './rites';
 import { tickLake } from './lake';
 import { type Fire, tickFires } from './fire';
+import { type Expected, tickTravel } from './travel';
 import { type Annal, type ChronicleEntry, tickChronicle } from './chronicle';
 import { tickSeasons } from './seasons';
 import { Rng } from './rng';
@@ -48,6 +49,12 @@ export class Sim {
   unburied: number[] = [];
   /** People who moved away in hard times. */
   departed: Agent[] = [];
+  /** The town's name: its character's to begin with, and the player can rename it. */
+  name = 'Northwind';
+  /** Carts of travelers on the road here. */
+  expected: Expected[] = [];
+  /** Journeys that have already come here, so a file can't be imported twice. */
+  travelSeen: string[] = [];
   /** The town's purse: shop takings, taxes and trade in; town wages and building costs out. */
   treasury = 400;
   /** Today's money in and out, and yesterday's for the Town view. */
@@ -108,6 +115,7 @@ export class Sim {
     this.seed = seed;
     this.rng = new Rng(seed);
     this.character = opts.character ?? rollCharacter(seed);
+    this.name = this.character.name;
     this.town = buildTown(seed, this.character);
     const { treasury, ...stores } = this.character.start;
     this.treasury += treasury ?? 0;
@@ -117,11 +125,6 @@ export class Sim {
     this.fuel = this.town.households.map(() => 8);
     if (opts.agents !== false) createAgents(this);
     this.milestone(`${this.agents.length} townsfolk call ${this.name} home`);
-  }
-
-  /** The town's name. */
-  get name(): string {
-    return this.character.name;
   }
 
   get map() {
@@ -223,6 +226,7 @@ export class Sim {
     tickSeasons(this, STEP);
     tickLake(this);
     tickFires(this, STEP);
+    tickTravel(this);
     tickMarket(this);
     tickPolitics(this);
     tickLife(this, STEP);
