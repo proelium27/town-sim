@@ -165,8 +165,21 @@ export class Sim {
     return `Day ${this.day + 1} · ${DAY_NAMES[this.weekday]} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
+  /**
+   * id -> agent, rebuilt whenever the agents array is replaced, grows or shrinks, or populationVersion changes.
+   * Swapping one agent for another in place (same array, same length) must bump populationVersion. Private, so saves skip it.
+   */
+  #byId = new Map<number, Agent>();
+  #indexed: { agents: Agent[] | null; length: number; version: number } = { agents: null, length: -1, version: -1 };
+
   agent(id: number | undefined): Agent | undefined {
-    return id === undefined ? undefined : this.agents.find((a) => a.id === id);
+    if (id === undefined) return undefined;
+    const ix = this.#indexed;
+    if (ix.agents !== this.agents || ix.length !== this.agents.length || ix.version !== this.populationVersion) {
+      this.#byId = new Map(this.agents.map((a) => [a.id, a]));
+      this.#indexed = { agents: this.agents, length: this.agents.length, version: this.populationVersion };
+    }
+    return this.#byId.get(id);
   }
 
   /** Living or dead. */

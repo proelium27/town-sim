@@ -1,7 +1,7 @@
 import { MEMORIES, type MemoryKind, NEED_KEYS, NEEDS, type NeedKey, type TraitKey } from './defs';
 import { clamp } from './rng';
 import { exposure } from './health';
-import type { Agent, Relation, Tone } from './types';
+import type { Agent, Memory, Relation, Tone } from './types';
 import type { Sim } from './sim';
 
 export const FRIEND = 35;
@@ -63,10 +63,17 @@ export function say(sim: Sim, a: Agent, text: string, tone: Tone = 'neutral', mi
 
 export function addMemory(sim: Sim, a: Agent, kind: MemoryKind, about?: Agent, scale = 1): void {
   const def = MEMORIES[kind];
-  const same = a.memories.filter((m) => m.kind === kind && m.about === about?.id);
-  if (same.length >= def.maxStack) {
-    same[0].created = sim.time;
-    same[0].expires = sim.time + def.duration;
+  // Counted in place: some memories are refreshed every step (starving, stinky), so no throwaway list.
+  let first: Memory | undefined;
+  let same = 0;
+  for (const m of a.memories) {
+    if (m.kind !== kind || m.about !== about?.id) continue;
+    first ??= m;
+    same++;
+  }
+  if (same >= def.maxStack) {
+    first!.created = sim.time;
+    first!.expires = sim.time + def.duration;
     return;
   }
   a.memories.push({
@@ -114,8 +121,23 @@ export function moodParts(a: Agent): MoodPart[] {
   return out;
 }
 
+/** The sum of moodParts, added up in the same order without building the list (it runs for everyone, every step). */
 export function moodTarget(a: Agent): number {
-  return clamp(moodParts(a).reduce((s, p) => s + p.value, 0), 0, 100);
+  let s = 55;
+  if (a.traits.includes('cheerful')) s += 8;
+  if (a.traits.includes('grumpy')) s += -8;
+  const n = a.needs;
+  let met = 0;
+  for (const k of NEED_KEYS) {
+    if (n[k] > 75) met++;
+    if (n[k] >= 30) continue;
+    const t = TRAIT_WEIGHT[k];
+    const w = t && a.traits.includes(t[0]) ? t[1] : NEEDS[k].weight;
+    s += -Math.round((30 - n[k]) * w);
+  }
+  if (met) s += met * 2;
+  for (const m of a.memories) s += m.mood;
+  return clamp(s, 0, 100);
 }
 
 export function moodWord(m: number): string {
