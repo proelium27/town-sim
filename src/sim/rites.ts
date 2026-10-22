@@ -1,6 +1,7 @@
 import { ageOf } from './agents';
 import { dreaming } from './aspirations';
-import { DAY_NAMES, MIN_PER_DAY, ROLES, type SkillKey } from './defs';
+import { standout } from './chronicle';
+import { DAY_NAMES, MIN_PER_DAY, ROLES } from './defs';
 import { andList, parkEventUntil } from './events';
 import { capacity, familyOf, members, moveTo } from './planner';
 import { addMemory, FRIEND, first, kinship, rel, say, shiftOpinion, think } from './social';
@@ -313,14 +314,6 @@ function speakerFor(sim: Sim, f: Funeral, dead: Agent): Agent | undefined {
   return here.sort((x, y) => rank(y) - rank(x) || (y.relations.get(dead.id)?.opinion ?? 0) - (x.relations.get(dead.id)?.opinion ?? 0))[0];
 }
 
-const SKILL_PHRASE: Record<SkillKey, string> = {
-  craft: 'could make anything with their hands',
-  cooking: 'cooked like nobody else',
-  charisma: 'could talk anyone round',
-  athletics: 'never sat still',
-  music: 'filled the house with music',
-};
-
 /** What the speaker says, from what the town knows of their life. Empty if there's nothing much to tell. */
 export function eulogy(sim: Sim, dead: Agent, mayor: boolean): string[] {
   const out: string[] = [];
@@ -330,8 +323,9 @@ export function eulogy(sim: Sim, dead: Agent, mayor: boolean): string[] {
     out.push(`worked as ${/^[aeiou]/.test(t) ? 'an' : 'a'} ${t}`);
   }
   if (mayor) out.push('served as mayor');
-  const best = (Object.keys(dead.skills) as SkillKey[]).sort((x, y) => dead.skills[y].level - dead.skills[x].level)[0];
-  if (best && dead.skills[best].level >= 6) out.push(SKILL_PHRASE[best]);
+  // What set them apart from the town, in the obituary's words.
+  const skill = standout(sim, dead);
+  if (skill) out.push(skill);
   const kids = dead.children.length;
   if (kids) out.push(`raised ${kids === 1 ? 'a child' : `${kids} children`}`);
   const grandkids = new Set(dead.children.flatMap((id) => sim.person(id)?.children ?? [])).size;

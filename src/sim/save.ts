@@ -4,6 +4,7 @@ import { CLASSIC } from './character';
 import { emptyLedger } from './market';
 import { Nav } from './nav';
 import { Sim } from './sim';
+import { HEADLINE } from './types';
 
 /** Bump when the saved shape changes, and add a step to MIGRATIONS that upgrades the old shape. */
 export const SAVE_VERSION = 1;
@@ -82,6 +83,9 @@ export function loadSim(text: string): Sim {
     // Prefer NeedDef.backfill in defs.ts for a need's starting value.
     for (const k of NEED_KEYS) a.needs[k] ??= NEEDS[k].backfill ?? 80;
   }
+  // The chronicle starts from whatever headlines the saved feed still holds.
+  if (!('chronicle' in rest)) sim.chronicle = sim.activity.filter((e) => (e.weight ?? 0) >= HEADLINE).map(({ t, text, agentId, otherId }) => ({ t, text, agentId, otherId }));
+  if (!('chronicleSeen' in rest)) sim.chronicleSeen = sim.activityVersion;
   sim.events.birthdays ??= [];
   sim.events.weddings ??= [];
   sim.events.funerals ??= [];
