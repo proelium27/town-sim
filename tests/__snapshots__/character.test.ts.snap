@@ -1,0 +1,13 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the original town > still grows the way it always did 1`] = `
+{
+  "meetings": [
+    "a farm because we will need more food as we grow",
+    "a schoolhouse because 2 kids have nowhere to learn",
+  ],
+  "projects": [
+    "Built River Farm",
+  ],
+}
+`;

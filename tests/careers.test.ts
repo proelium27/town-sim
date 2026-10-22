@@ -6,12 +6,14 @@ import { ROLES } from '../src/sim/defs';
 import { allocateRoles, findSite, openSlots, setRole } from '../src/sim/planner';
 import { CRAFT_ROLES } from '../src/sim/workshop';
 import { BLUEPRINTS } from '../src/world/blueprints';
+import { CLASSIC } from '../src/sim/character';
 import { Sim } from '../src/sim/sim';
 import type { Agent } from '../src/sim/types';
 
 describe('school', () => {
   it('kids build aptitudes in class', () => {
-    const sim = new Sim(7);
+    // The original town, which has its school by day four.
+    const sim = new Sim(7, { character: CLASSIC });
     for (let d = 0; d < 8 && !sim.map.buildings.some((b) => b.kind === 'school'); d++) sim.run(720);
     let day = sim.day + 1;
     while (day % 7 >= 5) day++;
