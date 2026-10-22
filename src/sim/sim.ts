@@ -16,6 +16,7 @@ import { tickLake } from './lake';
 import { type Fire, tickFires } from './fire';
 import { type Expected, tickTravel } from './travel';
 import { type Business, neighbourlyDinner } from './business';
+import { type Civic, freshCivic, tickCivic } from './civic';
 import { type Annal, type ChronicleEntry, tickChronicle } from './chronicle';
 import { tickSeasons } from './seasons';
 import { Rng } from './rng';
@@ -60,6 +61,11 @@ export class Sim {
   businesses: Business[] = [];
   /** The last evening a well-off family had neighbours over. */
   dinnerDay = -1;
+  /** Policies, approval, protests and promises. */
+  civic: Civic = freshCivic();
+  /** A mayor just recalled (barred from the special election), and the day it's held. */
+  recalled: number | null = null;
+  snapElection: number | null = null;
   /** The town's purse: shop takings, taxes and trade in; town wages and building costs out. */
   treasury = 400;
   /** Today's money in and out, and yesterday's for the Town view. */
@@ -233,6 +239,7 @@ export class Sim {
     tickFires(this, STEP);
     tickTravel(this);
     neighbourlyDinner(this);
+    tickCivic(this);
     tickMarket(this);
     tickPolitics(this);
     tickLife(this, STEP);

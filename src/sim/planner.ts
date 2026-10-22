@@ -280,6 +280,10 @@ export function proposals(sim: Sim): Proposal[] {
     const why = c.trade === 'market' && count('diner') === 0 ? 'market-day crowds need somewhere to eat' : sim.agents.length < 24 ? 'the café is getting crowded at lunch' : 'the café is packed every lunchtime';
     out.push({ bp: 'diner', score: 0.6 * cw, reason: why, forAgents: [], proposer: sim.agents.find((a) => a.traits.includes('foodie')) ?? charismatic(), name: nthName(c.dinerNames, count('diner')) });
   }
+  // A town needs a hall for its meetings (and somewhere for protests to gather).
+  if (sim.tier >= 1 && count('townhall') === 0) {
+    out.push({ bp: 'townhall', score: 0.85 * cw, reason: `${sim.name} is a town now and needs a hall for its meetings`, forAgents: [], proposer: sim.agent(sim.mayor ?? undefined) ?? charismatic(), name: `${sim.name} Town Hall` });
+  }
   // After a fire, wells: water close at hand is what saves a building. One for every eight homes or so.
   const homes = sim.map.buildings.filter((b) => b.kind === 'house').length;
   if (sim.firesEver > 0 && count('well') < Math.max(1, Math.ceil(homes / 8))) {
@@ -619,7 +623,8 @@ export function startProject(sim: Sim, p: Proposal): Project | null {
   sim.projects.push(pr);
   const who = p.proposer;
   const chair = sim.agent(sim.mayor ?? undefined);
-  sim.log(`${chair ? `Mayor ${first(chair)}'s town meeting` : 'Town meeting'}: ${who ? first(who) : 'the town'} proposed ${bp.noun} because ${p.reason}`, 'build', 'good', who).weight = NOTABLE;
+  const hall = sim.map.buildings.some((b) => b.kind === 'townhall') ? ' at the town hall' : '';
+  sim.log(`${chair ? `Mayor ${first(chair)}'s town meeting` : 'Town meeting'}${hall}: ${who ? first(who) : 'the town'} proposed ${bp.noun} because ${p.reason}`, 'build', 'good', who).weight = NOTABLE;
   if (p.owner) sim.log(`${first(p.owner)} put $${own} of their savings into ${p.name}${loan > 0 ? ` and borrowed $${Math.round(loan)} from the town` : ''}`, 'event', 'neutral', p.owner).weight = NOTABLE;
   if (who) {
     addMemory(sim, who, 'proposed');

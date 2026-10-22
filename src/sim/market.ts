@@ -3,14 +3,13 @@ import { addMemory, first, kinship, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
 import { depart } from './travel';
 import { settleBusinesses } from './business';
+import { bonusShare, taxRate } from './civic';
 import { HEADLINE, NOTABLE, type Agent } from './types';
 import type { Household } from '../world/town';
 import { targetOf } from './workshop';
 
 /** What a unit of each good is worth when the town has just the right amount. */
 export const BASE_PRICE: Record<Good, number> = { food: 3, wood: 1, stone: 1, firewood: 1.5, planks: 2, bricks: 2, furniture: 24, tools: 10, herbs: 1.5, medicine: 8 };
-/** The office earns from outside clients and pays this share in tax. */
-export const TAX = 0.15;
 /** Town jobs are paid from the treasury at this share of the nominal rate. */
 export const TOWN_WAGE = 0.45;
 /** A trader's cart visits every few days. */
@@ -53,9 +52,10 @@ export function payWage(sim: Sim, a: Agent, nominal: number): void {
   // Owners draw their pay from their own till each night.
   if (a.role === 'baker' || a.role === 'innkeeper') return;
   if (ROLES[a.role].workplace === 'office') {
-    a.money += nominal * (1 - TAX);
-    sim.treasury += nominal * TAX;
-    sim.ledger.taxes += nominal * TAX;
+    const tax = taxRate(sim);
+    a.money += nominal * (1 - tax);
+    sim.treasury += nominal * tax;
+    sim.ledger.taxes += nominal * tax;
     return;
   }
   const w = nominal * TOWN_WAGE;
@@ -179,8 +179,6 @@ export const RESERVE_MIN = 900;
 /** A new building has to leave a day's payroll in the treasury, and at least this much (spring payrolls run high). */
 export const PROJECT_CUSHION = 250;
 export const projectCushion = (sim: Sim): number => Math.max(PROJECT_CUSHION, sim.lastLedger.wages);
-/** Share of the money above the reserve paid out each midnight as bonuses to town workers. */
-export const BONUS_SHARE = 0.5;
 /** Town workers below this are topped up to it at midnight, as long as the treasury keeps HARDSHIP_KEEP. */
 export const HARDSHIP_FLOOR = 12;
 export const HARDSHIP_KEEP = 100;
@@ -207,7 +205,7 @@ function payOut(sim: Sim): void {
     think(sim, a, 'The town helped me out while money is tight.', 'good');
   }
   const reserve = Math.max(RESERVE_MIN, RESERVE_DAYS * sim.lastLedger.wages);
-  const pot = Math.floor((sim.treasury - reserve) * BONUS_SHARE);
+  const pot = Math.floor((sim.treasury - reserve) * bonusShare(sim));
   if (pot < 20 || !workers.length) return;
   // Weighted to those with the least: someone down to their last dollar gets several times a saver's share.
   const weight = (a: Agent) => 1 / (Math.max(0, a.money) + 25);

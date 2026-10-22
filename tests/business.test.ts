@@ -4,7 +4,8 @@ import { type Business, type BusinessKind, BUSINESSES, buildCost, closeBusiness,
 import { startFestival } from '../src/sim/events';
 import { ADULT_AGE, MIN_PER_DAY, RETIRE_AGE, YEARS_PER_DAY } from '../src/sim/defs';
 import { die, newcomers, tickLife } from '../src/sim/life';
-import { price, TAX } from '../src/sim/market';
+import { price } from '../src/sim/market';
+import { TAX_RATE } from '../src/sim/civic';
 import { completeProject, findSite, proposals, startProject } from '../src/sim/planner';
 import { loadSim, saveSim } from '../src/sim/save';
 import { Sim } from '../src/sim/sim';
@@ -22,13 +23,16 @@ const adults = (sim: Sim) => sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE
 function town(): Sim {
   const sim = new Sim(6);
   at(sim, 8, 9);
+  // Day 8 opens a season: a mayor fond of festivals would hold a fête tonight, and the tavern can't compete.
+  sim.civic.policies.festivals = 'normal';
   while (sim.agents.length < 22) newcomers(sim, 22 - sim.agents.length, true);
   return sim;
 }
 
 /** Someone with the itch and the savings to start a place. */
 function founder(sim: Sim, kind: BusinessKind, money = 400): Agent {
-  const a = adults(sim).find((x) => !ownedBy(sim, x) && x.role !== 'builder')!;
+  // Years from retirement: nobody that close starts a business.
+  const a = adults(sim).find((x) => !ownedBy(sim, x) && x.role !== 'builder' && ageOf(sim, x) < RETIRE_AGE - 15)!;
   a.traits = ['workaholic'];
   a.skills.cooking.level = 6;
   a.skills.charisma.level = 6;
@@ -70,7 +74,7 @@ describe('private businesses', () => {
     expect(pr.owner).toBe(rich.id);
     expect(pr.loan).toBe(0);
     expect(rich.money).toBe(400 - 196);
-    expect(sim.treasury).toBe(treasury + 196);
+    expect(sim.treasury).toBeCloseTo(treasury + 196, 6);
 
     const sim2 = town();
     const short = founder(sim2, 'bakery', 140);
@@ -79,7 +83,7 @@ describe('private businesses', () => {
     const pr2 = startProject(sim2, p2)!;
     expect(short.money).toBe(20);
     expect(pr2.loan).toBe(196 - 120);
-    expect(sim2.treasury).toBe(t2 + 120 - 76);
+    expect(sim2.treasury).toBeCloseTo(t2 + 120 - 76, 6);
     expect(sim2.activity.some((e) => /put \$120 of their savings into .* and borrowed \$76 from the town/.test(e.text))).toBe(true);
   }, 180_000);
 
@@ -98,8 +102,8 @@ describe('private businesses', () => {
     expect(customer.money).toBe(100 - meal);
     expect(biz.takings).toBe(meal);
     expect(biz.served).toBe(1);
-    expect(sim.treasury - treasury).toBeGreaterThan(meal * TAX);
-    expect(biz.till).toBeLessThan(FLOAT + meal * (1 - TAX));
+    expect(sim.treasury - treasury).toBeGreaterThan(meal * TAX_RATE.normal);
+    expect(biz.till).toBeLessThan(FLOAT + meal * (1 - TAX_RATE.normal));
     // The owner at their own counter pays the food and no more: no tax, nothing through the till.
     const till = biz.till;
     const takings = biz.takings;

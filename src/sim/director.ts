@@ -2,6 +2,7 @@ import type { Building, TownMap } from '../world/map';
 import { CORE_H, CORE_W } from '../world/town';
 import { parkEventUntil } from './events';
 import { weddingNames } from './rites';
+import { hallName, protestArea, SLOGANS } from './civic';
 import type { Sim } from './sim';
 import { first } from './social';
 import { type ActionKind, type Agent, HEADLINE, NOTABLE } from './types';
@@ -107,6 +108,11 @@ export function candidates(sim: Sim, rand: () => number = Math.random): Shot[] {
     const at = home ? center(home) : centroid(sim, [...w.couple, ...w.guests]);
     if (!at) continue;
     out.push({ key: `wedding:${w.couple[0]}`, kind: 'gathering', x: at[0], y: at[1], span: home ? 16 : 24, caption: `${weddingNames(sim, w)}'s wedding`, score: 28, hold: 15 });
+  }
+  const pr = sim.civic.protest;
+  if (pr?.on && pr.attendees.size >= 3) {
+    const area = protestArea(sim);
+    out.push({ key: `protest:${pr.at}`, kind: 'gathering', x: area.x + area.w / 2, y: area.y + area.h / 2, span: 16, caption: `Protest outside ${hallName(sim)}: "${SLOGANS[pr.grievance][0]}"`, score: 24, hold: 12 });
   }
   for (const f of sim.fires) {
     const b = sim.building(f.building);
