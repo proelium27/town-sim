@@ -328,4 +328,15 @@ describe('funerals', () => {
     const kid = sim.agents.find((a) => a.role === 'child' && a.children.length === 0)!;
     expect(eulogy(sim, kid, false).some((w) => /worked|raised|mayor/.test(w))).toBe(false);
   });
+
+  it('a eulogy speaks of what set them apart, not just their best skill', () => {
+    const sim = new Sim(7);
+    const a = sim.agents.find((x) => x.role !== 'child')!;
+    // Good with their hands like everyone else, but the town's cook.
+    for (const x of sim.agents) x.skills.craft.level = 7;
+    a.skills.cooking.level = 6;
+    const words = eulogy(sim, a, false);
+    expect(words.some((w) => /hands|making things|built things/.test(w))).toBe(false);
+    expect(words.some((w) => /cooked|hungry|their table/.test(w))).toBe(true);
+  });
 });

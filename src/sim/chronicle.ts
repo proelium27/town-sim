@@ -122,7 +122,7 @@ const SKILL_WORDS: Record<SkillKey, string[]> = {
 };
 
 /** The skill that set them apart from the rest of the town, not just their highest: craft tops almost everyone's list. */
-function standout(sim: Sim, dead: Agent): string | undefined {
+export function standout(sim: Sim, dead: Agent): string | undefined {
   const everyone = [...sim.agents, ...sim.deceased.filter((d) => d.id !== dead.id), dead];
   let best: { key: SkillKey; edge: number } | undefined;
   for (const key of Object.keys(SKILL_WORDS) as SkillKey[]) {
