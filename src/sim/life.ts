@@ -4,13 +4,11 @@ import { ADULT_AGE, RETIRE_AGE, ROLES } from './defs';
 import { graveSlots } from '../world/blueprints';
 import { beginCareer, chooseCareer, finishApprenticeships } from './careers';
 import { tickTownHealth } from './health';
-import { allocateRoles, capacity, familyOf, members, moveTo, newHousehold, setRole } from './planner';
-import { addMemory, first, kinship, rel, say, think } from './social';
+import { allocateRoles, capacity, members, moveTo, newHousehold, setRole } from './planner';
+import { courtship, scheduleFuneral } from './rites';
+import { addMemory, first, kinship, think } from './social';
 import { HEADLINE, NOTABLE, type Agent } from './types';
 import type { Sim } from './sim';
-
-const related = (a: Agent, b: Agent) =>
-  a.parents.includes(b.id) || b.parents.includes(a.id) || a.parents.some((p) => b.parents.includes(p));
 
 /** People are checked a few times a day for life events. */
 export function tickLife(sim: Sim, dt: number): void {
@@ -19,7 +17,7 @@ export function tickLife(sim: Sim, dt: number): void {
   sim.timers.life = 120;
   growUp(sim);
   finishApprenticeships(sim);
-  romance(sim);
+  courtship(sim);
   births(sim);
   tickTownHealth(sim);
   takeInChildren(sim);
@@ -49,43 +47,6 @@ function growUp(sim: Sim): void {
       think(sim, a, 'Retirement. I could get used to this.', 'good');
       sim.log(`${a.name} retired at ${Math.floor(age)}`, 'family', 'neutral', a).weight = NOTABLE;
       allocateRoles(sim);
-    }
-  }
-}
-
-function romance(sim: Sim): void {
-  const singles = sim.agents.filter((a) => !a.partner && ageOf(sim, a) >= 20);
-  for (const a of singles) {
-    if (a.partner) continue;
-    for (const b of singles) {
-      if (b.id <= a.id || b.partner || related(a, b)) continue;
-      if (Math.abs(ageOf(sim, a) - ageOf(sim, b)) > 15) continue;
-      const ra = rel(a, b);
-      const rb = rel(b, a);
-      if (ra.opinion < 55 || rb.opinion < 55 || ra.familiarity < 30) continue;
-      if (!sim.rng.chance(0.25)) continue;
-      a.partner = b.id;
-      b.partner = a.id;
-      ra.opinion = Math.min(100, ra.opinion + 15);
-      rb.opinion = Math.min(100, rb.opinion + 15);
-      addMemory(sim, a, 'newPartner', b);
-      addMemory(sim, b, 'newPartner', a);
-      say(sim, a, '♥', 'good', 20);
-      say(sim, b, '♥', 'good', 20);
-      think(sim, a, `${first(b)} and I are together now.`, 'good');
-      think(sim, b, `I think ${first(a)} might be the one.`, 'good');
-      sim.log(`${first(a)} and ${first(b)} fell in love`, 'family', 'good', a, b).weight = NOTABLE;
-      // Move in together right away if one of their homes has room for the other.
-      for (const [stay, go] of [[a, b], [b, a]] as const) {
-        const fam = familyOf(sim, go).filter((x) => x.id !== stay.id && x.household === go.household);
-        if (sim.town.households[stay.household].building >= 0 && capacity(sim, stay.household) - members(sim, stay.household).length >= fam.length) {
-          moveTo(sim, fam, stay.household);
-          for (const f of fam) addMemory(sim, f, 'movedIn');
-          sim.log(`${first(go)} moved in with ${first(stay)}`, 'family', 'good', go, stay).weight = NOTABLE;
-          break;
-        }
-      }
-      break;
     }
   }
 }
@@ -120,13 +81,18 @@ function births(sim: Sim): void {
 
 export function die(sim: Sim, a: Agent, cause: string): void {
   if (a.action.propId !== undefined && sim.reserved.get(a.action.propId) === a.id) sim.reserved.delete(a.action.propId);
+  const wasMayor = sim.mayor === a.id;
   sim.agents = sim.agents.filter((x) => x.id !== a.id);
+  a.died = { at: sim.time, mayor: wasMayor };
   sim.deceased.push(a);
   sim.populationVersion++;
   const partner = sim.agent(a.partner ?? undefined);
   if (partner) partner.partner = null;
+  // Whoever they were courting or engaged to is free again (and grieves below, like family).
+  const sweetheart = sim.agent(a.court?.with);
+  if (sweetheart) sweetheart.court = undefined;
   for (const o of sim.agents) {
-    const close = o.id === a.partner || a.children.includes(o.id) || a.parents.includes(o.id) || (o.relations.get(a.id)?.opinion ?? 0) >= 40;
+    const close = o.id === a.partner || o.id === sweetheart?.id || a.children.includes(o.id) || a.parents.includes(o.id) || (o.relations.get(a.id)?.opinion ?? 0) >= 40;
     if (close) {
       addMemory(sim, o, 'grief', a, o.id === a.partner ? 1.4 : 1);
       think(sim, o, `I can't believe ${first(a)} is gone.`, 'bad');
@@ -138,7 +104,8 @@ export function die(sim: Sim, a: Agent, cause: string): void {
     sim.log(`${sim.name} is without a mayor until the next election`, 'event', 'bad').weight = HEADLINE;
   }
   sim.milestone(`${a.name} passed away`);
-  if (!bury(sim, a.id)) sim.unburied.push(a.id);
+  if (bury(sim, a.id)) scheduleFuneral(sim, a, wasMayor);
+  else sim.unburied.push(a.id);
   takeInChildren(sim);
 }
 

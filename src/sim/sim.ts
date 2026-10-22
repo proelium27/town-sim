@@ -11,6 +11,7 @@ import { Nav } from './nav';
 import { tickPlanner } from './planner';
 import { emptyLedger, tickMarket } from './market';
 import { tickPolitics } from './politics';
+import { tickRites } from './rites';
 import { tickSeasons } from './seasons';
 import { Rng } from './rng';
 import { type Car, tickTraffic } from './traffic';
@@ -205,6 +206,7 @@ export class Sim {
     this.time += STEP;
     if (this.day !== dayBefore) for (const a of this.agents) a.workedToday = 0;
     tickEvents(this, STEP);
+    tickRites(this);
     tickSeasons(this, STEP);
     tickMarket(this);
     tickPolitics(this);

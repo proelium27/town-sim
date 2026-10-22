@@ -1,6 +1,7 @@
 import type { Building, TownMap } from '../world/map';
 import { CORE_H, CORE_W } from '../world/town';
 import { parkEventUntil } from './events';
+import { weddingNames } from './rites';
 import type { Sim } from './sim';
 import { first } from './social';
 import { type ActionKind, type Agent, HEADLINE, NOTABLE } from './types';
@@ -97,6 +98,20 @@ export function candidates(sim: Sim, rand: () => number = Math.random): Shot[] {
     if (!home || !host || b.guests.size === 0) continue;
     const [x, y] = center(home);
     out.push({ key: `building:${home.id}`, kind: 'gathering', x, y, span: 16, caption: `${first(host)}'s birthday party`, score: 18 + Math.min(6, b.guests.size), hold: 12 });
+  }
+  for (const w of ev.weddings) {
+    if (!w.started) continue;
+    const home = w.home !== undefined ? sim.building(sim.town.households[w.home]?.building) : undefined;
+    const at = home ? center(home) : centroid(sim, [...w.couple, ...w.guests]);
+    if (!at) continue;
+    out.push({ key: `wedding:${w.couple[0]}`, kind: 'gathering', x: at[0], y: at[1], span: home ? 16 : 24, caption: `${weddingNames(sim, w)}'s wedding`, score: 28, hold: 15 });
+  }
+  const cemetery = sim.map.buildings.find((b) => b.kind === 'cemetery');
+  for (const f of ev.funerals) {
+    const dead = sim.person(f.dead);
+    if (!f.started || !cemetery || !dead || f.guests.size === 0) continue;
+    const [x, y] = center(cemetery);
+    out.push({ key: `funeral:${f.dead}`, kind: 'gathering', x, y, span: 18, caption: `${dead.name}'s funeral`, score: 26, hold: 15 });
   }
   if (ev.party && ev.party.attendees.size >= 3) {
     const office = sim.map.buildings.find((b) => b.kind === 'office');

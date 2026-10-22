@@ -8,6 +8,7 @@ import { checkTier, EXTENSION_W, extensionSite, type ExtensionSite, stampExtensi
 import { bury } from './life';
 import { projectCushion } from './market';
 import { agendaWeight } from './politics';
+import { layToRest } from './rites';
 import { kidCap, nthName } from './character';
 import { canSupply, CRAFT_ROLES, hasWorkshop, rawOf, RECIPES, targetOf, wanted } from './workshop';
 import { addMemory, first, think } from './social';
@@ -190,8 +191,8 @@ export function proposals(sim: Sim): Proposal[] {
     const fam = familyOf(sim, a);
     const sharedHome = a.household === p.household && members(sim, a.household).every((m) => fam.includes(m));
     if (sharedHome) continue;
-    // A couple living apart, or sharing with housemates, wants a place of their own.
-    out.push({ bp: 'house', score: 1.45 * hw, reason: `${first(a)} and ${first(p)} want a home of their own`, forAgents: fam, proposer: a, name: homeName(sim, a), near: settleNear(sim, [a, p]) });
+    // A couple living apart, or sharing with housemates, wants a place of their own; apart is pressing.
+    out.push({ bp: 'house', score: (a.household === p.household ? 1.45 : 2.1) * hw, reason: `${first(a)} and ${first(p)} want a home of their own`, forAgents: fam, proposer: a, name: homeName(sim, a), near: settleNear(sim, [a, p]) });
   }
   for (const h of sim.town.households) {
     if (h.building < 0) continue;
@@ -475,7 +476,7 @@ function startProject(sim: Sim, p: Proposal): Project | null {
   const bp = BLUEPRINTS[p.bp];
   // The treasury has to be able to pay for it and still meet payroll; a home for the homeless gets built on credit,
   // and a cemetery for the unburied only has to be affordable.
-  const urgent = p.bp === 'house' && p.forAgents.some((a) => sim.town.households[a.household].building < 0);
+  const urgent = p.bp === 'house' && p.forAgents.some((a) => sim.town.households[a.household].building < 0 || (a.partner !== null && sim.agent(a.partner)?.household !== a.household));
   const cushion = p.bp === 'cemetery' && sim.unburied.length ? 0 : projectCushion(sim);
   if (sim.treasury - bp.coins < cushion && !urgent) return null;
   const wing = p.extends;
@@ -561,6 +562,7 @@ export function completeProject(sim: Sim, pr: Project): void {
   if (pr.blueprint === 'cemetery') {
     const laid = sim.unburied.filter((id) => bury(sim, id));
     sim.unburied = sim.unburied.filter((id) => !laid.includes(id));
+    for (const id of laid) layToRest(sim, sim.person(id)!);
     if (laid.length) sim.log(`${laid.map((id) => sim.person(id)!.name).join(', ')} ${laid.length > 1 ? 'were' : 'was'} laid to rest at ${pr.name}`, 'family', 'neutral').weight = NOTABLE;
   }
   if (pr.blueprint !== 'house') allocateRoles(sim);

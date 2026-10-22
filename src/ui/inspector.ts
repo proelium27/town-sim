@@ -140,7 +140,9 @@ export class Inspector {
     set('age', String(age));
     set('title', `${role.title}${wpName ? ` · ${esc(wpName)}` : ''}${this.sim.mayor === a.id ? ' · <b>Mayor</b>' : ''}`, true);
     const hh = this.sim.town.households[a.household];
-    set('home', hh.building >= 0 ? `lives at ${esc(hh.name)}` : 'no home yet', true);
+    const sweet = this.sim.agent(a.court?.with);
+    const court = sweet ? ` · ${a.court!.stage === 'engaged' ? 'engaged to' : 'courting'} <b>${esc(sweet.name.split(' ')[0])}</b>` : '';
+    set('home', `${hh.building >= 0 ? `lives at ${esc(hh.name)}` : 'no home yet'}${court}`, true);
     // Family is the bond level above close friends: everyone related by blood or marriage, closest kin first.
     const KIN_ORDER: Kin[] = ['partner', 'parent', 'child', 'sibling', 'stepparent', 'stepchild', 'grandparent', 'grandchild', 'in-law'];
     const famIds: [number, Kin][] = [

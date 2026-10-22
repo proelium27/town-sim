@@ -235,7 +235,8 @@ export type MemoryKind =
   | 'birthday' | 'myBirthday' | 'familyDinner' | 'paidRespects' | 'eveningWalk'
   | 'snowDay' | 'cozyFire' | 'coldHome' | 'blizzard' | 'madeSomething' | 'toolBroke' | 'unpaid' | 'broke' | 'qualified'
   | 'feelingIll' | 'hurt' | 'recovered' | 'frail' | 'caredFor' | 'lookedAfter' | 'proudTown' | 'roomToBreathe'
-  | 'wonElection' | 'lostElection' | 'myCandidateWon';
+  | 'wonElection' | 'lostElection' | 'myCandidateWon'
+  | 'engaged' | 'married' | 'wedding' | 'heartbroken' | 'funeral';
 
 export interface MemoryDef {
   label: string;
@@ -315,4 +316,9 @@ export const MEMORIES: Record<MemoryKind, MemoryDef> = {
   wonElection: { label: 'Elected mayor', mood: 10, duration: 2 * D, major: true, maxStack: 1 },
   lostElection: { label: 'Lost the election', mood: -4, duration: D, major: true, maxStack: 1 },
   myCandidateWon: { label: 'My candidate won', mood: 3, duration: D, major: false, maxStack: 1 },
+  engaged: { label: 'Got engaged', mood: 12, duration: 2 * D, major: true, maxStack: 1 },
+  married: { label: 'Got married', mood: 16, duration: 3 * D, major: true, maxStack: 1 },
+  wedding: { label: 'Went to a wedding', mood: 8, duration: 1.5 * D, major: true, maxStack: 2 },
+  heartbroken: { label: 'Heartbroken', mood: -10, duration: 2 * D, major: true, maxStack: 1 },
+  funeral: { label: 'Said goodbye at the funeral', mood: 2, duration: 2 * D, major: false, maxStack: 2 },
 };

@@ -83,6 +83,8 @@ export function loadSim(text: string): Sim {
     for (const k of NEED_KEYS) a.needs[k] ??= NEEDS[k].backfill ?? 80;
   }
   sim.events.birthdays ??= [];
+  sim.events.weddings ??= [];
+  sim.events.funerals ??= [];
   sim.events.wet ??= 0;
   sim.events.seasonal ??= null;
   sim.events.snowstorm ??= null;

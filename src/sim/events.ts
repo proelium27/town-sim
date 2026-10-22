@@ -26,6 +26,10 @@ export interface EventState {
   wet: number;
   /** Birthday parties happening right now, one per household. */
   birthdays: Birthday[];
+  /** Weddings planned or under way. */
+  weddings: import('./rites').Wedding[];
+  /** Funerals planned or under way. */
+  funerals: import('./rites').Funeral[];
   /** Day the schedule below was planned for. */
   plannedDay: number;
   plan: { at: number; kind: 'standup' | 'pizza' | 'party' | 'coffee' | 'rain' | 'birthday' | 'storm' | 'snowstorm' | 'trader'; length: number; host?: number }[];
@@ -89,7 +93,7 @@ export function birthdayOf(birth: number): number {
 }
 
 export function initialEvents(): EventState {
-  return { standup: null, pizza: null, party: null, rain: null, coffeeBroken: false, drought: null, festival: null, seasonal: null, snowstorm: null, wet: 0, birthdays: [], plannedDay: -1, plan: [] };
+  return { standup: null, pizza: null, party: null, rain: null, coffeeBroken: false, drought: null, festival: null, seasonal: null, snowstorm: null, wet: 0, birthdays: [], weddings: [], funerals: [], plannedDay: -1, plan: [] };
 }
 
 /** Lays out the day's happenings at midnight (or on the first tick). */
