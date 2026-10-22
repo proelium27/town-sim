@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CATCH, lakeCells } from '../src/sim/lake';
 import { newcomers } from '../src/sim/life';
 import { allocateRoles, findDockSite, proposals, roleDemand, setRole } from '../src/sim/planner';
+import { CLASSIC } from '../src/sim/character';
 import { Sim } from '../src/sim/sim';
 import { BLUEPRINTS } from '../src/world/blueprints';
 
@@ -16,9 +17,10 @@ function buildDock(sim: Sim) {
   return b;
 }
 
+// The original Northwind, on the shore of its lake: most towns have water, but not every one (seed 7 is woodland).
 describe('the lake', () => {
   it('there is a spot on the shore for a dock, and its pier reaches out over the water', () => {
-    const sim = new Sim(7);
+    const sim = new Sim(7, { character: CLASSIC });
     const site = findDockSite(sim);
     expect(site).not.toBeNull();
     buildDock(sim);
@@ -40,7 +42,7 @@ describe('the lake', () => {
   });
 
   it('a town with mouths to feed proposes a dock before winter', () => {
-    const sim = new Sim(7);
+    const sim = new Sim(7, { character: CLASSIC });
     at(sim, 2, 9);
     // Either it's on the table, or (with a free crew) already under way.
     const dock = sim.projects.find((p) => p.blueprint === 'dock');
@@ -49,13 +51,13 @@ describe('the lake', () => {
 
   it('the dock is up before the first frost, even with a big project already on the go', () => {
     // Seed 11 used to propose it only in the second half of autumn, with the school ahead of it.
-    const sim = new Sim(11);
+    const sim = new Sim(11, { character: CLASSIC });
     at(sim, 4, 0);
     expect(sim.map.buildings.some((b) => b.kind === 'dock') || sim.projects.some((p) => p.blueprint === 'dock')).toBe(true);
   }, 120_000);
 
   it('in autumn the dock outranks a new home, and is a rush job', () => {
-    const sim = new Sim(7);
+    const sim = new Sim(7, { character: CLASSIC });
     sim.time = 4 * 1440 + 8 * 60;
     const dock = proposals(sim).find((p) => p.bp === 'dock')!;
     expect(dock.rush).toBe(true);
@@ -63,7 +65,7 @@ describe('the lake', () => {
   });
 
   it('fishers are sized by the town, and the food lever moves the headcount in every season', () => {
-    const sim = new Sim(7);
+    const sim = new Sim(7, { character: CLASSIC });
     buildDock(sim);
     const wanted = () => roleDemand(sim).filter(([r]) => r === 'fisher').reduce((s, [, n]) => s + n, 0);
     const places = sim.map.props.filter((p) => p.use === 'fish').length;
@@ -93,7 +95,7 @@ describe('the lake', () => {
   });
 
   it('the promised fisher is on the pier as autumn arrives, not at the next shuffle', () => {
-    const sim = new Sim(23);
+    const sim = new Sim(23, { character: CLASSIC });
     at(sim, 3, 12);
     buildDock(sim);
     at(sim, 4, 7);
@@ -101,7 +103,7 @@ describe('the lake', () => {
   }, 120_000);
 
   it('fishers bring food in from the pier', () => {
-    const sim = new Sim(7);
+    const sim = new Sim(7, { character: CLASSIC });
     at(sim, 0, 9);
     const dock = buildDock(sim);
     // Fishers are staffed after the farms and the building crew, so a founding town may have none spare yet.
@@ -126,7 +128,7 @@ describe('the lake', () => {
   });
 
   it('the lake freezes in winter, people skate on it, and the ice breaks up in spring', () => {
-    const sim = new Sim(7);
+    const sim = new Sim(7, { character: CLASSIC });
     const { water } = lakeCells(sim.map);
     const w = water[Math.floor(water.length / 2)];
     expect(sim.map.walkable(sim.map.cx(w), sim.map.cy(w))).toBe(false);
@@ -147,7 +149,7 @@ describe('the lake', () => {
 
   it('a rush dock goes up alongside a home rather than in its place', () => {
     // Seed 6 starts its dock in late summer on a lot that takes days to clear, with one builder to spare.
-    const sim = new Sim(6);
+    const sim = new Sim(6, { character: CLASSIC });
     const houses = () => sim.map.buildings.filter((b) => b.kind === 'house').length;
     while (!sim.projects.some((p) => p.blueprint === 'dock') && sim.time < 5 * 1440) sim.run(30);
     const dock = sim.projects.find((p) => p.blueprint === 'dock');
@@ -157,5 +159,15 @@ describe('the lake', () => {
     expect(sim.projects.some((p) => p.blueprint === 'dock')).toBe(true);
     // Its slot is outside the town's limit, so the home the town wants is under way (or done) too.
     expect(sim.projects.some((p) => p.blueprint === 'house') || houses() > before).toBe(true);
+  }, 300_000);
+
+  it('a town with no lake never proposes a dock or calls for fishers', () => {
+    const sim = new Sim(7);
+    expect(sim.character.lakes.length).toBe(0);
+    while (sim.agents.length < 20) newcomers(sim, 3, true);
+    sim.run(3 * 1440 + 12 * 60 - sim.time);
+    expect(findDockSite(sim)).toBeNull();
+    expect(proposals(sim).some((p) => p.bp === 'dock')).toBe(false);
+    expect(roleDemand(sim).some(([r]) => r === 'fisher')).toBe(false);
   }, 300_000);
 });

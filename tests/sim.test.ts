@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { goodNoun, plural, ROLES } from '../src/sim/defs';
 import { tickEvents } from '../src/sim/events';
+import { CLASSIC } from '../src/sim/character';
 import { Sim } from '../src/sim/sim';
 
 /** Advance to a given day index and hour. */
@@ -9,7 +10,8 @@ function runTo(sim: Sim, day: number, hour: number): void {
 }
 
 describe('daily routines', () => {
-  const sim = new Sim(11);
+  // The original town: its office headcount and opening hours are what these check.
+  const sim = new Sim(11, { character: CLASSIC });
 
   it('everyone is asleep at home in the small hours', () => {
     runTo(sim, 1, 2.5);

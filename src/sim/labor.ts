@@ -225,8 +225,8 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
 
   // Gathering for the stockpile, plus the logs still to be split for winter.
   const mw = PRIORITY_WEIGHT[sim.priorities.materials];
-  const woodTarget = 90 * mw + firewoodShort(sim) * 0.7;
-  const stoneTarget = 60 * mw;
+  const woodTarget = 90 * mw * sim.character.woodStock + firewoodShort(sim) * 0.7;
+  const stoneTarget = 60 * mw * sim.character.stoneStock;
   const woodWant = woodTarget - sim.stock.wood;
   const stoneWant = stoneTarget - sim.stock.stone;
   if (!storm && (role === 'woodcutter' || builderish) && (woodWant > 0 || stoneWant > 0)) {
