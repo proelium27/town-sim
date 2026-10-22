@@ -129,6 +129,8 @@ export function pack(sim: Sim, party: Agent[]): TravelerFile {
  * returns the file to hand on. Kids left behind are taken in by family, as when someone dies.
  */
 export function sendAway(sim: Sim, party: Agent[]): TravelerFile {
+  // Places they own are handed on first, so any payout is in their purse before it's packed.
+  for (const a of party) succession(sim, a, 'left', party);
   const file = pack(sim, party);
   // Whatever won't fit in a purse stays behind with the family, as a death's savings would.
   const surplus = party.map((a) => a.money - file.people[party.indexOf(a)].money);
@@ -145,7 +147,7 @@ export function sendAway(sim: Sim, party: Agent[]): TravelerFile {
 /** Takes people out of town, tidying every tie the town keeps to them. Shared by journeys and hard-times leaving. */
 export function depart(sim: Sim, party: Agent[]): void {
   const ids = new Set(party.map((a) => a.id));
-  for (const a of party) succession(sim, a);
+  for (const a of party) succession(sim, a, 'left', party);
   for (const a of party) {
     if (a.action.propId !== undefined && sim.reserved.get(a.action.propId) === a.id) sim.reserved.delete(a.action.propId);
   }

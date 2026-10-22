@@ -4,8 +4,7 @@ import type { Household } from '../world/town';
 import { ageOf, hoursOf, makeSchedule, newTask, surnameOf } from './agents';
 import { ADULT_AGE, type Bill, billGoods, type Good, GOODS, MIN_PER_DAY, PRIORITY_SHARE, PRIORITY_WEIGHT, ROLES, type PriorityKey, type RoleKey } from './defs';
 import { foodBalance } from './economy';
-import { BUSINESSES, founderFor, openBusiness } from './business';
-import { BASE_PRICE } from './market';
+import { BUSINESSES, type BusinessKind, buildCost, founderFor, openBusiness } from './business';
 import { checkTier, EXTENSION_W, extensionSite, type ExtensionSite, stampExtension } from './growth';
 import { bury } from './life';
 import { projectCushion } from './market';
@@ -255,8 +254,8 @@ export function proposals(sim: Sim): Proposal[] {
   // Private businesses: someone with savings and the trade for it proposes a place of their own.
   for (const kind of ['bakery', 'tavern'] as const) {
     const def = BUSINESSES[kind];
-    // One once the town is big enough, a second past another 20 people; going up counts too.
-    const have = sim.businesses.filter((b) => b.kind === kind && b.owner !== null).length + sim.projects.filter((pr) => pr.blueprint === kind).length;
+    // One once the town is big enough, a second past another 20 people; going up counts too, and so does a place the town took over.
+    const have = sim.businesses.filter((b) => b.kind === kind).length + sim.projects.filter((pr) => pr.blueprint === kind).length;
     if (sim.agents.length < def.pop || have >= Math.min(2, 1 + Math.floor((sim.agents.length - def.pop) / 20))) continue;
     const founder = founderFor(sim, kind);
     if (!founder) continue;
@@ -494,7 +493,7 @@ export function startProject(sim: Sim, p: Proposal): Project | null {
   const urgent = p.bp === 'house' && p.forAgents.some((a) => sim.town.households[a.household].building < 0);
   const cushion = p.bp === 'cemetery' && sim.unburied.length ? 0 : projectCushion(sim);
   // A founder pays for the plot and the materials themselves, and borrows what their savings don't cover.
-  const total = p.owner ? bp.coins + Object.entries(bp.cost).reduce((s, [g, n]) => s + (n ?? 0) * BASE_PRICE[g as Good], 0) : 0;
+  const total = p.owner ? buildCost(p.bp as BusinessKind) : 0;
   const own = p.owner ? Math.min(total, Math.max(0, Math.floor(p.owner.money - 20))) : 0;
   const loan = total - own;
   if (p.owner ? sim.treasury - loan < cushion : sim.treasury - bp.coins < cushion && !urgent) return null;

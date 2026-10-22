@@ -42,6 +42,8 @@ function growUp(sim: Sim): void {
       think(sim, a, `Eighteen! Time to pull my weight as a ${ROLES[a.role].title.toLowerCase()}.`, 'good');
       allocateRoles(sim);
     } else if (a.role !== 'retired' && a.role !== 'child' && age >= RETIRE_AGE) {
+      // A place of their own is handed on (to a partner or grown child) or sold to the town before they put their feet up.
+      succession(sim, a, 'retired');
       setRole(sim, a, 'retired', null);
       think(sim, a, 'Retirement. I could get used to this.', 'good');
       sim.log(`${a.name} retired at ${Math.floor(age)}`, 'family', 'neutral', a).weight = NOTABLE;
@@ -82,8 +84,9 @@ export function die(sim: Sim, a: Agent, cause: string): void {
   const wasMayor = sim.mayor === a.id;
   a.diedAt = sim.time;
   // Their savings and any business pass to family before they're gone from the list.
+  // (the business first: if the town buys it, the owner's payout is part of what they leave)
+  succession(sim, a, 'died');
   inherit(sim, a);
-  succession(sim, a);
   sim.agents = sim.agents.filter((x) => x.id !== a.id);
   sim.deceased.push(a);
   sim.populationVersion++;

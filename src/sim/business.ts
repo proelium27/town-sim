@@ -1,11 +1,13 @@
 import { ageOf } from './agents';
-import { ADULT_AGE, MIN_PER_DAY, type RoleKey, SEASON_DAYS } from './defs';
+import { ADULT_AGE, type Good, MIN_PER_DAY, RETIRE_AGE, type RoleKey, SEASON_DAYS } from './defs';
+import { passOnMoney } from './life';
 import { BASE_PRICE, price, spend, TAX } from './market';
 import { setRole } from './planner';
 import { addMemory, first, think } from './social';
 import { Rng } from './rng';
 import type { Sim } from './sim';
 import { type Agent, HEADLINE, NOTABLE } from './types';
+import { BLUEPRINTS } from '../world/blueprints';
 
 /**
  * Private businesses. Someone with savings, a head for it and the trade proposes a bakery or a tavern of their own at
@@ -76,10 +78,14 @@ export function priceMood(sim: Sim): number {
 /** What a meal costs at the café or a town-run place. */
 export const townMeal = (sim: Sim) => Math.round(5 + price(sim, 'food') * 1.5);
 
-/** What something costs here: a meal, a coffee, or a drink at the tavern. */
-export function priceAt(sim: Sim, building: number | undefined, item: 'meal' | 'coffee' | 'drink'): number {
+/**
+ * What something costs here: a meal, a coffee, or a drink at the tavern. The owner at their own place only covers the
+ * food (a meal is the town's food price; a coffee or a drink is on the house).
+ */
+export function priceAt(sim: Sim, building: number | undefined, item: 'meal' | 'coffee' | 'drink', who?: Agent): number {
   const base = item === 'meal' ? townMeal(sim) : item === 'coffee' ? 3 : 5;
   const biz = businessAt(sim, building);
+  if (biz?.owner != null && who && biz.owner === who.id) return item === 'meal' ? price(sim, 'food') : 0;
   return biz?.owner != null ? Math.max(1, Math.round(base * priceMood(sim))) : base;
 }
 
@@ -88,9 +94,10 @@ export function priceAt(sim: Sim, building: number | undefined, item: 'meal' | '
  * bought from the town's stores; anywhere else it goes to the treasury as before.
  */
 export function sell(sim: Sim, a: Agent, building: number | undefined, item: 'meal' | 'coffee' | 'drink'): void {
-  const amount = priceAt(sim, building, item);
+  const amount = priceAt(sim, building, item, a);
   const biz = businessAt(sim, building);
-  if (!biz || biz.owner === null) {
+  // The owner at their own counter pays what the food cost the town and nothing more: no tax, nothing through the till.
+  if (!biz || biz.owner === null || biz.owner === a.id) {
     spend(sim, a, amount);
     return;
   }
@@ -113,14 +120,29 @@ export function sell(sim: Sim, a: Agent, building: number | undefined, item: 'me
   }
 }
 
-/** Who'd propose a business of this kind, if anyone: savings, the trade for it, and the itch to run something. */
+/** Years before retirement inside which nobody starts a place (people age two years a day): they'd hand it on almost at once. */
+const RETIRE_MARGIN = 8;
+
+/**
+ * Who'd propose a business of this kind, if anyone: the minimum savings, the trade for it, the itch to run something
+ * and some years left to work. The best fit and the keenest win, not the richest, so a founder short of the cost
+ * borrows the rest from the town.
+ */
 export function founderFor(sim: Sim, kind: BusinessKind): Agent | undefined {
   const def = BUSINESSES[kind];
   const fit = (a: Agent) => (kind === 'bakery' ? a.skills.cooking.level : a.skills.charisma.level + (a.traits.includes('extrovert') ? 2 : 0));
+  const keen = (a: Agent) => a.traits.filter((t) => (ENTERPRISING as readonly string[]).includes(t)).length;
   return sim.agents
-    .filter((a) => ageOf(sim, a) >= ADULT_AGE && a.role !== 'retired' && !a.illness && !ownedBy(sim, a) && sim.mayor !== a.id)
-    .filter((a) => a.money >= def.savings && fit(a) >= 3 && a.traits.some((t) => (ENTERPRISING as readonly string[]).includes(t)))
-    .sort((x, y) => fit(y) * 40 + y.money - (fit(x) * 40 + x.money))[0];
+    .filter((a) => ageOf(sim, a) >= ADULT_AGE && ageOf(sim, a) < RETIRE_AGE - RETIRE_MARGIN && a.role !== 'retired' && !a.illness && !ownedBy(sim, a) && sim.mayor !== a.id)
+    .filter((a) => a.money >= def.savings && fit(a) >= 3 && keen(a) > 0)
+    // Of those who qualify the better fit, then the keener; between equals the one with less behind them (and so more reason to try).
+    .sort((x, y) => fit(y) * 40 + keen(y) * 15 - (fit(x) * 40 + keen(x) * 15) || x.money - y.money || x.id - y.id)[0];
+}
+
+/** What the founder pays for the building: the town's plot fee and the materials at their usual prices. */
+export function buildCost(kind: BusinessKind): number {
+  const bp = BLUEPRINTS[kind];
+  return bp.coins + Object.entries(bp.cost).reduce((n, [g, k]) => n + (k ?? 0) * BASE_PRICE[g as Good], 0);
 }
 
 /** Opens the doors once the building is up: the owner takes the counter. */
@@ -154,37 +176,48 @@ export function openBusiness(sim: Sim, kind: BusinessKind, building: number, nam
   return biz;
 }
 
-/** The town buys a business: the owner gets back half what the building cost, less any loan, and finds other work. */
-export function closeBusiness(sim: Sim, biz: Business, why: string): void {
+/**
+ * The town buys a business: half what the building cost, with any loan taken out of it first, and the till's cash, go
+ * to the owner, who finds other work. failed is false when the owner is gone for other reasons (they died, retired or
+ * left town), so nobody mourns a business that didn't go under.
+ */
+export function closeBusiness(sim: Sim, biz: Business, why: string, failed = true): void {
   const owner = sim.agent(biz.owner ?? undefined);
   biz.owner = null;
   biz.closed = sim.time;
-  const buyout = 60;
-  const repaid = Math.min(biz.loan, buyout + Math.max(0, biz.till));
+  const buyout = Math.round(buildCost(biz.kind) / 2);
+  const cash = Math.max(0, biz.till);
+  const repaid = Math.min(biz.loan, buyout + cash);
   const unpaid = biz.loan - repaid;
   sim.treasury -= buyout - repaid;
   sim.ledger.loans -= buyout - repaid;
   biz.loan = 0;
   biz.till = 0;
   if (owner) {
-    owner.money += Math.max(0, buyout - repaid);
-    addMemory(sim, owner, 'businessFailed');
-    think(sim, owner, `I put everything into ${biz.name}. It wasn't enough.`, 'bad');
+    owner.money += buyout + cash - repaid;
     // Back in the labor pool; the next round of job-filling finds them work, without reshuffling everyone now.
     setRole(sim, owner, 'laborer', null);
+    if (failed) {
+      addMemory(sim, owner, 'businessFailed');
+      think(sim, owner, `I put everything into ${biz.name}. It wasn't enough.`, 'bad');
+    }
   }
-  sim.log(`${biz.name} closed (${why}). The town bought the building and keeps it open${unpaid > 0 ? `; $${Math.round(unpaid)} of the town's loan was never repaid` : ''}`, 'event', 'bad', owner).weight = HEADLINE;
+  sim.log(`${biz.name} closed (${why}). The town bought the building and keeps it open${unpaid > 0 ? `; $${Math.round(unpaid)} of the town's loan was never repaid` : ''}`, 'event', failed ? 'bad' : 'neutral', owner).weight = HEADLINE;
   sim.milestone(`${biz.name} closed`);
 }
 
-/** When an owner dies or moves away: their partner or a grown child carries on, or the town buys it. */
-export function succession(sim: Sim, a: Agent): void {
+/** Why an owner is giving a place up, for the feed. */
+export type Parting = 'died' | 'retired' | 'left';
+const PARTING_WORD: Record<Parting, string> = { died: 'passed away', retired: 'retired', left: 'left town' };
+
+/** When an owner dies, retires or moves away: their partner or eldest grown child carries on (not one leaving too), or the town buys it. */
+export function succession(sim: Sim, a: Agent, parting: Parting = 'died', leaving: readonly Agent[] = []): void {
   const biz = ownedBy(sim, a);
   if (!biz) return;
   const heirs = [sim.agent(a.partner ?? undefined), ...a.children.map((id) => sim.agent(id)).sort((x, y) => (x?.birth ?? 0) - (y?.birth ?? 0))]
-    .filter((h): h is Agent => !!h && h.id !== a.id && ageOf(sim, h) >= ADULT_AGE && h.role !== 'retired' && !ownedBy(sim, h));
+    .filter((h): h is Agent => !!h && h.id !== a.id && !leaving.includes(h) && ageOf(sim, h) >= ADULT_AGE && h.role !== 'retired' && !ownedBy(sim, h));
   const heir = heirs[0];
-  if (!heir) return closeBusiness(sim, biz, `${first(a)} is gone and nobody could take it on`);
+  if (!heir) return closeBusiness(sim, biz, `${first(a)} ${PARTING_WORD[parting]} and nobody could take it on`, false);
   biz.owner = heir.id;
   heir.career = BUSINESSES[biz.kind].role;
   setRole(sim, heir, BUSINESSES[biz.kind].role, biz.building);
@@ -194,23 +227,15 @@ export function succession(sim: Sim, a: Agent): void {
 
 /** Leaves someone's savings to their partner, else their children, else the town. */
 export function inherit(sim: Sim, a: Agent): void {
-  const money = Math.floor(Math.max(0, a.money));
+  const money = a.money;
   a.money = 0;
-  if (money <= 0) return;
-  const partner = sim.agent(a.partner ?? undefined);
-  const kids = a.children.map((id) => sim.agent(id)).filter((k): k is Agent => !!k);
-  const heirs = partner ? [partner] : kids;
-  if (!heirs.length) {
-    sim.treasury += money;
-    sim.ledger.sales += money;
-    if (money >= 20) sim.log(`${first(a)} left $${money} to the town`, 'family', 'neutral', a).weight = NOTABLE;
-    return;
-  }
-  for (const h of heirs) h.money += money / heirs.length;
-  if (money >= 20) sim.log(`${first(a)} left $${money} to ${heirs.map(first).join(' and ')}`, 'family', 'neutral', heirs[0], a).weight = NOTABLE;
+  passOnMoney(sim, a, money);
 }
 
-/** How someone's money reads, beside their neighbours': "the richest person in town", "comfortable", "scraping by". */
+/** The share of grown-ups who count as well off: the top of the town's own distribution, so it stays scarce. */
+const WELL_OFF_SHARE = 0.12;
+
+/** How someone's money reads, beside their neighbours': "the richest person in town", "well off", "comfortable", "scraping by". */
 export function wealthWord(sim: Sim, a: Agent): string {
   const adults = sim.agents.filter((o) => ageOf(sim, o) >= ADULT_AGE).map((o) => o.money).sort((x, y) => x - y);
   const median = adults.length ? adults[Math.floor(adults.length / 2)] : 0;
@@ -218,7 +243,9 @@ export function wealthWord(sim: Sim, a: Agent): string {
   if (m < 3) return 'broke';
   if (m < 20) return 'scraping by';
   if (adults.length >= 4 && m === adults[adults.length - 1] && m > Math.max(150, median * 2)) return 'the richest person in town';
-  if (m > Math.max(250, median * 2.2)) return 'well off';
+  // Well off is the top slice of the town, and only where it really is well above the middle.
+  const above = adults.filter((x) => x > m).length;
+  if (adults.length >= 4 && above / adults.length < WELL_OFF_SHARE && m > Math.max(150, median * 1.5)) return 'well off';
   if (m > median * 0.7) return 'comfortable';
   return 'getting by';
 }
@@ -262,6 +289,13 @@ export function settleBusinesses(sim: Sim): void {
   }
 }
 
+/**
+ * A household is struggling when even its best-off grown member has less than STRUGGLING_SHARE of the town's median
+ * savings, or when it's among the poorest fifth of homes and below BEHIND_SHARE of the median.
+ */
+const STRUGGLING_SHARE = 0.4;
+const BEHIND_SHARE = 0.75;
+
 /** Once an evening: a well-off household has a struggling one over for dinner. */
 export function neighbourlyDinner(sim: Sim): void {
   if (sim.dinnerDay === sim.day || sim.hour < 18 || sim.hour > 19) return;
@@ -270,11 +304,18 @@ export function neighbourlyDinner(sim: Sim): void {
   const sorted = adults.map((a) => a.money).sort((x, y) => x - y);
   const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
   const hosts = adults.filter((a) => a.money >= Math.max(200, median * 2.5) && sim.town.households[a.household].building >= 0).sort((x, y) => y.money - x.money);
+  // Each home's best-off grown member; the poorest fifth of homes (when also well below the middle) count as struggling.
+  const best = new Map<number, number>();
+  for (const a of adults) best.set(a.household, Math.max(best.get(a.household) ?? -Infinity, a.money));
+  const homes = [...best.entries()].filter(([id]) => sim.town.households[id].building >= 0).sort((x, y) => x[1] - y[1]);
+  const poorestFifth = homes.length ? homes[Math.max(1, Math.floor(homes.length / 5)) - 1][1] : 0;
   const struggling = sim.town.households.filter((h) => {
     const grown = adults.filter((a) => a.household === h.id);
     // Not the same family two nights running: they were just over.
     const recently = grown.some((a) => a.memories.some((m) => m.kind === 'dinnerGuest' && sim.time - m.created < 2 * MIN_PER_DAY));
-    return h.building >= 0 && grown.length > 0 && !recently && grown.every((a) => a.money < Math.max(40, median * 0.25));
+    if (h.building < 0 || !grown.length || recently) return false;
+    const top = best.get(h.id)!;
+    return top < Math.max(40, median * STRUGGLING_SHARE) || (top <= poorestFifth && top < median * BEHIND_SHARE);
   });
   const host = hosts[0];
   const guests = struggling.find((h) => h.id !== host?.household);

@@ -1,7 +1,7 @@
 import type { Facing } from '../assets/manifest';
 import type { Prop, UseKind } from '../world/map';
 import { ageOf, hasUmbrella, newTask } from './agents';
-import { ADULT_AGE, type Good, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
+import { ADULT_AGE, type Good, type MemoryKind, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
 import { FOOD_PER_CROP } from './economy';
 import { dreamLean } from './aspirations';
 import { catchFor, lakeCells } from './lake';
@@ -413,6 +413,10 @@ function spotOption(sim: Sim, a: Agent, kind: ActionKind, score: number, reason:
 }
 
 /** "the Café", or a business by its own name ("Rosa's Bakery", "The Old Oak"). */
+/** Memories left by a gathering that has just ended, and how much they send people to the tavern. */
+const AFTER_PARTY: MemoryKind[] = ['festival', 'birthday', 'wedding', 'party'];
+const AFTER_PARTY_PULL = 0.45;
+
 function placeName(sim: Sim, p: Prop): string {
   const biz = businessAt(sim, p.building);
   return biz ? biz.name : `the ${roomName(sim, p)}`;
@@ -595,7 +599,7 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
       }
       // Each place sets its own price (a private bakery's floats with the market); they pay when they sit down.
       if (a.money >= Math.min(townMeal(sim), 4) && !evening && !little) {
-        o.push(spotOption(sim, a, 'eat', s * (a.traits.includes('foodie') ? 1.15 : 0.9) + (!homed ? 0.3 : 0), reason, ['eat'], (p) => `Eating at ${placeName(sim, p)}`, 26, (p) => roomKind(sim, p) === 'cafe' && a.money >= priceAt(sim, p.building, 'meal')));
+        o.push(spotOption(sim, a, 'eat', s * (a.traits.includes('foodie') ? 1.15 : 0.9) + (!homed ? 0.3 : 0), reason, ['eat'], (p) => `Eating at ${placeName(sim, p)}`, 26, (p) => roomKind(sim, p) === 'cafe' && a.money >= priceAt(sim, p.building, 'meal', a)));
       }
     }
     if (n.hunger < 55 && workTime && stage === 'adult') o.push(spotOption(sim, a, 'snack', s * 0.7, 'Quick snack', ['snack'], () => 'Grabbing a snack', 5));
@@ -845,11 +849,13 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   }
 
   // ---- an evening at the tavern
-  if (!little && !sleepTime && !workTime && !storm && inWindow(h, TAVERN_OPEN + 1, TAVERN_CLOSE - 0.75) && (n.social < 80 || n.fun < 75) && sim.map.buildings.some((b) => b.kind === 'tavern')) {
+  // When a festival or a party breaks up everyone is full up on company, but a good few drift to the tavern for one more.
+  const afterParty = a.memories.some((m) => AFTER_PARTY.includes(m.kind) && sim.time - m.created < 150);
+  if (!little && !sleepTime && !workTime && !storm && inWindow(h, TAVERN_OPEN + 1, TAVERN_CLOSE - 0.75) && (n.social < 80 || n.fun < 75 || afterParty) && sim.map.buildings.some((b) => b.kind === 'tavern')) {
     const sweetheart = sim.agent(a.court?.with ?? a.partner ?? undefined);
     const date = sweetheart?.action.kind === 'drink' ? 0.35 : 0;
-    const s = 0.42 + (1 - n.social / 100) * 0.45 + (1 - n.fun / 100) * 0.3 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.2 : 0) + (sim.weekend ? 0.12 : 0) + date;
-    o.push(spotOption(sim, a, 'drink', s, date ? `Meeting ${first(sweetheart!)} at the tavern` : 'An evening out', ['drink'], (p) => `At ${placeName(sim, p)}`, 60 + sim.rng.range(0, 40), (p) => a.money >= priceAt(sim, p.building, 'drink')));
+    const s = (afterParty ? AFTER_PARTY_PULL : 0) + 0.42 + (1 - n.social / 100) * 0.45 + (1 - n.fun / 100) * 0.3 + (a.traits.includes('extrovert') ? 0.2 : 0) - (a.traits.includes('introvert') ? 0.2 : 0) + (sim.weekend ? 0.12 : 0) + date;
+    o.push(spotOption(sim, a, 'drink', s, date ? `Meeting ${first(sweetheart!)} at the tavern` : 'An evening out', ['drink'], (p) => `At ${placeName(sim, p)}`, 60 + sim.rng.range(0, 40), (p) => a.money >= priceAt(sim, p.building, 'drink', a)));
   }
 
   // ---- go home at night / stay near home when small
