@@ -1,4 +1,5 @@
 import type { Facing, GroundKey, PropKey } from '../assets/manifest';
+import { CLASSIC, type Character } from '../sim/character';
 import { Rng, valueNoise2 } from '../sim/rng';
 import { stampFarm, stampHouse, stampStorehouse } from './blueprints';
 import { Cell, type DrawnKey, type RoomKind, TownMap, type UseKind } from './map';
@@ -37,9 +38,9 @@ export interface Town {
 
 /**
  * Hand-laid town: an office, a café and park to the north, homes, a market and a library to the south,
- * split by two crossing roads.
+ * split by two crossing roads. The wilds around it, the founding families and the town's name come from its character.
  */
-export function buildTown(seed = 7): Town {
+export function buildTown(seed = 7, character: Character = CLASSIC): Town {
   const m = new TownMap(TOWN_W, TOWN_H);
   const rng = new Rng(seed * 7919 + 13);
   const households: Household[] = [];
@@ -93,7 +94,7 @@ export function buildTown(seed = 7): Town {
   for (const y of [14, 38]) fill(41, y, 3, 1, 'crossV');
 
   // ---------------------------------------------------------------- office (NW)
-  const OFFICE = 'Northwind Studio';
+  const OFFICE = `${character.name} Studio`;
   fill(18, 22, 4, 2, 'plaza');
   wallRect(3, 3, 36, 19);
   hwall(3, 29, 14);
@@ -220,7 +221,7 @@ export function buildTown(seed = 7): Town {
 
   // ---------------------------------------------------------------- homes (SW)
   fill(2, 40, 38, 1, 'sidewalk');
-  const surnames = ['Okafor', 'Lindqvist', 'Reyes', 'Tanaka', 'Haddad', 'Novak'];
+  const surnames = character.founders;
   let hh = 0;
   for (const y0 of [31, 42]) {
     for (const x0 of [3, 15, 27]) {
@@ -292,11 +293,11 @@ export function buildTown(seed = 7): Town {
   // Starter infrastructure on the edge of town: a storehouse and one farm.
   stampStorehouse(m, 86, 30, true, 'Town Storehouse');
   fill(89, 29, 1, 1, 'plaza');
-  stampFarm(m, 86, 38, true, 'Meadow Farm');
+  stampFarm(m, 86, 38, true, character.classic ? 'Meadow Farm' : character.farmNames[0]);
   fill(84, 37, 1, 1, 'dirt');
   for (let x = 84; x < 96; x++) fill(x, 37, 1, 1, 'dirt');
 
-  generateWilderness(m, rng);
+  generateWilderness(m, rng, character);
   m.refreshAll();
   m.groundDirty.length = 0;
   return { map: m, households, workplaces };
@@ -304,15 +305,14 @@ export function buildTown(seed = 7): Town {
 
 const ROADISH = new Set<GroundKey>(['asphalt', 'laneH', 'laneV', 'crossH', 'crossV', 'sidewalk', 'plaza', 'dirt', 'field', 'water']);
 
-/** Forests, rock outcrops and a lake outside the original town. Trees and rocks are harvestable. */
-function generateWilderness(m: TownMap, rng: Rng): void {
+/** Forests, rock outcrops and lakes outside the original town, as dense as the setting has them. Trees and rocks are harvestable. */
+function generateWilderness(m: TownMap, rng: Rng, c: Character): void {
   const seed = rng.int(1, 9999);
-  // A lake in the south-east.
-  const lx = 108;
-  const ly = 72;
-  for (let y = ly - 6; y <= ly + 6; y++) for (let x = lx - 10; x <= lx + 10; x++) {
-    const d = ((x - lx) / 10) ** 2 + ((y - ly) / 5.5) ** 2 + (valueNoise2(x * 0.3, y * 0.3, seed) - 0.5) * 0.5;
-    if (d < 1 && m.inBounds(x, y)) m.ground[m.idx(x, y)] = 'water';
+  for (const { x: lx, y: ly, rx, ry } of c.lakes) {
+    for (let y = ly - Math.ceil(ry); y <= ly + Math.ceil(ry); y++) for (let x = Math.round(lx) - Math.ceil(rx); x <= Math.round(lx) + Math.ceil(rx); x++) {
+      const d = ((x - lx) / rx) ** 2 + ((y - ly) / ry) ** 2 + (valueNoise2(x * 0.3, y * 0.3, seed) - 0.5) * 0.5;
+      if (d < 1 && m.inBounds(x, y) && !(x < CORE_W && y < CORE_H)) m.ground[m.idx(x, y)] = 'water';
+    }
   }
   const trees: PropKey[] = ['treeGreen', 'treeGreen', 'treeLime', 'treeOrange', 'treeTall'];
   for (let y = 0; y < m.h; y++) {
@@ -327,12 +327,12 @@ function generateWilderness(m: TownMap, rng: Rng): void {
       const open = nearRoad < 5 ? 0.25 : nearRoad < 10 ? 0.7 : 1;
       const forest = valueNoise2(x * 0.09, y * 0.09, seed) * open;
       const rocky = valueNoise2(x * 0.13, y * 0.13, seed + 7) * open;
-      if (forest > 0.52 && rng.chance(0.55)) {
-        m.addProp({ key: rng.pick(trees), x, y, w: 1, h: 1, resource: 'wood', amount: 6 });
-      } else if (rocky > 0.66 && rng.chance(0.4)) {
-        m.addProp({ key: 'rock', drawn: true, x, y, w: 1, h: 1, resource: 'stone', amount: 8 });
+      if (forest > c.forest[0] && rng.chance(c.forest[1])) {
+        m.addProp({ key: rng.pick(trees), x, y, w: 1, h: 1, resource: 'wood', amount: c.timber });
+      } else if (rocky > c.rocks[0] && rng.chance(c.rocks[1])) {
+        m.addProp({ key: 'rock', drawn: true, x, y, w: 1, h: 1, resource: 'stone', amount: c.stone });
       } else if (rng.chance(0.012)) {
-        m.addProp({ key: rng.pick(trees), x, y, w: 1, h: 1, resource: 'wood', amount: 6 });
+        m.addProp({ key: rng.pick(trees), x, y, w: 1, h: 1, resource: 'wood', amount: c.timber });
       }
     }
   }

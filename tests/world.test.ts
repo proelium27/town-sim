@@ -3,6 +3,7 @@ import { Puddles, puddleAt } from '../src/render/puddles';
 import { Shading } from '../src/render/shading';
 import { hasUmbrella } from '../src/sim/agents';
 import { invitePartner } from '../src/sim/ai';
+import { CLASSIC } from '../src/sim/character';
 import { Sim } from '../src/sim/sim';
 import type { Agent } from '../src/sim/types';
 import { Cell, TownMap } from '../src/world/map';
@@ -175,8 +176,8 @@ describe('walking together', () => {
   }, 60_000);
 
   it('on school mornings, a grown-up walks a young kid to school before work', () => {
-    // An untouched town: nobody is placed by hand.
-    const sim = new Sim(4);
+    // An untouched original town: nobody is placed by hand.
+    const sim = new Sim(4, { character: CLASSIC });
     const was = new Map<number, string>();
     const runs: string[] = [];
     for (let k = 0; k < 10 * 288; k++) {
@@ -194,7 +195,8 @@ describe('walking together', () => {
   }, 600_000);
 
   it('a grown-up at home walks a young kid to school', () => {
-    const sim = new Sim(7);
+    // The original town, which has its school by day four.
+    const sim = new Sim(7, { character: CLASSIC });
     for (let d = 0; d < 8 && !sim.map.buildings.some((b) => b.kind === 'school'); d++) sim.run(720);
     // The next weekday, just before school.
     let day = sim.day + 1;

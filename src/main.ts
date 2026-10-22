@@ -4,6 +4,7 @@ import { TILE } from './assets/manifest';
 import { Camera } from './engine/camera';
 import { AgentsView } from './render/agentsView';
 import { WorldView } from './render/worldView';
+import { CLASSIC } from './sim/character';
 import { Sim, STEP } from './sim/sim';
 import { ActivityLog } from './ui/activity';
 import { Hud } from './ui/hud';
@@ -40,8 +41,13 @@ async function boot(): Promise<void> {
   const params = new URLSearchParams(location.search);
   const scratch = params.has('seed');
   const saved = scratch ? null : readSave();
-  const sim = saved?.sim ?? new Sim(Number(params.get('seed') ?? 7));
+  // A brand-new town rolls its own seed, so no two grow up alike; the seed is saved with it.
+  // `&classic` replays the original Northwind (old saves) rather than the character the seed rolls now.
+  const seed = Number(params.get('seed') ?? Math.floor(Math.random() * 1e6));
+  const sim = saved?.sim ?? new Sim(seed, params.has('classic') ? { character: CLASSIC } : {});
   const saves = new Saves(sim, !scratch, saved?.unreadable);
+  // Save the new town straight away, or a reload before the first autosave would roll a different one.
+  if (!saved?.sim) saves.save();
   const world = new WorldView(art, sim);
   const people = new AgentsView(art, sim, world);
   app.stage.addChild(world.root, people.sky, people.rain, people.overlay);
