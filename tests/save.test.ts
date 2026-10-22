@@ -5,6 +5,19 @@ import { Sim } from '../src/sim/sim';
 import { BACKUP_KEY, readSave, Saves } from '../src/ui/saves';
 
 describe('saving and loading', () => {
+  it("a town's name comes from its character, survives a rename, and older saves take their character's", () => {
+    const sim = new Sim(7);
+    expect(sim.name).toBe(sim.character.name);
+    const raw = JSON.parse(saveSim(sim));
+    delete raw.sim.name;
+    expect(loadSim(JSON.stringify(raw)).name).toBe(sim.character.name);
+    // From before towns had characters: the original Northwind, whatever seed 7 rolls now.
+    delete raw.sim.character;
+    expect(loadSim(JSON.stringify(raw)).name).toBe('Northwind');
+    sim.name = 'Elmhurst';
+    expect(loadSim(saveSim(sim)).name).toBe('Elmhurst');
+  });
+
   it('a reloaded town carries on exactly as if it never stopped', () => {
     const a = new Sim(7);
     a.run(2 * 1440 + 300);

@@ -90,7 +90,9 @@ describe('travelers between towns', () => {
     expectCart(there, file);
     there.run(JOURNEY + 5);
     const arrival = there.activity.find((x) => /A cart came down the east road/.test(x.text))!;
-    expect(arrival.text).toMatch(/from another town called Northwind/);
+    // Both are seed 7, so both carry its name (Alderwood since towns have characters).
+    expect(home.name).toBe(there.name);
+    expect(arrival.text).toContain(`from another town called ${there.name}`);
     // Seed 7 again: the same founders, so this traveler's name is taken here.
     expect(there.agents[there.agents.length - 1].name).toBe(`${file.people[0].name} II`);
   }, 120_000);
