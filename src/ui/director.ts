@@ -1,6 +1,6 @@
 import { TILE } from '../assets/manifest';
 import { type Camera, MIN_ZOOM } from '../engine/camera';
-import { pickShot, type Shot, urgent } from '../sim/director';
+import { breaking, pickShot, type Shot, urgent } from '../sim/director';
 import type { Sim } from '../sim/sim';
 import { esc } from './util';
 
@@ -119,15 +119,18 @@ export class Director {
       this.camera.lookAtClamped((a.x + 0.5) * TILE, (a.y + 0.5) * TILE);
     }
     if (!s || now - this.shotAt >= s.hold * 1000) return this.next();
-    if (now - this.shotAt >= MIN_HOLD_MS && now - this.checkedAt >= CHECK_MS) {
+    if (now - this.checkedAt >= CHECK_MS) {
       this.checkedAt = now;
-      const cand = pickShot(this.sim, this.shown, s.kind);
-      if (cand && cand.key !== s.key && s.score < 26 && urgent(this.sim, cand, this.shown)) this.cut(cand);
+      const cand = pickShot(this.sim, this.shown, s);
+      if (cand && cand.key !== s.key && urgent(this.sim, cand, this.shown)) {
+        // A fire cuts in at once; anything else waits out the minimum hold and a shot that was itself urgent.
+        if (breaking(cand) ? !breaking(s) : now - this.shotAt >= MIN_HOLD_MS && s.score < 26) this.cut(cand);
+      }
     }
   }
 
   private next(): void {
-    const s = pickShot(this.sim, this.shown, this.shot?.kind);
+    const s = pickShot(this.sim, this.shown, this.shot ?? undefined);
     if (s) this.cut(s);
   }
 
