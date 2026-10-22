@@ -28,7 +28,7 @@ function lists(sim: Sim) {
 export function tickEconomy(sim: Sim, dt: number): void {
   const m = sim.map;
   const ev = sim.events;
-  const rate = (dt / (CROP_DAYS * 1440)) * (ev.drought ? 0 : ev.rain ? 1.3 : 1) * cropSeason(sim);
+  const rate = (dt / (CROP_DAYS * 1440)) * (ev.drought ? 0 : ev.rain ? 1.3 : 1) * cropSeason(sim) * sim.character.fertility;
   const { crops, temporary } = lists(sim);
   for (const p of crops) {
     if ((p.growth ?? 0) < 1) p.growth = Math.min(1, (p.growth ?? 0) + rate);
@@ -42,7 +42,7 @@ export function tickEconomy(sim: Sim, dt: number): void {
   sim.timers.regrow = 30;
   m.fadeWear();
   const reserved = new Set(sim.projects.flatMap((pr) => cellsOf(sim, pr.x - 1, pr.y - 1, pr.w + 2, pr.h + 2)));
-  for (let k = 0; k < 6; k++) {
+  for (let k = 0; k < sim.character.regrowth; k++) {
     const x = sim.rng.int(0, m.w - 1);
     const y = sim.rng.int(0, m.h - 1);
     if (x < CORE_W && y < CORE_H) continue;
@@ -53,7 +53,7 @@ export function tickEconomy(sim: Sim, dt: number): void {
     if (!nearTree) continue;
     if (m.buildings.some((b) => x >= b.x - 2 && x < b.x + b.w + 2 && y >= b.y - 2 && y < b.y + b.h + 2)) continue;
     if (sim.agents.some((a) => a.at === i)) continue;
-    m.addProp({ key: sim.rng.pick(TREES), x, y, w: 1, h: 1, resource: 'wood', amount: 6 });
+    m.addProp({ key: sim.rng.pick(TREES), x, y, w: 1, h: 1, resource: 'wood', amount: sim.character.timber });
   }
 }
 
@@ -73,5 +73,5 @@ export function foodBalance(sim: Sim, yearRound = false): { produce: number; eat
   // Crops only turn into food if someone harvests them.
   const harvestable = Math.min(crops, farmers * 30);
   const season = yearRound ? 0.75 : cropSeason(sim);
-  return { produce: ((harvestable * FOOD_PER_CROP) / CROP_DAYS) * season, eat: sim.agents.length * 2.6 };
+  return { produce: ((harvestable * FOOD_PER_CROP) / CROP_DAYS) * season * sim.character.fertility, eat: sim.agents.length * 2.6 };
 }

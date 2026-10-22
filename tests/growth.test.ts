@@ -7,6 +7,7 @@ import { laborPlan } from '../src/sim/labor';
 import { capacity, completeProject, findSite, members, newHousehold, tickPlanner } from '../src/sim/planner';
 import { BLUEPRINTS } from '../src/world/blueprints';
 import { Cell } from '../src/world/map';
+import { CLASSIC } from '../src/sim/character';
 import { Sim } from '../src/sim/sim';
 
 /** A fresh house out on open ground (where a new town house would go), with room on both sides. */
@@ -45,7 +46,8 @@ function plan(sim: Sim) {
 
 describe('homes that grow', () => {
   it('a crowded family home gets a new wing with more beds, reachable from the front door', () => {
-    const sim = new Sim(7);
+    // The original town, whose meetings always back the strongest case: elsewhere a lucky farm can win the evening.
+    const sim = new Sim(7, { character: CLASSIC });
     // The founders' houses are packed in a row; the town's own newer houses have room to grow.
     sim.run(3 * 1440);
     const hh = sim.town.households.find((h) => h.building >= 0 && extensionSite(sim, sim.building(h.building)!) && sim.agents.some((a) => a.household === h.id && a.role !== 'child'))!;
@@ -146,7 +148,8 @@ describe('homes that grow', () => {
   });
 
   it('a grown kid moving out of an overcrowded home builds near the parents', () => {
-    const sim = new Sim(7);
+    // The original town, for its founding families.
+    const sim = new Sim(7, { character: CLASSIC });
     const hh = sim.town.households.find((h) => h.name === 'Novak home')!;
     const mum = sim.agents.find((a) => a.household === hh.id && a.name.startsWith('Anouk'))!;
     const kid = createAgent(sim, { role: 'laborer', household: hh.id, age: 22, parents: [mum], cell: mum.at });
@@ -186,7 +189,7 @@ describe('town tiers', () => {
     expect(sim.agents.every((a) => a.memories.some((m) => m.kind === 'proudTown'))).toBe(true);
     // One announcement, and no seasonal festival "called early".
     const said = sim.activity.slice(logged).map((e) => e.text);
-    expect(said).toEqual(["Northwind is now a town! There's a charter day in the park"]);
+    expect(said).toEqual([`${sim.name} is now a town! There's a charter day in the park`]);
   });
 
   it('a charter during a festival turns the festival into the charter day', () => {
@@ -204,7 +207,7 @@ describe('town tiers', () => {
     }
     expect(sim.events.festival).toMatchObject({ name: 'Charter day', until });
     const said = sim.activity.slice(logged).map((e) => e.text);
-    expect(said).toEqual(['Northwind is now a town! The spring fair in the park becomes a charter day']);
+    expect(said).toEqual([`${sim.name} is now a town! The spring fair in the park becomes a charter day`]);
   });
 
   it('a charter earned at night waits for the evening, when the town is up to dance', () => {
@@ -232,7 +235,7 @@ describe('town tiers', () => {
     expect(at).toBeGreaterThanOrEqual(CHARTER_HOURS[0]);
     expect(at).toBeLessThan(CHARTER_HOURS[1]);
     expect(sim.events.festival?.name).toBe('Charter day');
-    expect(said).toContain("Northwind is now a town! There's a charter day in the park");
+    expect(said).toContain(`${sim.name} is now a town! There's a charter day in the park`);
     // Townsfolk are up to dance, rather than the charter day passing while they sleep.
     const logged = sim.activity.length;
     sim.run(200);
@@ -255,7 +258,7 @@ describe('town tiers', () => {
     expect(sim.events.festival?.name).toBe('Charter day');
     expect(sim.events.seasonal).toBeNull();
     const said = sim.activity.slice(logged).map((e) => e.text);
-    expect(said).toEqual(["Northwind is now a town! Tonight's spring fair in the park becomes a charter day"]);
+    expect(said).toEqual([`${sim.name} is now a town! Tonight's spring fair in the park becomes a charter day`]);
   });
 
   it('paving stays out of farm plots', () => {
