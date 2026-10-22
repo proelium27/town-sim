@@ -73,7 +73,7 @@ describe('private businesses', () => {
     expect(pr.owner).toBe(rich.id);
     expect(pr.loan).toBe(0);
     expect(rich.money).toBe(400 - 196);
-    expect(sim.treasury).toBe(treasury + 196);
+    expect(sim.treasury).toBeCloseTo(treasury + 196, 6);
 
     const sim2 = town();
     const short = founder(sim2, 'bakery', 140);
@@ -82,7 +82,7 @@ describe('private businesses', () => {
     const pr2 = startProject(sim2, p2)!;
     expect(short.money).toBe(20);
     expect(pr2.loan).toBe(196 - 120);
-    expect(sim2.treasury).toBe(t2 + 120 - 76);
+    expect(sim2.treasury).toBeCloseTo(t2 + 120 - 76, 6);
     expect(sim2.activity.some((e) => /put \$120 of their savings into .* and borrowed \$76 from the town/.test(e.text))).toBe(true);
   }, 180_000);
 

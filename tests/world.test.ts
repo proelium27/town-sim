@@ -175,8 +175,9 @@ describe('walking together', () => {
   }, 60_000);
 
   it('on school mornings, a grown-up walks a young kid to school before work', () => {
-    // An untouched town: nobody is placed by hand.
-    const sim = new Sim(4);
+    // An untouched town: nobody is placed by hand. Seed 7: now that babies wait for a wedding, seeds 4, 3 and 6 have no
+    // young child of school age while their schools stand in these ten days (seed 7 has two runs).
+    const sim = new Sim(7);
     const was = new Map<number, string>();
     const runs: string[] = [];
     for (let k = 0; k < 10 * 288; k++) {
