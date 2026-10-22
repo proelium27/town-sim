@@ -145,7 +145,9 @@ describe('seasons', () => {
         min = Math.min(min, sim.stock.food + sold);
       }
       const frost = sim.activity.find((e) => e.text.startsWith('First frost'))!.text;
-      return { min, ripeLost: Number(/(\d+) ripe/.exec(frost)?.[1] ?? 0) };
+      // Ripe or not yet: whatever was still in the fields (on this seed the autumn crops are mostly unripe at the frost).
+      const lost = [...frost.matchAll(/(\d+) (?:ripe|unripe)/g)].reduce((n, m) => n + Number(m[1]), 0);
+      return { min, lost };
     };
     // The town as it stood, weather and all, to compare like with like against the Low run below.
     const normal = lowest(loadSim(eve));
@@ -154,9 +156,9 @@ describe('seasons', () => {
     // Fewer hands bring in the autumn harvest, so more of it freezes in the fields. With the
     // economy in, the gap in the stores on this seed is about a fifth rather than a half.
     const short = lowest(low);
-    // More ripe crops lost to the frost. The gap swings with each seed's history (who is mayor, which farms got
-    // built), so this asks for a clear margin; the stores check below is the outcome that matters.
-    expect(short.ripeLost).toBeGreaterThan(normal.ripeLost + 10);
+    // More crops lost to the frost (measured 120 against 80). The gap swings with each seed's history (who is mayor,
+    // which farms got built), so this asks for a clear margin; the stores check below is the outcome that matters.
+    expect(short.lost).toBeGreaterThan(normal.lost + 10);
     expect(short.min).toBeLessThan(normal.min * 0.85);
   }, 300_000);
 
