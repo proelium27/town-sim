@@ -126,7 +126,7 @@ describe('life aspirations', () => {
     const before = sim.activity.length;
     tickAspirations(sim);
     const lines = sim.activity.slice(before).filter((e) => /dream come true|their dream/.test(e.text));
-    expect(lines.map((e) => e.text)).toEqual(['3 people saw their dream come true: Northwind is a city']);
+    expect(lines.map((e) => e.text)).toEqual([`3 people saw their dream come true: ${sim.name} is a city`]);
     expect(lines[0].weight).toBe(HEADLINE);
     for (const a of dreamers) {
       expect(a.dream!.done).toBe(sim.time);
@@ -140,7 +140,7 @@ describe('life aspirations', () => {
     a.dream = { key: 'city', since: sim.time };
     sim.tier = 2;
     tickAspirations(sim);
-    expect(sim.activity.some((e) => e.text === `A dream come true: ${a.name} saw Northwind become a city`)).toBe(true);
+    expect(sim.activity.some((e) => e.text === `A dream come true: ${a.name} saw ${sim.name} become a city`)).toBe(true);
   });
 
   it('marrying comes true when the wedding is over, not when the ceremony starts', () => {
