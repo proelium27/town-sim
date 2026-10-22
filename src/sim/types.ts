@@ -200,6 +200,8 @@ export interface Project {
   stalled?: number;
   /** No one fetches goods for it before this time: the last load found no way onto the site. */
   haulPause?: number;
+  /** Started as a rush job, outside the town's usual project limit. */
+  rush?: boolean;
 }
 
 export type ActivityKind = 'work' | 'social' | 'life' | 'event' | 'build' | 'family';

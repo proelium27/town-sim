@@ -505,6 +505,7 @@ function startProject(sim: Sim, p: Proposal): Project | null {
     started: sim.time,
     builders: new Set(),
     extends: wing,
+    rush: p.rush,
   };
   sim.projects.push(pr);
   const who = p.proposer;
@@ -801,12 +802,16 @@ export function tickPlanner(sim: Sim, dt: number): void {
   checkTier(sim);
   // A bigger town can take on more at once.
   const capacityProjects = Math.min(3 + sim.tier, 1 + Math.floor(builders / 2));
-  // A rush job (the dock before the frost) doesn't wait for a big project like the school to finish.
-  const full = sim.projects.length >= capacityProjects;
-  if (full && sim.projects.length > capacityProjects) return;
+  // A rush job (the dock before the frost) doesn't wait for a big project like the school to finish, and doesn't
+  // hold up the rest either while it's going: it sits outside the limit, one at a time. (Counted inside it, a dock
+  // whose lot took three days to clear kept a town of 18 from building a single home.)
+  const regular = sim.projects.filter((pr) => !pr.rush).length;
+  const rushing = sim.projects.length - regular;
+  const full = regular >= capacityProjects;
+  if (full && rushing) return;
   for (const p of proposals(sim)) {
     if (p.score < 0.5) break;
-    if (full && !p.rush) continue;
+    if (p.rush ? rushing > 0 : full) continue;
     if (startProject(sim, p)) return;
   }
 }
