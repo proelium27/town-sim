@@ -210,9 +210,9 @@ describe('the town economy over a few weeks', () => {
         }
       }
       expect(low).toBeGreaterThan(50);
-      // Seed 3's surplus depends on how the early town falls (a business founder, a birth a day sooner): it shared $779 before the
-      // business fixes and $46 after, with the same solvent treasury, so the bar is that it shares something.
-      expect(bonuses).toBeGreaterThan(20);
+      // Measured: seed 3 shares $337 over these 14 days and seed 7 $500 (a rush dock that held the only project slot
+      // had cut seed 3's to $46).
+      expect(bonuses).toBeGreaterThan(50);
       expect(longest).toBeLessThan(2);
     }, 600_000);
   }

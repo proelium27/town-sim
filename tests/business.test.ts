@@ -3,7 +3,7 @@ import { ageOf } from '../src/sim/agents';
 import { type Business, type BusinessKind, BUSINESSES, buildCost, closeBusiness, FLOAT, founderFor, neighbourlyDinner, ownedBy, priceAt, sell, settleBusinesses, townMeal, wealthWord } from '../src/sim/business';
 import { startFestival } from '../src/sim/events';
 import { ADULT_AGE, MIN_PER_DAY, RETIRE_AGE, YEARS_PER_DAY } from '../src/sim/defs';
-import { die, tickLife } from '../src/sim/life';
+import { die, newcomers, tickLife } from '../src/sim/life';
 import { price, TAX } from '../src/sim/market';
 import { completeProject, findSite, proposals, startProject } from '../src/sim/planner';
 import { loadSim, saveSim } from '../src/sim/save';
@@ -17,10 +17,12 @@ const at = (sim: Sim, day: number, hour: number) => sim.run(day * 1440 + hour * 
 const ageTo = (sim: Sim, a: Agent, years: number) => (a.birth = sim.time - (years / YEARS_PER_DAY) * MIN_PER_DAY);
 const adults = (sim: Sim) => sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE && a.role !== 'retired' && sim.mayor !== a.id);
 
-/** A town of 22 with no business yet, mid-morning (seed 6, day 8). */
+/** A town of 22 with no business yet, mid-morning (seed 6, day 8, with newcomers made up to 22: how fast a town grows
+ * shifts with any change to town life, and these tests are about what 22 people support). */
 function town(): Sim {
   const sim = new Sim(6);
   at(sim, 8, 9);
+  while (sim.agents.length < 22) newcomers(sim, 22 - sim.agents.length, true);
   return sim;
 }
 
