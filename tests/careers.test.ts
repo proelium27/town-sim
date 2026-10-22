@@ -6,12 +6,14 @@ import { ROLES } from '../src/sim/defs';
 import { allocateRoles, findSite, openSlots, setRole } from '../src/sim/planner';
 import { CRAFT_ROLES } from '../src/sim/workshop';
 import { BLUEPRINTS } from '../src/world/blueprints';
+import { CLASSIC } from '../src/sim/character';
 import { Sim } from '../src/sim/sim';
 import type { Agent } from '../src/sim/types';
 
 describe('school', () => {
   it('kids build aptitudes in class', () => {
-    const sim = new Sim(7);
+    // The original town, which has its school by day four.
+    const sim = new Sim(7, { character: CLASSIC });
     for (let d = 0; d < 8 && !sim.map.buildings.some((b) => b.kind === 'school'); d++) sim.run(720);
     let day = sim.day + 1;
     while (day % 7 >= 5) day++;
@@ -119,10 +121,11 @@ describe('career openings', () => {
   }, 120_000);
 
   it('people settle into their jobs instead of being rotated every few hours', () => {
-    // A seed whose town builds its workshop early, so the trades are in the mix (seed 3's goes up on day 14.6
-    // now that dreams lean people differently; a few days with it).
-    const sim = new Sim(3);
-    const days = 18;
+    // A seed whose town builds its workshop early, so the trades are in the mix: seed 7's (Alderwood) goes up on day
+    // 7.4. Seed 3, the old choice, is Larkford now that towns have characters, with its workshop on day 11.5 and five
+    // builder-woodcutter swaps (no craft involved).
+    const sim = new Sim(7);
+    const days = 16;
     const was = new Map(sim.agents.map((a) => [a.id, { role: a.role, since: sim.time, from: '' }]));
     let moves = 0;
     let flips = 0;
