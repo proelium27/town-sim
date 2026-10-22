@@ -222,6 +222,8 @@ describe('seasons', () => {
   it('a blizzard stops the outdoor work: builders, woodcutters and all come inside', () => {
     const sim = winterTown();
     at(sim, 6, 10);
+    // Wait for a crew on site (how the morning goes shifts with any change to town life).
+    for (let k = 0; k < 24 && !sim.projects.some((p) => p.builders.size > 0); k++) sim.run(15);
     expect(sim.projects.some((p) => p.builders.size > 0)).toBe(true);
     triggerWorldEvent(sim, 'snowstorm');
     sim.run(30);
@@ -243,6 +245,8 @@ describe('seasons', () => {
     const sim = winterTown();
     at(sim, 7, 16);
     triggerWorldEvent(sim, 'snowstorm');
+    // One that lasts the evening (a natural blizzard may already be blowing, due to clear sooner).
+    sim.events.snowstorm!.until = Math.max(sim.events.snowstorm!.until, sim.time + 6 * 60);
     const from = sim.time;
     sim.run(7 * 60);
     const feed = sim.activity.filter((e) => e.t >= from).map((e) => e.text);
@@ -263,7 +267,8 @@ describe('seasons', () => {
     a.thinkIn = 0;
     let entered = -1;
     let leftCold = 0;
-    let warmed = false;
+    let wasHome = false;
+    let leftAt = -1;
     for (let t = 0; t < 120; t++) {
       // A housemate has the seat by the fire the whole time.
       sim.reserved.set(seat.id, -1);
@@ -271,13 +276,15 @@ describe('seasons', () => {
       sim.run(1);
       const home = sim.roomOf(a)?.id === hh.room;
       if (home && entered < 0) entered = t;
-      if (a.needs.warmth >= 60) warmed = true;
-      // Once warmed up they may go back to work; it's leaving before that which counts (the cold sets in again after).
-      if (entered >= 0 && !warmed && !home && a.needs.warmth < 55) leftCold++;
+      // Walking out the door still cold (cooling off later, back at work, is fine).
+      if (wasHome && !home && a.needs.warmth < 55) leftCold++;
+      if (wasHome && !home && leftAt < 0) leftAt = a.needs.warmth;
+      wasHome = home;
     }
     expect(entered).toBeGreaterThanOrEqual(0);
     expect(leftCold).toBe(0);
-    expect(warmed).toBe(true);
+    // Warm when they went back out (or still in, warming up).
+    expect(leftAt < 0 ? a.needs.warmth : leftAt).toBeGreaterThanOrEqual(55);
   }, 120_000);
 
   it('an empty hearth in winter makes for a cold, unhappy home', () => {

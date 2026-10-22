@@ -121,7 +121,7 @@ export class Director {
     if (!s || now - this.shotAt >= s.hold * 1000) return this.next();
     if (now - this.checkedAt >= CHECK_MS) {
       this.checkedAt = now;
-      const cand = pickShot(this.sim, this.shown, s.kind);
+      const cand = pickShot(this.sim, this.shown, s);
       if (cand && cand.key !== s.key && urgent(this.sim, cand, this.shown)) {
         // A fire cuts in at once; anything else waits out the minimum hold and a shot that was itself urgent.
         if (breaking(cand) ? !breaking(s) : now - this.shotAt >= MIN_HOLD_MS && s.score < 26) this.cut(cand);
@@ -130,7 +130,7 @@ export class Director {
   }
 
   private next(): void {
-    const s = pickShot(this.sim, this.shown, this.shot?.kind);
+    const s = pickShot(this.sim, this.shown, this.shot ?? undefined);
     if (s) this.cut(s);
   }
 

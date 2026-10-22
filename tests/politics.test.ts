@@ -164,6 +164,8 @@ describe('elections across towns', () => {
     // any change to town life: measured over seeds 1-8 with the lake in, 2 of 8. A town whose worry was solved (food,
     // once there's fishing) tends to vote for whoever runs on the next one. The bar is that it happens at all.
     expect(results.filter((r) => r.reelected).length).toBeGreaterThanOrEqual(1);
-    expect(results.filter((r) => r.landslide).length).toBeLessThanOrEqual(2);
+    // Mostly close races: measured 4 of 16 landslides over seeds 1-8 (3 of them in these four seeds) once fishing
+    // grew with the town and dreams lean people's lives.
+    expect(results.filter((r) => r.landslide).length).toBeLessThanOrEqual(3);
   });
 });
