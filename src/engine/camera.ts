@@ -15,6 +15,8 @@ export class Camera {
   cx = 0;
   cy = 0;
   bounds = { w: 1, h: 1 };
+  /** How quickly the camera closes on its target, per second. Director mode slows it for long glides. */
+  rate = 12;
 
   jumpTo(x: number, y: number): void {
     this.x = this.tx = x;
@@ -27,7 +29,7 @@ export class Camera {
   }
 
   update(dtSec: number): void {
-    const k = 1 - Math.exp(-dtSec * 12);
+    const k = 1 - Math.exp(-dtSec * this.rate);
     this.zoom += (this.tz - this.zoom) * k;
     this.x += (this.tx - this.x) * k;
     this.y += (this.ty - this.y) * k;
