@@ -14,6 +14,7 @@ export const FIT: Partial<Record<RoleKey, Partial<Record<Aptitude, number>>>> = 
   builder: { hands: 1, outdoors: 0.6 },
   farmer: { outdoors: 1, hands: 0.3 },
   woodcutter: { outdoors: 1, hands: 0.5 },
+  fisher: { outdoors: 1, hands: 0.2 },
   carpenter: { hands: 1, numbers: 0.3 },
   mason: { hands: 1, outdoors: 0.3 },
   toolmaker: { hands: 0.8, numbers: 0.6 },

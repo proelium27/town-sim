@@ -4,6 +4,7 @@ import { ageOf, hasUmbrella, newTask } from './agents';
 import { ADULT_AGE, type Good, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
 import { FOOD_PER_CROP } from './economy';
 import { dreamLean } from './aspirations';
+import { catchFor, lakeCells } from './lake';
 import { birthdayNames } from './events';
 import { funeralOf, mourns, weddingNames, weddingOf, weddingRole } from './rites';
 import { CARRY, HAUL_PAUSE, laborPlan, siteEdges } from './labor';
@@ -145,7 +146,7 @@ function warmHere(sim: Sim, a: Agent): boolean {
   return !!room && (room.id !== sim.town.households[a.household].room || sim.fuel[a.household] > 0);
 }
 /** What can wait out a blizzard: anyone doing one of these somewhere outdoors drops it and gets inside. */
-const STORM_DROPS: ActionKind[] = ['chop', 'mine', 'build', 'haul', 'farm', 'split', 'pave', 'stroll', 'play', 'mourn', 'read', 'relax', 'socialize', 'party', 'wander'];
+const STORM_DROPS: ActionKind[] = ['chop', 'mine', 'build', 'haul', 'farm', 'fish', 'split', 'pave', 'stroll', 'play', 'mourn', 'read', 'relax', 'socialize', 'party', 'wander'];
 
 /** Caught out in a blizzard doing something that can wait. Building materials wait in hand; firewood still goes to the hearth. */
 function caughtOut(sim: Sim, a: Agent): boolean {
@@ -377,6 +378,11 @@ export function idle(sim: Sim, a: Agent): Action {
   return { kind: 'idle', label: 'Idle', reason: '', stage: 'perform', dest: a.at, timer: 0, started: sim.time, score: 0 };
 }
 
+/** Drops whatever they were doing so they choose again (the ice they were crossing just broke up, say). */
+export function replan(sim: Sim, a: Agent): void {
+  finish(sim, a);
+}
+
 function finish(sim: Sim, a: Agent): void {
   endAction(sim, a);
   a.action = idle(sim, a);
@@ -416,6 +422,22 @@ function areaOption(sim: Sim, a: Agent, kind: ActionKind, score: number, reason:
       const path = cell === a.at ? [] : sim.nav.findPath(a.at, cell, 40000);
       if (!path) return false;
       return start(sim, a, kind, label, reason, { cell, path, cost: path.length }, timer, score, extra);
+    },
+  };
+}
+
+/** Out to a random spot on the ice or the shore (a few tries, in case one can't be reached). */
+function lakeOption(sim: Sim, a: Agent, cells: number[], score: number, reason: string, label: string): Option {
+  return {
+    kind: 'stroll', score, reason,
+    begin: () => {
+      for (let k = 0; k < 4; k++) {
+        const cell = cells[Math.floor(sim.rng.next() * cells.length)];
+        if (!sim.map.walkable(sim.map.cx(cell), sim.map.cy(cell))) continue;
+        const path = sim.nav.findPath(a.at, cell, 40000);
+        if (path) return start(sim, a, 'stroll', label, reason, { cell, path, cost: path.length }, sim.rng.range(40, 70), score);
+      }
+      return false;
     },
   };
 }
@@ -645,6 +667,16 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
       o.push({ kind: 'relax', score: s, reason, begin: () => warmUp(sim, a, s, reason) });
     }
   }
+  // The lake: skating once it freezes, an afternoon on the shore in summer.
+  if (!sleepTime && !workTime && !schoolTime && stage !== 'toddler' && !storm && n.fun < 85 && !sim.events.rain) {
+    const lake = lakeCells(sim.map);
+    const fun = (1 - n.fun / 100) * 0.6;
+    if (sim.map.ice && lake.water.length && inWindow(h, 10, 18) && !a.memories.some((m) => m.kind === 'skated')) {
+      o.push(lakeOption(sim, a, lake.water, 0.5 + fun + (stage === 'child' ? 0.25 : 0) + a.skills.athletics.level * 0.02, 'Skating', 'Skating on the lake'));
+    } else if (sim.season === 1 && lake.shore.length && inWindow(h, 12, 20) && !a.memories.some((m) => m.kind === 'lakeside')) {
+      o.push(lakeOption(sim, a, lake.shore, 0.42 + fun + (sim.weekend ? 0.15 : 0), 'By the lake', 'An afternoon by the lake'));
+    }
+  }
   // After dinner, a couple at home together goes out for a walk, side by side.
   if (chill(sim) < 0.5 && loc === 'home' && inWindow(h, 19.25, 21) && n.hunger > 50 && !sleepTime && n.energy > 40 && stage !== 'toddler' && !sim.events.rain && !a.memories.some((x) => x.kind === 'eveningWalk')) {
     const p = sim.agent(a.partner ?? undefined);
@@ -805,7 +837,7 @@ function workOptions(sim: Sim, a: Agent, o: Option[], workTime: boolean, h: numb
         const target: Target = { cell: plan.dest, path: plan.path, cost: plan.path.length };
         const prop = sim.prop(plan.propId);
         if (prop && sim.reserved.has(prop.id) && sim.reserved.get(prop.id) !== a.id && plan.kind !== 'deposit') return false;
-        const ok = start(sim, a, plan.kind, plan.label, plan.reason, target, plan.timer, s, { propId: plan.propId, projectId: plan.projectId, leg: plan.leg, material: plan.material, household: plan.household });
+        const ok = start(sim, a, plan.kind, plan.label, plan.reason, target, plan.timer, s, { propId: plan.propId, projectId: plan.projectId, leg: plan.leg, material: plan.material, household: plan.household, facing: plan.facing });
         // Pick up a fresh set of tools on the way out, if the workshop has made any.
         if (ok && a.tool <= 0 && sim.stock.tools >= 1 && TOOL_WORK.includes(plan.kind)) {
           sim.stock.tools -= 1;
@@ -881,7 +913,7 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
     case 'music': return 'I feel like playing something.';
     case 'read': return 'A few pages of my book.';
     case 'relax': return o.reason === 'Heading home' ? 'Heading home.' : o.reason === 'Blizzard' ? 'This snow! I need to get inside.' : o.reason.startsWith('Cold (') ? 'I can barely feel my fingers.' : 'Taking a breather.';
-    case 'stroll': return 'A walk in the park sounds nice.';
+    case 'stroll': return o.reason === 'Skating' ? 'The lake is frozen solid. Skates on!' : o.reason === 'By the lake' ? 'Too warm to stay in. Down to the lake.' : 'A walk in the park sounds nice.';
     case 'shop': return 'We are out of food at home. Grocery run.';
     case 'meet': return 'Standup time.';
     case 'party':
@@ -905,6 +937,7 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
     case 'craft': return `${o.reason}. Off to the workshop.`;
     case 'stoke': return `${o.reason}. I'll bring them some firewood.`;
     case 'build': return `${a.action.label}. Let's get this up.`;
+    case 'fish': return 'Off to the pier. The fish should be biting.';
     case 'farm': return o.reason === 'The crop is ripe' ? 'The crop looks ready. Harvest time.' : 'Watering and weeding.';
     case 'deposit': return 'Dropping this off at the storehouse.';
     default: return o.reason;
@@ -927,7 +960,7 @@ function urgent(sim: Sim, a: Agent): boolean {
 }
 
 /** What someone off sick stops doing at once, whatever stage it's at. */
-const SICK_STOPS: ActionKind[] = ['work', 'teach', 'learn', 'build', 'chop', 'mine', 'farm', 'haul', 'split', 'stoke', 'craft', 'pave', 'meet'];
+const SICK_STOPS: ActionKind[] = ['work', 'teach', 'learn', 'build', 'chop', 'mine', 'farm', 'fish', 'haul', 'split', 'stoke', 'craft', 'pave', 'meet'];
 
 // ------------------------------------------------------------------ performing
 
@@ -1071,7 +1104,11 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
         think(sim, a, 'And now it is raining. Great.', 'bad');
         return finish(sim, a);
       }
-      if (tick()) finish(sim, a);
+      if (tick()) {
+        if (act.reason === 'Skating') addMemory(sim, a, 'skated');
+        else if (act.reason === 'By the lake') addMemory(sim, a, 'lakeside');
+        finish(sim, a);
+      }
       return;
     case 'work':
     case 'teach':
@@ -1348,6 +1385,8 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       return performBuild(sim, a, dt, tick);
     case 'farm':
       return performFarm(sim, a, dt, tick);
+    case 'fish':
+      return performFish(sim, a, dt, tick);
     case 'split':
       gainXp(sim, a, 'craft', dt * 0.2);
       a.workedToday += dt;
@@ -1529,6 +1568,24 @@ function performFarm(sim: Sim, a: Agent, dt: number, tick: () => boolean): void 
   finish(sim, a);
   // Keep harvesting until the basket is full, then take it in.
   if (a.carry && a.carry.amount < 8) a.thinkIn = 0;
+}
+
+function performFish(sim: Sim, a: Agent, dt: number, tick: () => boolean): void {
+  const act = a.action;
+  if (!sim.prop(act.propId)) return finish(sim, a);
+  if (act.facing) a.facing = act.facing;
+  a.workedToday += dt;
+  payWage(sim, a, 0.3 * dt);
+  a.needs.work = Math.min(100, a.needs.work + 0.4 * dt);
+  gainXp(sim, a, 'craft', dt * 0.3);
+  if (sim.rng.chance(0.01 * dt)) say(sim, a, sim.rng.pick(['…', 'a bite!', 'splash']), 'neutral', 2);
+  act.timer -= dt * (laborRate(a) - 1);
+  if (!tick()) return;
+  const got = pickUp(sim, a, 'food', catchFor(sim, a));
+  if (got >= 5) think(sim, a, sim.map.ice ? 'Not bad for fishing through a hole in the ice.' : 'A good catch today.', 'good');
+  finish(sim, a);
+  // Keep at it until the basket is worth the walk back.
+  if (a.carry && a.carry.amount < 5) a.thinkIn = 0;
 }
 
 function performWork(sim: Sim, a: Agent, dt: number, tick: () => boolean): void {

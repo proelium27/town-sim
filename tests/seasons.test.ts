@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { PRIORITY_WEIGHT } from '../src/sim/defs';
+import { ageOf } from '../src/sim/agents';
+import { ADULT_AGE, PRIORITY_WEIGHT, ROLES } from '../src/sim/defs';
+import { setRole } from '../src/sim/planner';
 import { triggerWorldEvent } from '../src/sim/events';
 import { gatherKind, laborPlan } from '../src/sim/labor';
 import type { Agent } from '../src/sim/types';
@@ -23,7 +25,13 @@ describe('seasons', () => {
     at(sim, 5, 23.9);
     eve = saveSim(sim);
   }, 300_000);
-  const winterTown = () => loadSim(eve);
+  // A calm first winter day: tests that want a blizzard call one up, so one the weather sends can't spoil their setup.
+  const winterTown = () => {
+    const sim = loadSim(eve);
+    sim.run(6 * 1440 + 1 - sim.time);
+    sim.events.plan = sim.events.plan.filter((e) => e.kind !== 'snowstorm');
+    return sim;
+  };
 
   it('warm summers, a chilly late autumn, and a cold winter', () => {
     const sim = new Sim(7, { agents: false });
@@ -139,7 +147,8 @@ describe('seasons', () => {
       const frost = sim.activity.find((e) => e.text.startsWith('First frost'))!.text;
       return { min, ripeLost: Number(/(\d+) ripe/.exec(frost)?.[1] ?? 0) };
     };
-    const normal = lowest(winterTown());
+    // The town as it stood, weather and all, to compare like with like against the Low run below.
+    const normal = lowest(loadSim(eve));
     const low = loadSim(autumn);
     low.priorities.food = 0;
     // Fewer hands bring in the autumn harvest, so more of it freezes in the fields. With the
@@ -238,6 +247,8 @@ describe('seasons', () => {
     const sim = winterTown();
     at(sim, 7, 16);
     triggerWorldEvent(sim, 'snowstorm');
+    // One that lasts the evening (a natural blizzard may already be blowing, due to clear sooner).
+    sim.events.snowstorm!.until = Math.max(sim.events.snowstorm!.until, sim.time + 6 * 60);
     const from = sim.time;
     sim.run(7 * 60);
     const feed = sim.activity.filter((e) => e.t >= from).map((e) => e.text);
@@ -296,6 +307,8 @@ describe('seasons', () => {
     sim.stock.wood = 0;
     sim.stock.firewood = 0;
     sim.stock.stone = 60 * PRIORITY_WEIGHT[sim.priorities.materials] - 1;
+    // The crew needs hands of both parities for the split to mean anything, whoever this timeline left on the gathering crew.
+    for (const a of sim.agents.filter((x) => ageOf(sim, x) >= ADULT_AGE && ROLES[x.role].flexible && x.id % 2 && !['woodcutter', 'laborer', 'builder'].includes(x.role)).slice(0, 2)) setRole(sim, a, 'laborer', null);
     const gatherers = sim.agents.filter((a) => ['woodcutter', 'laborer', 'builder'].includes(a.role) && !a.carry);
     expect(gatherers.some((a) => a.id % 2)).toBe(true);
     const kinds = gatherers.map((a) => laborPlan(sim, a)?.kind).filter((k) => k === 'chop' || k === 'mine');

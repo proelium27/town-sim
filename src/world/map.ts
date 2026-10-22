@@ -3,7 +3,7 @@ import type { Facing, GroundKey, PropKey } from '../assets/manifest';
 export type DrawnKey =
   | 'monitor' | 'toilet' | 'basin' | 'whiteboard' | 'coffee' | 'shower' | 'net'
   | 'rock' | 'stump' | 'crop0' | 'crop1' | 'crop2' | 'crop3' | 'crate' | 'logs' | 'stones' | 'chalkboard' | 'deskKid'
-  | 'cake' | 'grave' | 'bonfire' | 'sawbench' | 'kiln' | 'workbench';
+  | 'cake' | 'grave' | 'bonfire' | 'sawbench' | 'kiln' | 'workbench' | 'bucket';
 
 export type RoomKind =
   | 'office' | 'meeting' | 'kitchen' | 'lounge' | 'lobby' | 'restroom'
@@ -23,7 +23,7 @@ export interface Room {
 /** What an agent can do at a prop. */
 export type UseKind =
   | 'work' | 'meet' | 'eat' | 'coffee' | 'cook' | 'sleep' | 'toilet' | 'shower'
-  | 'sit' | 'play' | 'music' | 'read' | 'shop' | 'snack' | 'farm' | 'learn' | 'teach' | 'deposit' | 'craft' | 'rest';
+  | 'sit' | 'play' | 'music' | 'read' | 'shop' | 'snack' | 'farm' | 'learn' | 'teach' | 'deposit' | 'craft' | 'rest' | 'fish';
 
 export type ResourceKind = 'wood' | 'stone';
 
@@ -59,7 +59,7 @@ export interface Prop {
   label?: string;
 }
 
-export type BuildingKind = 'office' | 'cafe' | 'market' | 'library' | 'house' | 'farm' | 'storehouse' | 'school' | 'park' | 'workshop' | 'cemetery' | 'clinic';
+export type BuildingKind = 'office' | 'cafe' | 'market' | 'library' | 'house' | 'farm' | 'storehouse' | 'school' | 'park' | 'workshop' | 'cemetery' | 'clinic' | 'dock';
 
 export interface Building {
   id: number;
@@ -129,6 +129,8 @@ export class TownMap {
   wallVersion = 0;
   /** Cells whose ground changed since the renderer last looked. */
   groundDirty: number[] = [];
+  /** Winter ice: open water can be walked on (and skated). */
+  ice = false;
   /** Bumped on any ground change (paths, fields), for baked layers. */
   groundVersion = 0;
   /**
@@ -200,7 +202,10 @@ export class TownMap {
     // Neighbours too: a trail's grassy edges depend on what's next to it.
     for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) if (this.inBounds(x + dx, y + dy)) this.groundDirty.push(this.idx(x + dx, y + dy));
     this.groundVersion++;
+    const was = this.blocked[i];
     this.refreshCell(i);
+    // Boards over water (a pier) change where people can walk; pathfinding's regions key on wallVersion.
+    if (this.blocked[i] !== was) this.wallVersion++;
   }
 
   setCell(x: number, y: number, c: Cell): void {
@@ -212,7 +217,7 @@ export class TownMap {
   /** Recomputes blocking and cost for a cell from its ground and props. */
   refreshCell(i: number): void {
     let cost = GROUND_COST[this.ground[i]] ?? 0;
-    let blocked = this.ground[i] === 'water' ? 1 : 0;
+    let blocked = this.ground[i] === 'water' && !this.ice ? 1 : 0;
     for (const p of this.propsAt[i] ?? []) {
       if (p.blocks) blocked = 1;
       if (p.cost) cost = Math.max(cost, p.cost + (GROUND_COST[this.ground[i]] ?? 0));
@@ -309,5 +314,13 @@ export class TownMap {
   /** Recompute every cell's cost and blocking (after bulk edits). */
   refreshAll(): void {
     for (let i = 0; i < this.cell.length; i++) this.refreshCell(i);
+  }
+
+  /** Freezes or thaws open water; pathfinding notices through wallVersion. */
+  setIce(on: boolean): void {
+    if (this.ice === on) return;
+    this.ice = on;
+    for (let i = 0; i < this.cell.length; i++) if (this.ground[i] === 'water') this.refreshCell(i);
+    this.wallVersion++;
   }
 }

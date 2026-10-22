@@ -42,7 +42,7 @@ const isNight = (hour: number) => hour >= 22 || hour < 6;
 
 /** Pleasant everyday things to drift to between events, and how much each is worth. */
 const QUIET: Partial<Record<ActionKind, number>> = {
-  stroll: 5, music: 6, play: 5, party: 5, read: 3, mourn: 7, escort: 6, farm: 4, chop: 3, craft: 4, cook: 3, socialize: 4, build: 3, pave: 3, teach: 4, learn: 3,
+  stroll: 5, music: 6, play: 5, party: 5, fish: 5, read: 3, mourn: 7, escort: 6, farm: 4, chop: 3, craft: 4, cook: 3, socialize: 4, build: 3, pave: 3, teach: 4, learn: 3,
 };
 
 const center = (b: Building): [number, number] => [b.x + b.w / 2, b.y + b.h / 2];

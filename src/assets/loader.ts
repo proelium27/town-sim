@@ -253,6 +253,16 @@ export class Art {
         r(11, 4, 1, 8, '#4f4a45');
         r(5, 2, 6, 1, '#4f4a45');
         break;
+      case 'bucket':
+        // A wooden pail with a fishing rod leaning on it.
+        r(4, 9, 6, 5, '#7a5230');
+        r(4, 9, 6, 1, '#a8774a');
+        r(5, 11, 4, 1, '#5e3d24');
+        r(11, 2, 1, 12, '#8a5f37');
+        r(12, 2, 1, 1, '#dcd6c8');
+        r(12, 3, 1, 6, 'rgba(220, 214, 200, 0.6)');
+        r(3, 14, 8, 1, 'rgba(0,0,0,0.25)');
+        break;
       case 'stump':
         r(5, 9, 6, 5, '#5e3d24');
         r(5, 8, 6, 2, '#b98a55');

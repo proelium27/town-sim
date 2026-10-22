@@ -1,3 +1,4 @@
+import type { Facing } from '../assets/manifest';
 import type { Prop } from '../world/map';
 import { billGoods, type Good, GOODS, goodNoun, PRIORITY_WEIGHT } from './defs';
 import { buildCap, clutter, shortOf, stageOf, supplied } from './planner';
@@ -21,6 +22,7 @@ export interface LaborPlan {
   household?: number;
   timer: number;
   score: number;
+  facing?: Facing;
 }
 
 export const CARRY = 6;
@@ -299,6 +301,20 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
         if (!path) continue;
         const harvest = (p.growth ?? 0) >= 1;
         return { kind: 'farm', label: harvest ? 'Harvesting' : 'Tending the crops', reason: harvest ? 'The crop is ripe' : 'Crops need care', dest: cell, path, propId: p.id, timer: harvest ? 4 : 6, score: base * (harvest ? 1.1 : 0.8) };
+      }
+      return null;
+    });
+  }
+
+  // Fishing off the end of the pier, in every season (through the ice in winter).
+  if (!storm && role === 'fisher') {
+    add(1, () => {
+      const spots = m.props.filter((p) => p.use === 'fish' && free(sim, a, p));
+      for (const p of nearestTo(a, spots, 2)) {
+        const cell = m.idx(p.spot!.x, p.spot!.y);
+        const path = cell === a.at ? [] : sim.nav.findPath(a.at, cell, 40000);
+        if (!path) continue;
+        return { kind: 'fish', label: m.ice ? 'Fishing through the ice' : 'Fishing off the pier', reason: 'The town needs food', dest: cell, path, propId: p.id, facing: p.spot!.facing, timer: 40, score: 1 };
       }
       return null;
     });
