@@ -1,5 +1,6 @@
 import { emptyStock, NEED_KEYS, NEEDS } from './defs';
 import { backfillAgent } from './agents';
+import { CLASSIC } from './character';
 import { emptyLedger } from './market';
 import { Nav } from './nav';
 import { Sim } from './sim';
@@ -94,6 +95,13 @@ export function loadSim(text: string): Sim {
   }
   sim.tier ??= 0;
   sim.hardDays ??= [];
+  // Towns saved before characters grew up as the original Northwind, whatever their seed would roll now.
+  if (!('character' in rest)) sim.character = CLASSIC;
+  else {
+    // Dials added since the save was made start neutral, the way the original town had them.
+    const { classic: _, ...neutral } = CLASSIC;
+    sim.character = { ...neutral, ...sim.character };
+  }
   // The Sim starts at 0 terms, so check the file itself: a mayor in an older save has served one term.
   if (!('mayorTerms' in rest)) sim.mayorTerms = sim.mayor === null ? 0 : 1;
   sim.ledger = { ...emptyLedger(), ...sim.ledger };

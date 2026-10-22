@@ -5,6 +5,7 @@ import { gatherKind, laborPlan } from '../src/sim/labor';
 import type { Agent } from '../src/sim/types';
 import { loadSim, saveSim } from '../src/sim/save';
 import { BURN_PER_HOUR, chill, HEARTH_FULL, tickSeasons, winterReadiness } from '../src/sim/seasons';
+import { CLASSIC } from '../src/sim/character';
 import { Sim } from '../src/sim/sim';
 import { winterLine } from '../src/ui/townPanel';
 
@@ -15,7 +16,8 @@ describe('seasons', () => {
   let autumn = '';
   let eve = '';
   beforeAll(() => {
-    const sim = new Sim(7);
+    // The original town: these check the seasons, not how each town's character plays them.
+    const sim = new Sim(7, { character: CLASSIC });
     at(sim, 4, 0);
     autumn = saveSim(sim);
     at(sim, 5, 23.9);

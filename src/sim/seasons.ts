@@ -72,7 +72,7 @@ export function tickSeasons(sim: Sim, dt: number): void {
   const first = sim.seasonSeen === -1;
   sim.seasonSeen = season;
   if (first) return;
-  sim.log(`${SEASONS[season]} has come to Northwind`, 'event', 'neutral').weight = NOTABLE;
+  sim.log(`${SEASONS[season]} has come to ${sim.name}`, 'event', 'neutral').weight = NOTABLE;
   sim.milestone(`${SEASONS[season]}, year ${sim.year}`);
   if (season === 3) {
     // Whatever is still in the fields, ripe or not, is lost: the harvest has to be in before the frost.
