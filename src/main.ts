@@ -4,6 +4,7 @@ import { TILE } from './assets/manifest';
 import { Camera } from './engine/camera';
 import { AgentsView } from './render/agentsView';
 import { WorldView } from './render/worldView';
+import { CLASSIC } from './sim/character';
 import { Sim, STEP } from './sim/sim';
 import { ActivityLog } from './ui/activity';
 import { Hud } from './ui/hud';
@@ -17,9 +18,12 @@ import { Director } from './ui/director';
 import { ChronicleBook } from './ui/chronicle';
 import { Tracker } from './ui/tracker';
 
-/** Real milliseconds per sim step at 1x: 20 steps per second, so one game minute per real second. */
+/** Game minutes per real second at each speed: Normal plays a day in 8 minutes, Fast in about 90 seconds, Fastest in 24. */
+const MINUTES_PER_SECOND = [0, 3, 15, 60];
+/** Real milliseconds per sim step at one game minute per real second. */
 const STEP_MS = 1000 * STEP;
-const MAX_STEPS_PER_FRAME = 40;
+/** Most real time a frame spends stepping the sim; past it the backlog is dropped, so a slow machine runs slower instead of stalling. */
+const SIM_BUDGET_MS = 10;
 
 async function boot(): Promise<void> {
   const app = new Application();
@@ -42,8 +46,13 @@ async function boot(): Promise<void> {
   const params = new URLSearchParams(location.search);
   const scratch = params.has('seed');
   const saved = scratch ? null : readSave();
-  const sim = saved?.sim ?? new Sim(Number(params.get('seed') ?? 7));
+  // A brand-new town rolls its own seed, so no two grow up alike; the seed is saved with it.
+  // `&classic` replays the original Northwind (old saves) rather than the character the seed rolls now.
+  const seed = Number(params.get('seed') ?? Math.floor(Math.random() * 1e6));
+  const sim = saved?.sim ?? new Sim(seed, params.has('classic') ? { character: CLASSIC } : {});
   const saves = new Saves(sim, !scratch, saved?.unreadable);
+  // Save the new town straight away, or a reload before the first autosave would roll a different one.
+  if (!saved?.sim) saves.save();
   const world = new WorldView(art, sim);
   const people = new AgentsView(art, sim, world);
   app.stage.addChild(world.root, people.sky, people.rain, people.overlay);
@@ -136,7 +145,8 @@ async function boot(): Promise<void> {
     },
   });
 
-  const away = new Away(sim, { speed: () => speed, select: (id) => select(id, true), openLog: () => activity.toggle(true) });
+  // The card catches up in game minutes per real second, not the speed button's number.
+  const away = new Away(sim, { speed: () => MINUTES_PER_SECOND[speed], select: (id) => select(id, true), openLog: () => activity.toggle(true) });
   const director = new Director(sim, camera, document.getElementById('director-btn')!, (on) => {
     if (on) following = false;
     layout();
@@ -258,14 +268,16 @@ async function boot(): Promise<void> {
       away.frame();
       acc = 0;
     } else if (speed > 0) {
-      acc += dtMs * speed;
-      let n = 0;
-      while (acc >= STEP_MS && n < MAX_STEPS_PER_FRAME) {
+      acc += dtMs * MINUTES_PER_SECOND[speed];
+      const start = performance.now();
+      while (acc >= STEP_MS) {
         sim.step();
         acc -= STEP_MS;
-        n++;
+        if (performance.now() - start > SIM_BUDGET_MS) {
+          acc = 0;
+          break;
+        }
       }
-      if (n === MAX_STEPS_PER_FRAME) acc = 0;
     }
     const pan = 520 * dt;
     if (keys.has('KeyA') || keys.has('ArrowLeft')) camera.panBy(pan, 0);

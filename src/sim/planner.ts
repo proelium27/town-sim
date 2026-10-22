@@ -11,6 +11,7 @@ import { projectCushion } from './market';
 import { agendaWeight } from './politics';
 import { deeds, dreaming } from './aspirations';
 import { layToRest } from './rites';
+import { kidCap, nthName } from './character';
 import { canSupply, CRAFT_ROLES, hasWorkshop, rawOf, RECIPES, targetOf, wanted } from './workshop';
 import { addMemory, first, think } from './social';
 import { HEADLINE, NOTABLE, type Agent, type Project } from './types';
@@ -136,6 +137,10 @@ export interface Proposal {
   owner?: Agent;
   /** Time-critical: may start one project past the town's usual limit (the dock before the first frost). */
   rush?: boolean;
+  /** Someone homeless, or the dead unburied: never left to the whims of a meeting. */
+  urgent?: boolean;
+  /** Pressing (food running low): not left to luck either, though it waits behind the urgent. */
+  pressing?: boolean;
 }
 
 /**
@@ -153,6 +158,11 @@ function familyHome(sim: Sim, people: Agent[]): { x: number; y: number } | undef
   return undefined;
 }
 
+/** Close-knit towns settle grown kids and young couples near their parents; elsewhere they go wherever there's land. */
+function settleNear(sim: Sim, people: Agent[]): { x: number; y: number } | undefined {
+  return sim.character.kin >= 0.3 ? familyHome(sim, people) : undefined;
+}
+
 const HOME_SUFFIX = ['home', 'house', 'cottage', 'place', 'lodge'];
 
 /** "Reyes home", or "Reyes cottage" if that name is taken. */
@@ -163,6 +173,7 @@ function homeName(sim: Sim, a: Agent | undefined): string {
   return `${a ? first(a) : 'New'}'s place ${sim.nextProjectId}`;
 }
 
+/** What a town meeting could put forward right now, strongest case first. */
 export function proposals(sim: Sim): Proposal[] {
   const out: Proposal[] = [];
   const adults = sim.agents.filter((a) => ageOf(sim, a) >= ADULT_AGE);
@@ -177,7 +188,7 @@ export function proposals(sim: Sim): Proposal[] {
     const mem = members(sim, h.id).filter((a) => !planned.has(a.id));
     if (!mem.length) continue;
     if (h.building < 0) {
-      out.push({ bp: 'house', score: 2.2 * hw, reason: `${mem.map(first).join(' and ')} ${mem.length === 1 ? 'has' : 'have'} nowhere to live`, forAgents: mem, proposer: mem[0], name: homeName(sim, mem[0]) });
+      out.push({ bp: 'house', score: 2.2 * hw, reason: `${mem.map(first).join(' and ')} ${mem.length === 1 ? 'has' : 'have'} nowhere to live`, forAgents: mem, proposer: mem[0], name: homeName(sim, mem[0]), urgent: true });
     }
   }
   for (const a of adults) {
@@ -188,7 +199,7 @@ export function proposals(sim: Sim): Proposal[] {
     if (sharedHome) continue;
     // A couple living apart, or sharing with housemates, wants a place of their own; apart is pressing.
     const dream = dreaming(a, 'home') || dreaming(p, 'home') ? 1.25 : 1;
-    out.push({ bp: 'house', score: (a.household === p.household ? 1.45 : 2.1) * hw * dream, reason: `${first(a)} and ${first(p)} want a home of their own`, forAgents: fam, proposer: a, name: homeName(sim, a), near: familyHome(sim, [a, p]) });
+    out.push({ bp: 'house', score: (a.household === p.household ? 1.45 : 2.1) * hw * dream, reason: `${first(a)} and ${first(p)} want a home of their own`, forAgents: fam, proposer: a, name: homeName(sim, a), near: settleNear(sim, [a, p]) });
   }
   for (const h of sim.town.households) {
     if (h.building < 0) continue;
@@ -205,13 +216,26 @@ export function proposals(sim: Sim): Proposal[] {
         out.push({ bp: 'extension', score: 1.3 * hw, reason: `the ${h.name} is bursting at the seams`, forAgents: [], proposer: mem.find((a) => ageOf(sim, a) >= ADULT_AGE) ?? mem[0], name: `${h.name} extension`, extends: wing });
       } else {
         const movers = mem.filter((a) => ageOf(sim, a) >= ADULT_AGE && !a.partner).sort((x, y) => ageOf(sim, x) - ageOf(sim, y)).slice(0, 1);
-        if (movers.length) out.push({ bp: 'house', score: 1.2 * hw, reason: `the ${h.name.replace(' home', '')} home is overcrowded`, forAgents: movers, proposer: movers[0], name: homeName(sim, movers[0]), near: familyHome(sim, movers) });
+        if (movers.length) out.push({ bp: 'house', score: 1.2 * hw, reason: `the ${h.name.replace(' home', '')} home is overcrowded`, forAgents: movers, proposer: movers[0], name: homeName(sim, movers[0]), near: settleNear(sim, movers) });
       }
+    } else if (mem.length === cap && sim.character.kin >= 0.6) {
+      // In a family-minded town a couple with every bed full builds on before the next baby, not after.
+      const b = sim.building(h.building);
+      if (!b || sim.projects.some((p) => p.extends?.building === b.id)) continue;
+      const parent = mem.find((a) => {
+        const p = sim.agent(a.partner ?? undefined);
+        const kids = new Set([...a.children, ...(p?.children ?? [])]).size;
+        return p && p.household === h.id && [a, p].every((x) => ageOf(sim, x) >= 20 && ageOf(sim, x) <= 45) && kids < kidCap(sim.character);
+      });
+      const wing = parent ? extensionSite(sim, b) : null;
+      if (parent && wing) out.push({ bp: 'extension', score: 1.0 * hw, reason: `the ${surnameOf(parent.name)} family wants room for another child`, forAgents: [], proposer: parent, name: `${h.name} extension`, extends: wing });
     }
   }
+  const c = sim.character;
   const spare = sim.town.households.filter((h) => h.building >= 0).reduce((n, h) => n + Math.max(0, capacity(sim, h.id) - members(sim, h.id).length), 0);
   if (spare < 2 && !sim.projects.some((p) => p.blueprint === 'house' && !p.forAgents.length)) {
-    out.push({ bp: 'house', score: 0.65 * hw, reason: 'there is no room for anyone new', forAgents: [], proposer: charismatic(), name: homeName(sim, undefined) });
+    // A welcoming town builds ahead of the newcomers; a wary one waits until they're at the door.
+    out.push({ bp: 'house', score: 0.65 * hw * (0.8 + c.openness * 0.4), reason: 'there is no room for anyone new', forAgents: [], proposer: charismatic(), name: homeName(sim, undefined) });
   }
 
   // ---- food
@@ -219,16 +243,19 @@ export function proposals(sim: Sim): Proposal[] {
   const fb = foodBalance(sim, true);
   const plannedFarms = sim.projects.filter((p) => p.blueprint === 'farm').length;
   // With food on High the town breaks new fields until it grows a good margin over what it eats.
-  const deficit = fb.eat * (sim.priorities.food === 2 ? 1.3 : 1) - fb.produce - plannedFarms * 50;
+  const deficit = fb.eat * (sim.priorities.food === 2 ? 1.3 : 1) * c.foodMargin - fb.produce - plannedFarms * 50;
   // Nobody breaks new fields in winter; nothing would grow before spring.
   if (sim.season !== 3 && (deficit > 0 || sim.stock.food < sim.agents.length * 2)) {
     const farmer = sim.agents.find((a) => a.role === 'farmer');
-    out.push({ bp: 'farm', score: (0.8 + Math.min(1, deficit / 40) + (sim.stock.food < sim.agents.length * 3 ? 0.6 : 0)) * fw, reason: sim.stock.food < sim.agents.length * 3 ? 'food stores are running low' : 'we will need more food as we grow', forAgents: [], proposer: farmer ?? charismatic(), name: `${['Sunny', 'River', 'Oak', 'Clover', 'Barley', 'Willow'][count('farm') % 6]} Farm` });
+    const low = sim.stock.food < sim.agents.length * 3;
+    // Running low on food is no time to leave the fields to the luck of a meeting.
+    out.push({ bp: 'farm', score: (0.8 + Math.min(1, deficit / 40) + (low ? 0.6 : 0)) * fw, reason: low ? 'food stores are running low' : 'we will need more food as we grow', forAgents: [], proposer: farmer ?? charismatic(), name: nthName(c.farmNames, count('farm')), pressing: low });
   }
 
   // A fishing dock: food from the lake, and the one harvest that doesn't stop at the first frost. Worth it once
   // the town has mouths to feed, most of all with winter coming.
-  if (count('dock') === 0 && sim.agents.length >= 14) {
+  // (Only where there's a shore to build on: not every town has a lake.)
+  if (count('dock') === 0 && sim.agents.length >= 14 && findDockSite(sim)) {
     const fisherly = sim.agents.find((a) => a.role === 'farmer') ?? charismatic();
     const winterSoon = sim.season === 1 || sim.season === 2;
     if (winterSoon || deficit > 0) {
@@ -248,8 +275,10 @@ export function proposals(sim: Sim): Proposal[] {
     const parent = sim.agent(kids[0].parents[0]);
     out.push({ bp: 'school', score: (0.9 + kids.length * 0.08) * cw, reason: `${kids.length} kids have nowhere to learn`, forAgents: [], proposer: parent ?? charismatic(), name: `${sim.name} School` });
   }
-  if (sim.agents.length >= 24 && count('diner') < Math.floor(sim.agents.length / 24)) {
-    out.push({ bp: 'diner', score: 0.6 * cw, reason: 'the café is packed every lunchtime', forAgents: [], proposer: sim.agents.find((a) => a.traits.includes('foodie')) ?? charismatic(), name: `${['Corner', 'Hilltop', 'Lakeside'][count('diner') % 3]} Diner` });
+  if (sim.agents.length >= c.dinerEvery && count('diner') < Math.floor(sim.agents.length / c.dinerEvery)) {
+    // Say why in terms that fit: a market town feeds its market-day crowds; a small town's café is merely busy.
+    const why = c.trade === 'market' && count('diner') === 0 ? 'market-day crowds need somewhere to eat' : sim.agents.length < 24 ? 'the café is getting crowded at lunch' : 'the café is packed every lunchtime';
+    out.push({ bp: 'diner', score: 0.6 * cw, reason: why, forAgents: [], proposer: sim.agents.find((a) => a.traits.includes('foodie')) ?? charismatic(), name: nthName(c.dinerNames, count('diner')) });
   }
   // A town needs a hall for its meetings (and somewhere for protests to gather).
   if (sim.tier >= 1 && count('townhall') === 0) {
@@ -273,9 +302,9 @@ export function proposals(sim: Sim): Proposal[] {
     out.push({ bp: kind, score: 0.72 + (founder.traits.includes('workaholic') || founder.traits.includes('competitive') ? 0.1 : 0), reason: kind === 'bakery' ? `${first(founder)} has saved up for a bakery of their own` : `${first(founder)} wants to give the town somewhere to go of an evening`, forAgents: [], proposer: founder, name, owner: founder });
   }
   // A workshop once the town is big enough to keep one busy and has the timber to spare.
-  if (sim.agents.length >= 22 && count('workshop') === 0 && sim.stock.wood >= 40) {
+  if (sim.agents.length >= c.workshopAt && count('workshop') === 0 && sim.stock.wood >= 40) {
     // Its case grows with every few people past that, so a steady run of couples wanting homes can't starve it.
-    const overdue = Math.min(1, (sim.agents.length - 22) * 0.15);
+    const overdue = Math.min(1, (sim.agents.length - c.workshopAt) * 0.15);
     out.push({ bp: 'workshop', score: (0.6 + overdue) * mw, reason: 'we could make our own planks, bricks and furniture', forAgents: [], proposer: sim.agents.find((a) => a.role === 'builder') ?? charismatic(), name: `${sim.name} Workshop` });
   }
   const sick = sim.agents.filter((a) => a.illness).length;
@@ -290,14 +319,30 @@ export function proposals(sim: Sim): Proposal[] {
     out.push({
       bp: 'cemetery', score: 1.3 * cw,
       reason: full ? 'the cemetery is full' : `we have nowhere to lay ${first(dead)} to rest`,
-      forAgents: [], proposer: mourner ?? charismatic(), name: full ? 'Hill Cemetery' : `${sim.name} Cemetery`,
+      forAgents: [], proposer: mourner ?? charismatic(), name: full ? 'Hill Cemetery' : `${sim.name} Cemetery`, urgent: true,
     });
   }
   const avgFun = sim.agents.reduce((s, a) => s + a.needs.fun, 0) / Math.max(1, sim.agents.length);
-  if (sim.agents.length >= 20 && count('park') < Math.floor(sim.agents.length / 20)) {
-    out.push({ bp: 'park', score: (0.45 + (avgFun < 45 ? 0.3 : 0)) * cw, reason: 'the new neighborhoods need somewhere green', forAgents: [], proposer: charismatic(), name: `${['Maple', 'Sparrow', 'Fern'][count('park') % 3]} Park` });
+  // New neighborhoods: homes beyond the six the founders started with.
+  const grown = sim.map.buildings.filter((b) => b.kind === 'house').length > 6;
+  if (sim.agents.length >= c.parkEvery && count('park') < Math.floor(sim.agents.length / c.parkEvery)) {
+    out.push({ bp: 'park', score: (0.45 + (avgFun < 45 ? 0.3 : 0)) * cw, reason: grown ? 'the new neighborhoods need somewhere green' : 'the town could use somewhere green to gather', forAgents: [], proposer: charismatic(), name: nthName(c.parkNames, count('park')) });
   }
+  // What the town was founded on and what its people value tilt every proposal.
+  for (const p of out) p.score *= c.bias[p.bp] ?? 1;
   return out.sort((a, b) => b.score - a.score);
+}
+
+/**
+ * The order a meeting takes proposals in. Real meetings don't always back the strongest case: who spoke up,
+ * the mood of the room and the weather all sway it, so in a town with any whim each case is weighed with
+ * a little luck. The homeless and the unburied always come first, then farms when food is running low.
+ */
+function meetingOrder(sim: Sim, props: Proposal[]): Proposal[] {
+  const whim = sim.character.whim;
+  if (!whim) return props;
+  const keyed = props.map((p) => ({ p, k: p.urgent ? 1000 + p.score : p.pressing ? 100 + p.score : p.score * (1 + whim * (2 * sim.rng.next() - 1)) }));
+  return keyed.sort((a, b) => b.k - a.k).map(({ p }) => p);
 }
 
 // ------------------------------------------------------------------ choosing a site
@@ -406,13 +451,36 @@ export function findDockSite(sim: Sim): Site | null {
   return best;
 }
 
+/** The main roads every town starts with: the east-west road on rows 24-28 and the north-south one on columns 40-44. */
+function roadGap(x: number, y: number, w: number, h: number): number {
+  const across = y > 28 ? y - 28 : y + h <= 24 ? 24 - (y + h) : 0;
+  const along = x > 44 ? x - 44 : x + w <= 40 ? 40 - (x + w) : 0;
+  return Math.min(across, along);
+}
+
+/** Tiles of open ground between a plot and the nearest building. */
+function elbowRoom(sim: Sim, x: number, y: number, w: number, h: number): number {
+  let gap = Infinity;
+  for (const b of sim.map.buildings) {
+    const dx = Math.max(b.x - (x + w), x - (b.x + b.w), 0);
+    const dy = Math.max(b.y - (y + h), y - (b.y + b.h), 0);
+    gap = Math.min(gap, Math.max(dx, dy));
+  }
+  return gap;
+}
+
 export function findSite(sim: Sim, key: BlueprintKey, near?: { x: number; y: number }): Site | null {
   if (key === 'dock') return findDockSite(sim);
   const m = sim.map;
   const bp = BLUEPRINTS[key];
+  const ch = sim.character;
   const [tx, ty] = townCenter(sim);
-  // Settle near family if there's a home to be near; otherwise hug the town center.
-  const [cx, cy] = near && bp.kind !== 'farm' ? [near.x, near.y] : [tx, ty];
+  // Towns grow lopsided: toward the water, or whichever way the founders' road ran.
+  const [hx, hy] = [tx + Math.cos(ch.heading) * ch.lean, ty + Math.sin(ch.heading) * ch.lean];
+  // Settle near family if there's a home to be near; otherwise hug the (leaning) town center.
+  const [cx, cy] = near && bp.kind !== 'farm' ? [near.x, near.y] : [hx, hy];
+  // The fields spread out in a belt on one side of town, about 30 tiles out.
+  const belt = ch.lean ? [tx + Math.cos(ch.farmHeading) * 34, ty + Math.sin(ch.farmHeading) * 34] : null;
   const taken = new Set<number>();
   for (const pr of sim.projects) {
     const a = projectArea(pr);
@@ -437,8 +505,15 @@ export function findSite(sim: Sim, key: BlueprintKey, near?: { x: number; y: num
         }
       }
       if (!ok) continue;
-      // Farms like open land a bit out of town; everything else stays close to the center (or the family).
-      const score = (bp.kind === 'farm' ? Math.abs(d - 30) : d) + clear * 3;
+      // Farms like open land a bit out of town; everything else stays close to the center (or the family),
+      // in the town's own way: huddled, spread out with elbow room, or strung along the main roads.
+      // The original town fills the land round its center, so "close in" means close to what's already built.
+      let place = d;
+      if (bp.kind === 'farm') place = belt ? Math.hypot(x + bp.w / 2 - belt[0], y + bp.h / 2 - belt[1]) * 0.6 + Math.max(0, 5 - elbowRoom(sim, x, y, bp.w, bp.h)) * 4 : Math.abs(d - 30);
+      else if (ch.layout === 'clustered' && ch.lean) place = d * 0.6 + elbowRoom(sim, x, y, bp.w, bp.h) * 2.5;
+      else if (ch.layout === 'scattered') place = d * 0.35 + Math.max(0, 8 - elbowRoom(sim, x, y, bp.w, bp.h)) * 4;
+      else if (ch.layout === 'roadside') place = d * 0.2 + roadGap(x, y, bp.w, bp.h) * 5;
+      const score = place + clear * 3;
       cands.push({ x, y, score });
     }
   }
@@ -453,7 +528,8 @@ export function findSite(sim: Sim, key: BlueprintKey, near?: { x: number; y: num
       // The door tile itself sits in the margin; the path may start there.
       const path = pathToStreet(sim, dx, dy, (xx, yy) => fp(xx, yy) && !(xx === dx && yy === dy));
       if (!path) continue;
-      const cost = c.score + path.length * 0.6;
+      // Of a few good plots, which one gets picked is partly luck: who walked the land, what caught their eye.
+      const cost = c.score + path.length * 0.6 + (ch.whim ? sim.rng.next() * ch.whim * 6 : 0);
       if (!best || cost < best.cost) best = { x: c.x, y: c.y, doorTop, path: [m.idx(dx, dy), ...path].filter((i) => BUILDABLE.has(m.ground[i])), cost };
     }
     if (best && best.cost < c.score + 3) break;
@@ -736,7 +812,12 @@ export function roleDemand(sim: Sim): RoleSlot[] {
   // Autumn and winter need firewood split and carried to every hearth.
   const cold = sim.season >= 2 ? 1 : 0;
   const shop = hasWorkshop(sim) ? 1 : 0;
-  demand.push(['woodcutter', Math.max(1, Math.round((sim.stock.wood < 60 || sim.stock.stone < 40 ? 2 : 1) * mw) + cold + shop) - 1, null]);
+  // A second woodcutter is taken on when the pile runs low and kept until it's comfortably restocked, so a stock
+  // hovering around the line doesn't hire and stand down the same person every few hours.
+  const cutters = (k: number) => Math.max(1, Math.round(k * mw) + cold + shop) - 1;
+  const held = sim.agents.filter((a) => a.role === 'woodcutter' && ageOf(sim, a) >= ADULT_AGE).length;
+  const low = sim.stock.wood < 60 || sim.stock.stone < 40 || (held >= cutters(2) && (sim.stock.wood < 80 || sim.stock.stone < 55));
+  demand.push(['woodcutter', cutters(low ? 2 : 1), null]);
   return demand.filter(([, n]) => n > 0);
 }
 
@@ -858,8 +939,9 @@ export function tickPlanner(sim: Sim, dt: number): void {
   const full = regular >= capacityProjects;
   const roomForHomeless = regular < capacityProjects + HOMELESS_EXTRA;
   if (!roomForHomeless && rushing) return;
-  for (const p of proposals(sim)) {
-    if (p.score < 0.5) break;
+  for (const p of meetingOrder(sim, proposals(sim))) {
+    // Nobody takes up a weak case, however lucky its evening.
+    if (p.score < 0.5) continue;
     if (p.rush ? rushing > 0 : full && !(roomForHomeless && homelessHouse(sim, p))) continue;
     if (startProject(sim, p)) return;
   }

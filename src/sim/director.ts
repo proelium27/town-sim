@@ -196,7 +196,8 @@ function night(sim: Sim, out: Shot[], rand: () => number): void {
     else if (a.action.stage === 'perform' && QUIET[a.action.kind] === undefined) up.push(a);
   }
   const homes = [...asleep.keys()].map((h) => sim.building(sim.town.households[h]?.building)).filter((b): b is Building => !!b);
-  for (let i = 0; i < 3 && homes.length; i++) {
+  // Several homes to choose from, so a town fast asleep with no lake doesn't cycle three shots all night.
+  for (let i = 0; i < 6 && homes.length; i++) {
     const b = homes.splice(Math.floor(rand() * homes.length), 1)[0];
     const [x, y] = center(b);
     out.push({ key: `home:${b.id}`, kind: 'quiet', x, y, span: 14, caption: `Quiet night at ${b.name}`, score: 5 + rand() * 2, hold: NIGHT_HOLD });

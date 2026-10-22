@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { stageOf } from '../src/sim/ai';
+import { CLASSIC } from '../src/sim/character';
 import { Sim } from '../src/sim/sim';
 import type { Agent } from '../src/sim/types';
 
@@ -7,7 +8,8 @@ const at = (sim: Sim, day: number, hour: number) => sim.run(day * 1440 + hour * 
 
 /** A hungry adult at home with money for food and `pantry` meals in the cupboard. */
 function hungryAtHome(pantry: number, solo: boolean) {
-  const sim = new Sim(11);
+  // The original town, whose evenings this was tuned on.
+  const sim = new Sim(11, { character: CLASSIC });
   // The first evening moment someone is home and not already at a meal or a party: the test is
   // about a grown-up who has to feed themselves, and evening routines shift from branch to branch.
   let a: Agent | undefined;
