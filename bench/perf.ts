@@ -51,10 +51,14 @@ if (mode === 'crowd') {
   sim.run(startDay * 24 * 60);
   while (sim.agents.length < people) newcomers(sim, Math.min(3, people - sim.agents.length), true);
   const t0 = performance.now();
+  const searches0 = sim.nav.searches;
   const per = timeHours(sim, hours);
+  // Path searches per step: a work count that machine load can't skew, unlike the timings.
+  const searches = (sim.nav.searches - searches0) / (hours * STEPS_PER_HOUR);
   console.log(
     `crowd seed ${seed}: ${sim.agents.length} people now, ${hours}h in ${((performance.now() - t0) / 1000).toFixed(1)}s | ` +
-      `per step: median ${fmt(pct(per, 0.5))}, p90 ${fmt(pct(per, 0.9))}, worst hour ${fmt(Math.max(...per))} | fingerprint ${fingerprint(sim)}`,
+      `per step: median ${fmt(pct(per, 0.5))}, p90 ${fmt(pct(per, 0.9))}, worst hour ${fmt(Math.max(...per))}, ` +
+      `${searches.toFixed(2)} path searches | fingerprint ${fingerprint(sim)}`,
   );
 } else if (mode === 'long') {
   const [seed = 7, days = 20] = pos.map(Number);
