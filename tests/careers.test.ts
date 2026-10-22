@@ -121,10 +121,10 @@ describe('career openings', () => {
   }, 120_000);
 
   it('people settle into their jobs instead of being rotated every few hours', () => {
-    // A seed whose town builds its workshop early, so the trades are in the mix: seed 7's (Alderwood) goes up on day
-    // 7.4. Seed 3, the old choice, is Larkford now that towns have characters, with its workshop on day 11.5 and five
-    // builder-woodcutter swaps (no craft involved).
-    const sim = new Sim(7);
+    // A seed whose town builds its workshop early, so the trades are in the mix: seed 8's (Tealbay) goes up on day
+    // 8.4. With mayors in, seed 7's (Alderwood) is still being built on day 16, its builders spread over a bakery, a
+    // wing, a well and a house.
+    const sim = new Sim(8);
     const days = 16;
     const was = new Map(sim.agents.map((a) => [a.id, { role: a.role, since: sim.time, from: '' }]));
     let moves = 0;

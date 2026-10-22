@@ -133,7 +133,8 @@ describe('mayors with real power', () => {
 
   it('a big protest over a policy makes the mayor climb down or sends a petition round, as their dice fall', () => {
     let climbed = false;
-    for (const seed of [7, 3, 5, 6]) {
+    // Eight towns, so the climb-down path is sure to come up (each outcome is still checked against its own dice).
+    for (const seed of [7, 3, 5, 6, 1, 2, 4, 8]) {
       const sim = town(seed);
       sim.civic.policies.tax = 'high';
       const m = sim.agent(sim.mayor!)!;

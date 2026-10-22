@@ -31,7 +31,8 @@ function town(): Sim {
 
 /** Someone with the itch and the savings to start a place. */
 function founder(sim: Sim, kind: BusinessKind, money = 400): Agent {
-  const a = adults(sim).find((x) => !ownedBy(sim, x) && x.role !== 'builder')!;
+  // Years from retirement: nobody that close starts a business.
+  const a = adults(sim).find((x) => !ownedBy(sim, x) && x.role !== 'builder' && ageOf(sim, x) < RETIRE_AGE - 15)!;
   a.traits = ['workaholic'];
   a.skills.cooking.level = 6;
   a.skills.charisma.level = 6;
