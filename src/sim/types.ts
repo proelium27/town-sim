@@ -171,6 +171,10 @@ export interface Agent {
   diedAt?: number;
   /** The town they came from, for travelers. */
   from?: string;
+  /** Who they left behind, written down when they died so the obituary doesn't change as others pass on. */
+  survivors?: string[];
+  /** When they died, and whether they were mayor then; set only for the dead. */
+  died?: { at: number; mayor: boolean };
 }
 
 export interface Project {

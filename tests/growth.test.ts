@@ -8,6 +8,7 @@ import { capacity, completeProject, findSite, members, newHousehold, tickPlanner
 import { BLUEPRINTS } from '../src/world/blueprints';
 import { Cell } from '../src/world/map';
 import { Sim } from '../src/sim/sim';
+import type { Project } from '../src/sim/types';
 
 /** A fresh house out on open ground (where a new town house would go), with room on both sides. */
 function freshHouse(doorTop = true) {
@@ -55,11 +56,16 @@ describe('homes that grow', () => {
       const baby = createAgent(sim, { role: 'child', household: hh.id, age: 0.5, parents: parents.slice(0, 2), cell: parents[0].at });
       sim.agents.push(baby);
     }
-    sim.projects = [];
     sim.treasury = 500;
-    sim.timers.plan = 0;
-    tickPlanner(sim, 0.05);
-    const pr = sim.projects.find((p) => p.blueprint === 'extension');
+    // The meeting takes proposals best first, and by now the school (1.33) can just edge the wing (1.30): let it go first.
+    let pr: Project | undefined;
+    sim.projects = [];
+    for (let k = 0; k < 3 && !pr; k++) {
+      sim.timers.plan = 0;
+      tickPlanner(sim, 0.05);
+      pr = sim.projects.find((p) => p.blueprint === 'extension');
+      if (!pr) for (const other of [...sim.projects]) completeProject(sim, other);
+    }
     expect(pr).toBeDefined();
     const b = sim.building(hh.building)!;
     const [w0, beds0] = [b.w, capacity(sim, hh.id)];
