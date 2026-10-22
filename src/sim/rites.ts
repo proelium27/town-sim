@@ -1,4 +1,5 @@
 import { ageOf } from './agents';
+import { dreaming } from './aspirations';
 import { DAY_NAMES, MIN_PER_DAY, ROLES, type SkillKey } from './defs';
 import { andList, parkEventUntil } from './events';
 import { capacity, familyOf, members, moveTo } from './planner';
@@ -125,7 +126,7 @@ export function courtship(sim: Sim): void {
       const ra = rel(a, b);
       const rb = rel(b, a);
       if (ra.opinion < 55 || rb.opinion < 55 || ra.familiarity < 30) continue;
-      if (!sim.rng.chance(0.25)) continue;
+      if (!sim.rng.chance(dreaming(a, 'love') || dreaming(b, 'love') ? 0.4 : 0.25)) continue;
       a.court = { with: b.id, stage: 'courting', since: sim.time };
       b.court = { with: a.id, stage: 'courting', since: sim.time };
       ra.opinion = Math.min(100, ra.opinion + 10);

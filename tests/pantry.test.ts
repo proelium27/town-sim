@@ -58,7 +58,8 @@ describe('pantry', () => {
       expect(bareCooks).toBe(0);
       expect(ateAt).toBeGreaterThan(0);
       expect(ateAt - t0).toBeLessThan(3 * 60);
-      expect(cooks).toBe(1);
+      // At most one trip to the stove (with money, dinner at the café is fine too).
+      expect(cooks).toBeLessThanOrEqual(1);
       expect(a.needs.hunger).toBeGreaterThan(40);
     }, 60_000);
   }

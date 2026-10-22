@@ -3,6 +3,7 @@ import type { Prop, UseKind } from '../world/map';
 import { ageOf, hasUmbrella, newTask } from './agents';
 import { ADULT_AGE, type Good, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_LABEL, type SkillKey } from './defs';
 import { FOOD_PER_CROP } from './economy';
+import { dreamLean } from './aspirations';
 import { birthdayNames } from './events';
 import { funeralOf, mourns, weddingNames, weddingOf, weddingRole } from './rites';
 import { CARRY, HAUL_PAUSE, laborPlan, siteEdges } from './labor';
@@ -840,7 +841,10 @@ function decide(sim: Sim, a: Agent, stage: Stage): void {
   // Off sick: down tools first, so staying put at work or school isn't even an option.
   if (offSick(a) && SICK_STOPS.includes(a.action.kind) && !(a.action.kind === 'haul' && a.action.leg === 'deliver')) finish(sim, a);
   a.thinkIn = 4 + sim.rng.range(0, 4);
-  const opts = buildOptions(sim, a, stage).sort((x, y) => y.score - x.score);
+  const opts = buildOptions(sim, a, stage);
+  // Dreams lean on choices. A sitting mayor keeps in touch with the town as keenly as anyone who'd like the job.
+  for (const o of opts) o.score += sim.mayor === a.id && o.kind === 'socialize' ? Math.max(0.1, dreamLean(a, o.kind)) : dreamLean(a, o.kind);
+  opts.sort((x, y) => y.score - x.score);
   const cur = a.action;
   let currentScore = 0;
   if (cur.kind !== 'idle') {
@@ -1202,8 +1206,8 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       n.energy = Math.min(100, n.energy + 0.06 * dt);
       for (const o of others(sim, a, ['relax'], 4)) bondNearby(sim, a, o, dt);
       if (tick()) {
-        // Warming up lasts until they're warm (or the hearth gives out).
-        if (act.reason.startsWith('Cold (') && n.warmth < 60 && chill(sim) > 0 && warmHere(sim, a)) act.timer = 10;
+        // Warming up lasts until they're warm (or the hearth gives out), sheltering from a storm that's blown over too.
+        if (isWarmUp(act) && n.warmth < 60 && chill(sim) > 0 && warmHere(sim, a)) act.timer = 10;
         else finish(sim, a);
       }
       return;

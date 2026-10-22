@@ -215,6 +215,8 @@ describe('seasons', () => {
   it('a blizzard stops the outdoor work: builders, woodcutters and all come inside', () => {
     const sim = winterTown();
     at(sim, 6, 10);
+    // Wait for a crew on site (how the morning goes shifts with any change to town life).
+    for (let k = 0; k < 24 && !sim.projects.some((p) => p.builders.size > 0); k++) sim.run(15);
     expect(sim.projects.some((p) => p.builders.size > 0)).toBe(true);
     triggerWorldEvent(sim, 'snowstorm');
     sim.run(30);
@@ -256,6 +258,8 @@ describe('seasons', () => {
     a.thinkIn = 0;
     let entered = -1;
     let leftCold = 0;
+    let wasHome = false;
+    let leftAt = -1;
     for (let t = 0; t < 120; t++) {
       // A housemate has the seat by the fire the whole time.
       sim.reserved.set(seat.id, -1);
@@ -263,11 +267,15 @@ describe('seasons', () => {
       sim.run(1);
       const home = sim.roomOf(a)?.id === hh.room;
       if (home && entered < 0) entered = t;
-      if (entered >= 0 && !home && a.needs.warmth < 55) leftCold++;
+      // Walking out the door still cold (cooling off later, back at work, is fine).
+      if (wasHome && !home && a.needs.warmth < 55) leftCold++;
+      if (wasHome && !home && leftAt < 0) leftAt = a.needs.warmth;
+      wasHome = home;
     }
     expect(entered).toBeGreaterThanOrEqual(0);
     expect(leftCold).toBe(0);
-    expect(a.needs.warmth).toBeGreaterThanOrEqual(55);
+    // Warm when they went back out (or still in, warming up).
+    expect(leftAt < 0 ? a.needs.warmth : leftAt).toBeGreaterThanOrEqual(55);
   }, 120_000);
 
   it('an empty hearth in winter makes for a cold, unhappy home', () => {

@@ -1,4 +1,5 @@
 import { ageOf } from './agents';
+import { deeds } from './aspirations';
 import { BIRTHDAY_HOUR, ELECTION_DAY, MIN_PER_DAY, plural, RALLY_HOUR, RALLY_LENGTH, ROLES, YEAR_DAYS, YEARS_PER_DAY } from './defs';
 import { fallIll } from './health';
 import { TRADER_EVERY } from './market';
@@ -216,7 +217,10 @@ export function tickEvents(sim: Sim, dt: number): void {
   if (ev.festival && sim.time >= ev.festival.until) {
     const people = [...ev.festival.attendees].map((id) => sim.agent(id)!).filter(Boolean);
     ev.festival = null;
-    for (const a of people) addMemory(sim, a, 'festival');
+    for (const a of people) {
+      addMemory(sim, a, 'festival');
+      deeds(a).festivals++;
+    }
     for (const a of people) for (const b of people) if (a.id !== b.id && Math.abs(a.x - b.x) < 8) shiftOpinion(sim, a, b, sim.rng.range(0, 3));
     sim.log(`The festival is over. ${plural(people.length, 'person', 'townsfolk')} ${sim.season === 3 ? 'warmed up together' : 'danced the night away'}`, 'event', 'good').weight = NOTABLE;
   }

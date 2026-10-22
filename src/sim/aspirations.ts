@@ -1,0 +1,260 @@
+import { ageOf } from './agents';
+import { ADULT_AGE, MIN_PER_DAY, RETIRE_AGE, ROLES, YEAR_DAYS } from './defs';
+import { TIER_AT } from './growth';
+import { weddingOf } from './rites';
+import { Rng } from './rng';
+import { addMemory, CLOSE_FRIEND, first, RIVAL, think } from './social';
+import type { Sim } from './sim';
+import { type ActionKind, type Agent, HEADLINE, NOTABLE } from './types';
+
+/**
+ * Life aspirations: every grown-up carries one dream (master their trade, be mayor, raise a big family, see the
+ * village become a city...). It leans gently on what they choose to do, shows in the inspector with how close they
+ * are, and when it comes true it's the best day of their life. When it's clearly out of reach they let it go and,
+ * after a while, find another.
+ */
+
+export type DreamKey = 'master' | 'mayor' | 'family' | 'home' | 'love' | 'friend' | 'city' | 'festivals' | 'builder' | 'outlive';
+
+export interface Dream {
+  key: DreamKey;
+  since: number;
+  /** A count at the start, for dreams measured from then (festivals danced at, buildings helped on). */
+  base?: number;
+  /** The rival they mean to outlive. */
+  about?: number;
+  /** When it came true, or was let go. */
+  done?: number;
+  lost?: number;
+}
+
+/** Lifetime counts the sim otherwise forgets once the memories fade. */
+export interface Deeds {
+  built: number;
+  festivals: number;
+}
+
+/** A dream fulfilled or let go stays on show this long before they find another. */
+const BETWEEN = MIN_PER_DAY;
+const MASTER = 8;
+const BIG_FAMILY = 3;
+const FESTIVALS = 4;
+const BUILDS = 5;
+/** Years of working life someone needs ahead of them to reasonably hope to master a craft. */
+const MASTER_YEARS = 20;
+/** Past this age nobody has a big family still ahead of them. */
+const FAMILY_AGE = 34;
+/** The town has to be this close to a city's population before anyone dreams of seeing one. */
+const CITY_HOPE = 0.7;
+/** A city dreamer gives up if the town hasn't reached it after this long. */
+const CITY_PATIENCE = 2 * YEAR_DAYS * MIN_PER_DAY;
+
+interface DreamDef {
+  /** Inspector: "Dreams of …". */
+  text: (sim: Sim, a: Agent, d: Dream) => string;
+  /** Feed, on coming true: "Ula's dream came true: …". */
+  came: (sim: Sim, a: Agent, d: Dream) => string;
+  /** How much this person would want it; 0 if it doesn't fit them. */
+  weight: (sim: Sim, a: Agent) => number;
+  progress?: (sim: Sim, a: Agent, d: Dream) => string;
+  done: (sim: Sim, a: Agent, d: Dream) => boolean;
+  /** Why it's out of reach now, or ''. */
+  lost?: (sim: Sim, a: Agent, d: Dream) => string;
+  /** Feed weight when it comes true; the bigger dreams are headlines, a new home is only worth a mention. */
+  notable?: boolean;
+  /** Extra score for these choices while they hold the dream. */
+  leans?: Partial<Record<ActionKind, number>>;
+}
+
+export const deeds = (a: Agent): Deeds => (a.deeds ??= { built: 0, festivals: 0 });
+
+const trait = (a: Agent, t: Agent['traits'][number], w: number) => (a.traits.includes(t) ? w : 0);
+const working = (a: Agent) => a.role !== 'child' && a.role !== 'retired';
+const rivalOf = (sim: Sim, a: Agent) =>
+  [...a.relations].filter(([id, r]) => r.opinion <= RIVAL && sim.agent(id)).sort((x, y) => x[1].opinion - y[1].opinion)[0]?.[0];
+const bestFriend = (sim: Sim, a: Agent) => Math.max(0, ...[...a.relations].filter(([id]) => sim.agent(id)).map(([, r]) => r.opinion));
+
+export const DREAMS: Record<DreamKey, DreamDef> = {
+  master: {
+    text: (_s, a) => `mastering ${ROLES[a.role].craft.toLowerCase()}`,
+    came: (_s, a) => `became a master of ${ROLES[a.role].craft.toLowerCase()}`,
+    // Only for those with enough working years left to get there, and the more so the more years they have.
+    weight: (sim, a) => {
+      const years = RETIRE_AGE - ageOf(sim, a);
+      if (!working(a) || a.skills.craft.level >= MASTER - 1 || years < MASTER_YEARS) return 0;
+      return Math.max(0.1, (1 + trait(a, 'workaholic', 1.5) + trait(a, 'competitive', 0.5) - trait(a, 'slacker', 0.8)) * Math.min(1, years / 35));
+    },
+    progress: (_s, a) => `level ${a.skills.craft.level} of ${MASTER}`,
+    done: (_s, a) => a.skills.craft.level >= MASTER,
+    lost: (_s, a) => (a.role === 'retired' ? 'retired before mastering it' : ''),
+    // Only choices that don't compete with the job the town assigned them (outdoor labor tasks would churn the crews).
+    leans: { work: 0.08, craft: 0.08, teach: 0.06 },
+  },
+  mayor: {
+    text: () => 'being elected mayor',
+    came: (sim) => `was elected mayor of ${sim.name}`,
+    weight: (sim, a) => (working(a) && sim.mayor !== a.id ? 0.25 + a.skills.charisma.level * 0.15 + trait(a, 'extrovert', 0.5) + trait(a, 'competitive', 0.6) - trait(a, 'introvert', 0.2) : 0),
+    done: (sim, a) => sim.mayor === a.id,
+    lost: (_s, a) => (a.role === 'retired' ? 'retired without ever winning an election' : ''),
+    leans: { socialize: 0.1 },
+  },
+  family: {
+    text: () => 'raising a big family',
+    came: () => `raised a big family of ${BIG_FAMILY} or more`,
+    // Young enough to have the years for it; far likelier with someone to raise it with, or children already.
+    weight: (sim, a) => (ageOf(sim, a) < FAMILY_AGE && a.children.length < BIG_FAMILY ? (a.partner !== null ? 1.4 : 0.4) + (a.children.length >= 2 ? 0.6 : 0) : 0),
+    progress: (_s, a) => `${a.children.length} of ${BIG_FAMILY} children`,
+    done: (_s, a) => a.children.length >= BIG_FAMILY,
+    lost: (sim, a) => (ageOf(sim, a) >= 50 ? 'the years for a big family have passed' : ''),
+  },
+  home: {
+    text: () => 'a home of their own',
+    came: () => 'moved into a home of their own',
+    notable: true,
+    weight: (sim, a) => {
+      const hh = sim.town.households[a.household];
+      const others = sim.agents.some((o) => o.household === a.household && o.id !== a.id && o.id !== a.partner && !a.children.includes(o.id));
+      return ageOf(sim, a) >= ADULT_AGE && (hh.building < 0 || others) ? 1.4 : 0;
+    },
+    done: (_s, a, d) => a.memories.some((m) => m.kind === 'movedIn' && m.created >= d.since),
+  },
+  love: {
+    text: () => 'finding someone to share life with',
+    came: (sim, a) => `married ${first(sim.person(a.partner ?? undefined) ?? a)}`,
+    weight: (sim, a) => (a.partner === null && !a.court && ageOf(sim, a) >= 20 && ageOf(sim, a) < 45 ? 1.2 + trait(a, 'extrovert', 0.6) : 0),
+    progress: (sim, a) => {
+      const s = sim.agent(a.court?.with);
+      return s ? `${a.court!.stage === 'engaged' ? 'engaged to' : 'courting'} ${first(s)}` : '';
+    },
+    // Married means the wedding is over, not just that the ceremony has begun.
+    done: (sim, a) => a.partner !== null && !weddingOf(sim, a.id),
+    lost: (sim, a) => (ageOf(sim, a) >= 60 ? 'a life on their own has come to feel like enough' : ''),
+    leans: { socialize: 0.05 },
+  },
+  friend: {
+    text: () => 'a true friend',
+    came: () => 'found a true friend',
+    weight: (sim, a) => (bestFriend(sim, a) < CLOSE_FRIEND ? trait(a, 'introvert', 1.2) + 0.4 : 0),
+    progress: (sim, a) => `closest friendship ${Math.round(bestFriend(sim, a))} of ${CLOSE_FRIEND}`,
+    done: (sim, a) => bestFriend(sim, a) >= CLOSE_FRIEND,
+    leans: { socialize: 0.1 },
+  },
+  city: {
+    text: (sim) => `seeing ${sim.name} become a city`,
+    came: (sim) => `saw ${sim.name} become a city`,
+    // Only once the town is plausibly on its way: already a town, and nearly the people a city needs.
+    weight: (sim, a) => (sim.tier === 1 && sim.agents.length >= TIER_AT[2][0] * CITY_HOPE ? 0.5 + (ageOf(sim, a) >= 40 ? 0.3 : 0) : 0),
+    progress: (sim) => `${sim.agents.length} of ${TIER_AT[2][0]} people`,
+    done: (sim) => sim.tier >= 2,
+    lost: (sim, a, d) =>
+      ageOf(sim, a) >= RETIRE_AGE + 10 ? `they won't live to see it` : sim.time - d.since >= CITY_PATIENCE && sim.agents.length < TIER_AT[2][0] * CITY_HOPE ? 'the town has stopped growing' : '',
+  },
+  festivals: {
+    text: () => 'dancing at the festivals',
+    came: () => `danced at ${FESTIVALS} festivals`,
+    // Counts every festival they dance at from when they take it up, so it suits the lively and not the old.
+    weight: (sim, a) => (0.3 + trait(a, 'extrovert', 0.8) + trait(a, 'cheerful', 0.3)) * (ageOf(sim, a) >= 60 ? 0.4 : 1),
+    progress: (_s, a, d) => `${deeds(a).festivals - (d.base ?? 0)} of ${FESTIVALS}`,
+    done: (_s, a, d) => deeds(a).festivals - (d.base ?? 0) >= FESTIVALS,
+    leans: { party: 0.2 },
+  },
+  builder: {
+    text: () => 'helping build the town',
+    came: () => `helped raise ${BUILDS} buildings`,
+    weight: (_s, a) => (['builder', 'laborer', 'carpenter', 'mason'].includes(a.role) ? 1.3 : working(a) ? 0.2 : 0),
+    progress: (_s, a, d) => `${deeds(a).built - (d.base ?? 0)} of ${BUILDS} buildings`,
+    done: (_s, a, d) => deeds(a).built - (d.base ?? 0) >= BUILDS,
+  },
+  outlive: {
+    text: (sim, _a, d) => `outliving ${first(sim.person(d.about) ?? _a)}`,
+    came: (sim, _a, d) => `outlived ${first(sim.person(d.about) ?? _a)}`,
+    weight: (sim, a) => (a.traits.includes('competitive') && rivalOf(sim, a) !== undefined ? 1.5 : 0),
+    done: (sim, _a, d) => !sim.agent(d.about) && sim.deceased.some((x) => x.id === d.about),
+    lost: (sim, a, d) => ((a.relations.get(d.about!)?.opinion ?? 0) > 0 ? `made peace with ${first(sim.person(d.about) ?? a)}` : !sim.person(d.about) ? 'their rival left town' : ''),
+  },
+};
+
+const KEYS = Object.keys(DREAMS) as DreamKey[];
+
+/** Extra score a dream gives one kind of choice. */
+export function dreamLean(a: Agent, kind: ActionKind): number {
+  const d = a.dream;
+  return d && !d.done && !d.lost ? (DREAMS[d.key].leans?.[kind] ?? 0) : 0;
+}
+
+/** True while they hold this dream, not yet come true or let go. */
+export function dreaming(a: Agent | undefined, key: DreamKey): boolean {
+  return !!a?.dream && a.dream.key === key && !a.dream.done && !a.dream.lost;
+}
+
+/** For the inspector: "Dreams of · being elected mayor", with progress; or how it ended. */
+export function dreamLine(sim: Sim, a: Agent): { label: string; text: string; progress: string; state: 'open' | 'done' | 'lost' } | null {
+  const d = a.dream;
+  if (!d) return null;
+  const def = DREAMS[d.key];
+  if (d.done) return { label: 'Dream come true', text: `${first(a)} ${def.came(sim, a, d)}`, progress: '', state: 'done' };
+  if (d.lost) return { label: 'Let go of', text: def.text(sim, a, d), progress: '', state: 'lost' };
+  return { label: 'Dreams of', text: def.text(sim, a, d), progress: def.progress?.(sim, a, d) ?? '', state: 'open' };
+}
+
+/** A few times a day: dreams come true or are let go, and grown-ups without one find one. */
+export function tickAspirations(sim: Sim): void {
+  const cityDreamers: Agent[] = [];
+  for (const a of sim.agents) {
+    if (ageOf(sim, a) < ADULT_AGE) continue;
+    const d = a.dream;
+    if (!d || ((d.done || d.lost) && sim.time - (d.done ?? d.lost!) >= BETWEEN)) {
+      a.dream = pick(sim, a, d?.key);
+      continue;
+    }
+    if (d.done || d.lost) continue;
+    const def = DREAMS[d.key];
+    if (def.done(sim, a, d)) {
+      if (d.key === 'city') cityDreamers.push(a);
+      else fulfil(sim, a, d);
+    } else {
+      const why = def.lost?.(sim, a, d);
+      if (why) letGo(sim, a, d, why);
+    }
+  }
+  // A dream the whole town shares comes true for everyone at once: one line, a memory for each.
+  for (const a of cityDreamers) fulfil(sim, a, a.dream!, cityDreamers.length > 1);
+  if (cityDreamers.length > 1) {
+    sim.log(`${cityDreamers.length} people saw their dream come true: ${sim.name} is a city`, 'life', 'good', cityDreamers[0]).weight = HEADLINE;
+  }
+}
+
+function pick(sim: Sim, a: Agent, last?: DreamKey): Dream | undefined {
+  // The old have done their dreaming; nobody new takes one up past retirement, though they keep the one they hold.
+  if (ageOf(sim, a) >= RETIRE_AGE + 6) return undefined;
+  const options = KEYS.filter((k) => k !== last).map((k) => [k, DREAMS[k].weight(sim, a)] as const).filter(([, w]) => w > 0);
+  const total = options.reduce((s, [, w]) => s + w, 0);
+  if (!total) return undefined;
+  // Dice of its own, from the town, the person and the moment, so taking up dreams doesn't reshuffle the town's.
+  let r = new Rng(sim.seed * 7919 + a.id * 104729 + Math.floor(sim.time)).range(0, total);
+  const key = (options.find(([, w]) => (r -= w) <= 0) ?? options[options.length - 1])[0];
+  const d: Dream = { key, since: sim.time };
+  if (key === 'festivals') d.base = deeds(a).festivals;
+  if (key === 'builder') d.base = deeds(a).built;
+  if (key === 'outlive') d.about = rivalOf(sim, a);
+  think(sim, a, `Someday I'd love ${key === 'home' ? 'a home of my own' : DREAMS[key].text(sim, a, d).replace(/ their /, ' my ')}.`, 'good');
+  return d;
+}
+
+function fulfil(sim: Sim, a: Agent, d: Dream, shared = false): void {
+  d.done = sim.time;
+  const what = DREAMS[d.key].came(sim, a, d);
+  addMemory(sim, a, 'dreamCameTrue');
+  think(sim, a, `I did it. I ${what.replace(/ their /, ' my ')}.`, 'good');
+  if (shared) return;
+  sim.log(`A dream come true: ${a.name} ${what}`, 'life', 'good', a).weight = DREAMS[d.key].notable ? NOTABLE : HEADLINE;
+}
+
+function letGo(sim: Sim, a: Agent, d: Dream, why: string): void {
+  d.lost = sim.time;
+  // Only a rival who turned friend is a peace; any other dream let go just fades.
+  const peace = d.key === 'outlive' && why.startsWith('made peace');
+  if (!peace) addMemory(sim, a, 'dreamFaded');
+  const e = sim.log(`${first(a)} ${peace ? why : `let go of a dream: ${why}`}`, 'life', peace ? 'good' : 'neutral', a, peace ? sim.agent(d.about) : undefined);
+  if (peace) e.weight = NOTABLE;
+}
