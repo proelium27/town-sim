@@ -1,4 +1,5 @@
-import type { Building } from '../world/map';
+import type { Building, TownMap } from '../world/map';
+import { CORE_H, CORE_W } from '../world/town';
 import { parkEventUntil } from './events';
 import { weddingNames } from './rites';
 import type { Sim } from './sim';
@@ -24,6 +25,8 @@ export interface Shot {
   score: number;
   /** Real seconds to stay on it. */
   hold: number;
+  /** Game minute of the news behind it, if any: fresher than the last showing, it may cut in again. */
+  at?: number;
 }
 
 /** News this recent (game minutes) is still worth cutting to. */
@@ -32,6 +35,10 @@ const NEWS_WINDOW = 45;
 const MOMENT_WINDOW = 6;
 /** A key shown this recently (game minutes) is held back so the camera roams. */
 const REPEAT_WINDOW = 150;
+/** Headline-grade shots; fresh ones cut in on the current shot. */
+const URGENT_SCORE = 26;
+/** Evenings and small hours, when the town is asleep and the camera needs somewhere else to go. */
+const isNight = (hour: number) => hour >= 22 || hour < 6;
 
 /** Pleasant everyday things to drift to between events, and how much each is worth. */
 const QUIET: Partial<Record<ActionKind, number>> = {
@@ -64,7 +71,7 @@ export function candidates(sim: Sim, rand: () => number = Math.random): Shot[] {
     const a = sim.agent(e.agentId);
     const w = e.weight ?? 0;
     if (a && w >= NOTABLE) {
-      out.push({ key: `agent:${a.id}`, kind: 'news', x: a.x, y: a.y, follow: a.id, span: 14, caption: e.text, score: w * 8 + (w >= HEADLINE ? 6 : 0) - (now - e.t) / 10, hold: 14 });
+      out.push({ key: `agent:${a.id}`, kind: 'news', x: a.x, y: a.y, follow: a.id, span: 14, caption: e.text, score: w * 8 + (w >= HEADLINE ? 6 : 0) - (now - e.t) / 10, hold: 14, at: e.t });
     } else if (a && e.kind === 'social' && e.otherId !== undefined && now - e.t <= MOMENT_WINDOW && e.tone !== 'good') {
       // Arguments and fallings-out; plain good chats are too common to chase.
       out.push({ key: `agent:${a.id}`, kind: 'moment', x: a.x, y: a.y, follow: a.id, span: 12, caption: e.text, score: 14, hold: 10 });
@@ -132,13 +139,62 @@ export function candidates(sim: Sim, rand: () => number = Math.random): Shot[] {
     out.push({ key: `agent:${a.id}`, kind: 'quiet', x: a.x, y: a.y, follow: a.id, span: 12, caption: personCaption(a), score: QUIET[a.action.kind]! + together + rand() * 4, hold: 12 });
   }
 
+  // After dark nearly everyone is asleep, so show the night itself: lit windows, someone up late, the lake.
+  if (isNight(sim.hour)) night(sim, out, rand);
+
   // The whole town, now and then and after rain or snow starts.
   const bx = establishing(sim);
   if (bx) {
     const weather = ev.snowstorm ? 'A blizzard over' : ev.rain ? 'Rain over' : '';
-    out.push({ ...bx, caption: weather ? `${weather} ${sim.date()}` : sim.date(), score: 4 + (ev.rain || ev.snowstorm ? 4 : 0) });
+    out.push({ ...bx, caption: weather ? `${weather} ${sim.date()}` : sim.date(), score: 4 + (ev.rain || ev.snowstorm ? 4 : 0), hold: isNight(sim.hour) ? NIGHT_HOLD : bx.hold });
   }
   return out;
+}
+
+/** Real seconds to linger on a night shot: little changes in the dark, so don't re-cut as often. */
+const NIGHT_HOLD = 18;
+
+/** The middle of the water outside the founders' town, cached per map. */
+const lakes = new WeakMap<TownMap, [number, number] | null>();
+function lakeCenter(m: TownMap): [number, number] | null {
+  if (lakes.has(m)) return lakes.get(m)!;
+  let sx = 0;
+  let sy = 0;
+  let n = 0;
+  for (let y = 0; y < m.h; y++) {
+    for (let x = 0; x < m.w; x++) {
+      if ((x >= CORE_W || y >= CORE_H) && m.ground[m.idx(x, y)] === 'water') {
+        sx += x;
+        sy += y;
+        n++;
+      }
+    }
+  }
+  const at: [number, number] | null = n ? [sx / n, sy / n] : null;
+  lakes.set(m, at);
+  return at;
+}
+
+/** Night-time shots: homes with sleepers behind lit windows, anyone still up, and the lake under the moon. */
+function night(sim: Sim, out: Shot[], rand: () => number): void {
+  const asleep = new Map<number, number>();
+  const up: Agent[] = [];
+  for (const a of sim.agents) {
+    if (a.action.kind === 'sleep') asleep.set(a.household, (asleep.get(a.household) ?? 0) + 1);
+    else if (a.action.stage === 'perform' && QUIET[a.action.kind] === undefined) up.push(a);
+  }
+  const homes = [...asleep.keys()].map((h) => sim.building(sim.town.households[h]?.building)).filter((b): b is Building => !!b);
+  for (let i = 0; i < 3 && homes.length; i++) {
+    const b = homes.splice(Math.floor(rand() * homes.length), 1)[0];
+    const [x, y] = center(b);
+    out.push({ key: `home:${b.id}`, kind: 'quiet', x, y, span: 14, caption: `Quiet night at ${b.name}`, score: 5 + rand() * 2, hold: NIGHT_HOLD });
+  }
+  if (up.length) {
+    const a = up[Math.floor(rand() * up.length)];
+    out.push({ key: `agent:${a.id}`, kind: 'quiet', x: a.x, y: a.y, follow: a.id, span: 12, caption: `Up late · ${personCaption(a)}`, score: 6 + rand() * 2, hold: NIGHT_HOLD });
+  }
+  const lake = lakeCenter(sim.map);
+  if (lake) out.push({ key: 'lake', kind: 'quiet', x: lake[0], y: lake[1], span: 40, caption: 'The lake at night', score: 4.5, hold: NIGHT_HOLD });
 }
 
 /** A wide shot over every building. */
@@ -153,16 +209,26 @@ function establishing(sim: Sim): Omit<Shot, 'caption' | 'score'> | null {
 }
 
 /**
- * The next shot: the best candidate after holding back anything shown recently and, a little, another shot of
- * the same kind. `shown` maps shot keys to the game time they were last on screen.
+ * The next shot: the best candidate after dropping anything shown within REPEAT_WINDOW (unless it is fresh
+ * headline news since then), the shot we are on, and, a little, another shot of the same kind. If that leaves
+ * nothing, the least recently shown candidate other than the current one is better than standing still.
+ * `shown` maps shot keys to the game time they were last on screen.
  */
-export function pickShot(sim: Sim, shown: ReadonlyMap<string, number>, lastKind?: Shot['kind'], rand: () => number = Math.random): Shot | null {
+export function pickShot(sim: Sim, shown: ReadonlyMap<string, number>, last?: Pick<Shot, 'key' | 'kind'>, rand: () => number = Math.random): Shot | null {
+  const all = candidates(sim, rand);
+  const others = all.filter((s) => s.key !== last?.key);
+  const pool = others.length ? others : all;
+  const fresh = pool.filter((s) => {
+    const t = shown.get(s.key);
+    return t === undefined || sim.time - t >= REPEAT_WINDOW || (s.at !== undefined && s.at > t && s.score >= URGENT_SCORE);
+  });
   let best: Shot | null = null;
   let bestScore = -Infinity;
-  for (const s of candidates(sim, rand)) {
+  for (const s of fresh.length ? fresh : pool) {
     const t = shown.get(s.key);
+    // Only matters in the fallback: prefer what has been off screen the longest.
     const repeat = t === undefined ? 0 : 30 * Math.max(0, 1 - (sim.time - t) / REPEAT_WINDOW);
-    const score = s.score - repeat - (s.kind === lastKind ? 4 : 0);
+    const score = s.score - repeat - (s.kind === last?.kind ? 4 : 0);
     if (score > bestScore) {
       best = s;
       bestScore = score;
@@ -177,5 +243,5 @@ export function pickShot(sim: Sim, shown: ReadonlyMap<string, number>, lastKind?
  */
 export function urgent(sim: Sim, s: Shot, shown: ReadonlyMap<string, number>): boolean {
   const t = shown.get(s.key);
-  return s.score >= 26 && (t === undefined || sim.time - t > REPEAT_WINDOW);
+  return s.score >= URGENT_SCORE && (t === undefined || sim.time - t > REPEAT_WINDOW);
 }

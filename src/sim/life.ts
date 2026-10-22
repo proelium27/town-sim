@@ -5,6 +5,7 @@ import { beginCareer, chooseCareer, finishApprenticeships } from './careers';
 import { tickTownHealth } from './health';
 import { allocateRoles, capacity, members, moveTo, newHousehold, setRole } from './planner';
 import { dreaming, tickAspirations } from './aspirations';
+import { survivorsOf } from './chronicle';
 import { courtship, scheduleFuneral } from './rites';
 import { addMemory, first, kinship, think } from './social';
 import { HEADLINE, NOTABLE, type Agent } from './types';
@@ -41,6 +42,8 @@ function growUp(sim: Sim): void {
       think(sim, a, `Eighteen! Time to pull my weight as a ${ROLES[a.role].title.toLowerCase()}.`, 'good');
       allocateRoles(sim);
     } else if (a.role !== 'retired' && a.role !== 'child' && age >= RETIRE_AGE) {
+      // Remember the trade they are leaving behind, for the obituary.
+      a.career ??= a.role;
       setRole(sim, a, 'retired', null);
       think(sim, a, 'Retirement. I could get used to this.', 'good');
       sim.log(`${a.name} retired at ${Math.floor(age)}`, 'family', 'neutral', a).weight = NOTABLE;
@@ -81,7 +84,9 @@ export function die(sim: Sim, a: Agent, cause: string): void {
   const wasMayor = sim.mayor === a.id;
   a.diedAt = sim.time;
   sim.agents = sim.agents.filter((x) => x.id !== a.id);
+  a.died = { at: sim.time, mayor: wasMayor };
   sim.deceased.push(a);
+  a.survivors = survivorsOf(sim, a);
   sim.populationVersion++;
   const partner = sim.agent(a.partner ?? undefined);
   if (partner) partner.partner = null;
