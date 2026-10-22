@@ -251,7 +251,8 @@ export function proposals(sim: Sim): Proposal[] {
 
   // A fishing dock: food from the lake, and the one harvest that doesn't stop at the first frost. Worth it once
   // the town has mouths to feed, most of all with winter coming.
-  if (count('dock') === 0 && sim.agents.length >= 14) {
+  // (Only where there's a shore to build on: not every town has a lake.)
+  if (count('dock') === 0 && sim.agents.length >= 14 && findDockSite(sim)) {
     const fisherly = sim.agents.find((a) => a.role === 'farmer') ?? charismatic();
     const winterSoon = sim.season === 1 || sim.season === 2;
     if (winterSoon || deficit > 0) {
