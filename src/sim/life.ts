@@ -1,4 +1,5 @@
 import { ageOf, createAgent, surnameOf } from './agents';
+import { kidCap } from './character';
 import { ADULT_AGE, RETIRE_AGE, ROLES } from './defs';
 import { graveSlots } from '../world/blueprints';
 import { beginCareer, chooseCareer, finishApprenticeships } from './careers';
@@ -25,8 +26,11 @@ export function tickLife(sim: Sim, dt: number): void {
   takeInChildren(sim);
   sim.timers.arrival -= 120;
   if (sim.timers.arrival <= 0) {
-    sim.timers.arrival = sim.rng.range(1.2, 2.4) * 1440;
-    newcomers(sim, sim.rng.int(1, 3), false);
+    // Word gets around: a welcoming town draws newcomers more often, and in bigger groups.
+    // A town that starts to empty out takes whoever comes, however wary it is; empty homes come cheap.
+    const open = sim.agents.length < 24 ? Math.max(sim.character.openness, 0.5) : sim.character.openness;
+    sim.timers.arrival = sim.rng.range(1.2, 2.4) * 1440 * (1.5 - open);
+    newcomers(sim, sim.rng.int(1, open >= 0.7 ? 4 : open <= 0.3 ? 2 : 3), false);
   }
 }
 
@@ -59,13 +63,15 @@ function births(sim: Sim): void {
     const ages = [ageOf(sim, a), ageOf(sim, b)];
     if (ages.some((x) => x < 20 || x > 50)) continue;
     const kids = new Set([...a.children, ...b.children]).size;
-    if (kids >= 3) continue;
+    // Family-minded towns have bigger families, and have them sooner.
+    const kin = sim.character.kin;
+    if (kids >= kidCap(sim.character)) continue;
     if (sim.town.households[a.household].building < 0) continue;
     if (capacity(sim, a.household) <= members(sim, a.household).length) continue;
     const youngest = Math.max(-Infinity, ...[...a.children, ...b.children].map((id) => sim.person(id)?.birth ?? -Infinity));
     if (sim.time - youngest < 2 * 1440) continue;
-    // A parent dreaming of a big family makes it a little likelier.
-    if (!sim.rng.chance(dreaming(a, 'family') || dreaming(b, 'family') ? 0.06 : 0.04)) continue;
+    // A parent dreaming of a big family makes it a little likelier; a family-minded town, likelier still.
+    if (!sim.rng.chance((dreaming(a, 'family') || dreaming(b, 'family') ? 0.06 : 0.04) * (0.5 + kin))) continue;
     const baby = createAgent(sim, { role: 'child', household: a.household, age: 0, parents: [a, b], cell: a.at });
     sim.agents.push(baby);
     sim.populationVersion++;
@@ -211,7 +217,7 @@ export function newcomers(sim: Sim, n: number, force: boolean): Agent[] {
   else hh = homes[0].h.id;
   const made: Agent[] = [];
   for (let i = 0; i < n; i++) {
-    const kid = family && i === 2;
+    const kid = family && i >= 2;
     const age = kid ? sim.rng.range(4, 12) : sim.rng.range(20, 40);
     const a = createAgent(sim, { role: kid ? 'child' : 'laborer', household: hh, age, cell, surname: family && made[0] ? surnameOf(made[0].name) : undefined, parents: kid ? made.slice(0, 2) : [] });
     a.at = m.idx(m.w - 1 - i, 27);

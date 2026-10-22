@@ -14,7 +14,7 @@ const FIRST = [
   'Rosa', 'Sol', 'Tavi', 'Ula', 'Vera', 'Wim', 'Yara', 'Zed', 'Anouk', 'Basil', 'Cyra', 'Dov', 'Eli', 'Fen', 'Gaia',
   'Hal', 'Inez', 'Joss', 'Kai', 'Lumi', 'Milo', 'Noor', 'Otto', 'Pia', 'Remy', 'Sage', 'Teo', 'Vida', 'Wes', 'Yuki',
 ];
-const LAST = [
+export const LAST = [
   'Okafor', 'Lindqvist', 'Reyes', 'Tanaka', 'Haddad', 'Novak', 'Mensah', 'Kowalski', 'Ibarra', 'Sato', 'Varga',
   'Achebe', 'Duarte', 'Falk', 'Holm', 'Iqbal', 'Jensen', 'Kaur', 'Larsen', 'Mbeki', 'Orlov', 'Silva', 'Torres', 'Xu',
 ];
