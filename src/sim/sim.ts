@@ -165,7 +165,10 @@ export class Sim {
     return `Day ${this.day + 1} · ${DAY_NAMES[this.weekday]} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
-  /** id -> agent, rebuilt whenever the agents array is replaced, grows or shrinks. Private, so saves skip it. */
+  /**
+   * id -> agent, rebuilt whenever the agents array is replaced, grows or shrinks, or populationVersion changes.
+   * Swapping one agent for another in place (same array, same length) must bump populationVersion. Private, so saves skip it.
+   */
   #byId = new Map<number, Agent>();
   #indexed: { agents: Agent[] | null; length: number; version: number } = { agents: null, length: -1, version: -1 };
 

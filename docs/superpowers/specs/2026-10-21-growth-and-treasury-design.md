@@ -97,7 +97,7 @@ Left to the builder: which events count as unlocks, how strong each boom is, and
 
 ## Constraints
 
-- **Performance.** At 200 people the sim must still hold full Fastest speed: about 20 steps per 60fps frame inside a 10ms budget (`src/main.ts`), so a step must stay under about 0.5ms. Hot spots that grow with the square of the population are listed in the performance work.
+- **Performance.** At 200 people the sim must still hold full Fastest speed: about 20 steps per 60fps frame inside a 10ms budget (`src/main.ts`), so a step must stay under about 0.5ms. The first performance pass (PR #30) got a 200-person town to about that on ordinary hours; the one known hot spot that still grows with the square of the population is gatherings, where every festival or rally goer bonds with everyone nearby on every step (`perform`'s 'party' case in `src/sim/ai.ts`). Capping that changes gameplay and is still to be decided.
 - **Determinism.** Seed-tuned tests in `tests/` assume deterministic runs. Mechanics changes will legitimately change outcomes and need those tests retuned, as earlier phases did.
 - **Saves.** Saves carry a version (`sim/save.ts`). New state must load from older saves with sensible defaults, as the health phase did.
 - **Feel.** The founders' story and the small relationships the player enjoys must stay visible.

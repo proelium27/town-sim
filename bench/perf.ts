@@ -2,13 +2,16 @@
  * Sim performance bench. Times sim steps and fingerprints the final state, so an optimisation can be checked
  * for speed and for leaving the simulation unchanged.
  *
- *   npx vite-node bench/perf.ts crowd [people=200] [hours=24] [seed=7] [startDay=1]
- *     A town run to `startDay` (day 2 is election day), forced up to `people` with newcomers, then timed hour by hour.
- *   npx vite-node bench/perf.ts long [seed=7] [days=20] [--from save.json] [--save-at day file]
- *     A normal town run day by day, optionally resumed from or saved to a file to replay a slow stretch.
+ *   npm run bench -- crowd [people=200] [hours=24] [seed=7] [startDay=1]
+ *     A town run for `startDay` whole days, forced up to `people` with newcomers, then timed hour by hour. Days count
+ *     from 0 here (startDay=2 times the third day, "Day 3" on screen, which is election day). The newcomers are mostly
+ *     homeless, so this is a stress case, not a grown 200-person town.
+ *   npm run bench -- long [seed=7] [days=20] [--from save.json] [--save-at day file]
+ *     A normal town run day by day, optionally resumed from or saved to a file to replay a slow stretch. Day labels
+ *     here are the on-screen ones (from 1); --save-at saves once that day has been run.
  *
- * Fingerprint: a hash of the whole saved state at the end. Same seed and arguments must give the same fingerprint
- * before and after an optimisation.
+ * Fingerprint: a hash of the whole saved state at the end. It changes whenever the sim does, so compare it before and
+ * after an optimisation with the same arguments: the two must match.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';

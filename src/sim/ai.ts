@@ -886,9 +886,10 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
 }
 
 /**
- * Needs urgent enough to interrupt anything except sleep: 'bladder' when that's the only one, else 'other'.
- * The bladder is told apart because it's the one that can go unmet for hours (no restroom free or open) and costs nothing
- * while it waits, so its retries are spaced out; the rest are rethought every step until met.
+ * Needs urgent enough to interrupt anything except sleep: 'bladder' when a full bladder is the only one, else 'other'.
+ * A healthy person's bladder is told apart because it can go unmet for hours (no restroom free or open, or the restroom
+ * keeps losing to what they're doing) and costs nothing while it waits, so its retries are spaced out. Everything else,
+ * including anyone ill, is rethought every step until met.
  */
 function urgency(sim: Sim, a: Agent): 'bladder' | 'other' | null {
   const k = a.action.kind;
@@ -900,12 +901,14 @@ function urgency(sim: Sim, a: Agent): 'bladder' | 'other' | null {
   if (a.needs.warmth < 20 && sim.map.room[a.at] < 0 && k !== 'relax' && chill(sim) > 0) return 'other';
   // Too ill to carry on: down tools and go lie down.
   if (offSick(a) && SICK_STOPS.includes(k)) return 'other';
-  if (a.bladder < 12 && k !== 'toilet') return 'bladder';
+  // The ill rest in bed, where the restroom only wins once they start to recover: catch that moment, don't wait for it.
+  if (a.bladder < 12 && k !== 'toilet') return a.illness ? 'other' : 'bladder';
   return null;
 }
 
-/** Game minutes before someone retries a restroom trip their last rethink couldn't start: doubling from the first to the max. */
+/** Game minutes before the first retry of a restroom trip that a rethink didn't start; each further miss doubles the wait. */
 const BLADDER_RETRY_FIRST = 0.25;
+/** The longest wait between those retries, in game minutes: no longer than the shortest ordinary rethink (4-8 minutes). */
 const BLADDER_RETRY_MAX = 4;
 
 /** What someone off sick stops doing at once, whatever stage it's at. */
@@ -1699,8 +1702,8 @@ export function tickAgents(sim: Sim, dt: number): void {
     const alarmed = why === 'other' || (why === 'bladder' && sim.time >= (a.urgentRetryAt ?? 0));
     if (due || alarmed) {
       decide(sim, a, stage);
-      // Still only the restroom, and no restroom free or open: look again soon, then less and less often, so
-      // nobody rethinks everything every step while they wait.
+      // The rethink didn't start a restroom trip (none free or open, or it lost to what they're doing): look again
+      // soon, then less and less often, so nobody rethinks everything every step while they wait.
       if (alarmed && urgency(sim, a) === 'bladder') {
         a.urgentBackoff = Math.min(BLADDER_RETRY_MAX, (a.urgentBackoff ?? BLADDER_RETRY_FIRST / 2) * 2);
         a.urgentRetryAt = sim.time + a.urgentBackoff;

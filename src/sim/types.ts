@@ -108,9 +108,12 @@ export interface Agent {
   thoughts: Thought[];
   action: Action;
   thinkIn: number;
-  /** A restroom trip that rethinking couldn't start (none free or open) isn't rethought again until this game time. */
+  /**
+   * A full bladder (healthy, nothing else urgent) that a rethink didn't send to the restroom doesn't trigger another
+   * rethink until this game time. The ordinary rethink timer and other urgent needs still run in the meantime.
+   */
   urgentRetryAt?: number;
-  /** The current wait between those retries, in game minutes; it doubles each time and clears once the restroom isn't pressing. */
+  /** The current wait between those retries, in game minutes; it doubles each time and clears once that state ends. */
   urgentBackoff?: number;
   task: Task | null;
   tasksDone: number;
