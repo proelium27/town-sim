@@ -35,6 +35,7 @@ function watch(sim: Sim, a: Agent, hours: number) {
   let cooks = 0;
   let bareCooks = 0;
   let ateAt = -1;
+  let peak = a.needs.hunger;
   let prev = a.action;
   const end = sim.time + hours * 60;
   while (sim.time < end) {
@@ -44,9 +45,10 @@ function watch(sim: Sim, a: Agent, hours: number) {
       if (sim.pantry[a.household] < 0.5) bareCooks++;
     }
     if (ateAt < 0 && a.action.kind === 'eat' && a.action.stage === 'perform') ateAt = sim.time;
+    peak = Math.max(peak, a.needs.hunger);
     prev = a.action;
   }
-  return { cooks, bareCooks, ateAt };
+  return { cooks, bareCooks, ateAt, peak };
 }
 
 describe('pantry', () => {
@@ -54,13 +56,15 @@ describe('pantry', () => {
     it(`half a meal in the pantry never traps a hungry adult in a cooking loop${solo ? ' (living alone)' : ''}`, () => {
       const { sim, a } = hungryAtHome(0.5, solo);
       const t0 = sim.time;
-      const { cooks, bareCooks, ateAt } = watch(sim, a, 6);
+      const { cooks, bareCooks, ateAt, peak } = watch(sim, a, 6);
       expect(bareCooks).toBe(0);
       expect(ateAt).toBeGreaterThan(0);
       expect(ateAt - t0).toBeLessThan(3 * 60);
       // At most one trip to the stove (with money, dinner at the café is fine too).
       expect(cooks).toBeLessThanOrEqual(1);
-      expect(a.needs.hunger).toBeGreaterThan(40);
+      // A proper meal, not a nibble: from 12 to well fed. (Where they end six hours on depends on whether they turned
+      // in early, which shifts with any change to the town's day.)
+      expect(peak).toBeGreaterThan(60);
     }, 60_000);
   }
 

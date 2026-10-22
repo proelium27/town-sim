@@ -148,7 +148,8 @@ describe('career openings', () => {
     expect(flips).toBe(0);
     // A builder lent to a short-handed craft and back within the day now and then is fine; seed-tuned (2 to 4). Four since
     // the lake: autumn's fishers are promised ahead of the building crew, and one builder-woodcutter swap (day 5.5 to 5.8,
-    // no craft involved) comes of that; there are still no crafter flips.
+    // no craft involved) comes of that; with private businesses in, a carpenter can also be sent to the woods and back
+    // when the workshop's second carpenter slot comes and goes with the plank stock. There are still no crafter flips.
     expect(backs).toBeLessThanOrEqual(4);
     // 2.57 a day with the lake's seasonal fishers (autumn's go on, spring's come off), well under the four to six of before.
     expect(moves / days).toBeLessThan(3);

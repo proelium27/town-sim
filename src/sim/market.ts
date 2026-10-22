@@ -2,6 +2,7 @@ import { type Good, GOOD_KEYS, goodNoun, MIN_PER_DAY, ROLES, SEASON_DAYS } from 
 import { addMemory, first, kinship, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
 import { depart } from './travel';
+import { settleBusinesses } from './business';
 import { HEADLINE, NOTABLE, type Agent } from './types';
 import type { Household } from '../world/town';
 import { targetOf } from './workshop';
@@ -49,6 +50,8 @@ export function price(sim: Sim, g: Good): number {
  * everyone else works for the town and is paid from the treasury, if it can.
  */
 export function payWage(sim: Sim, a: Agent, nominal: number): void {
+  // Owners draw their pay from their own till each night.
+  if (a.role === 'baker' || a.role === 'innkeeper') return;
   if (ROLES[a.role].workplace === 'office') {
     a.money += nominal * (1 - TAX);
     sim.treasury += nominal * TAX;
@@ -158,8 +161,9 @@ export function traderVisit(sim: Sim): void {
   else sim.log(`The trader came by, but the town had nothing to sell and ${short ? 'no money to spare' : 'needed nothing'}`, 'event', 'neutral');
 }
 
-export type Ledger = { sales: number; taxes: number; wages: number; trade: number; projects: number; pensions: number; bonuses: number };
-export const emptyLedger = (): Ledger => ({ sales: 0, taxes: 0, wages: 0, trade: 0, projects: 0, pensions: 0, bonuses: 0 });
+/** loans: repayments in, less money lent out to business founders. */
+export type Ledger = { sales: number; taxes: number; wages: number; trade: number; projects: number; pensions: number; bonuses: number; loans: number };
+export const emptyLedger = (): Ledger => ({ sales: 0, taxes: 0, wages: 0, trade: 0, projects: 0, pensions: 0, bonuses: 0, loans: 0 });
 
 /** Days in a row a household has to be broke and miserable before it gives up and leaves. */
 export const HARD_DAYS = 3;
@@ -225,6 +229,7 @@ export function tickMarket(sim: Sim): void {
   sim.lastLedger = { ...sim.ledger };
   sim.ledger = emptyLedger();
   payOut(sim);
+  settleBusinesses(sim);
   for (const h of sim.town.households) {
     const fam = sim.agents.filter((a) => a.household === h.id);
     if (!fam.length) continue;

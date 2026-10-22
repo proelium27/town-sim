@@ -15,6 +15,7 @@ import { tickRites } from './rites';
 import { tickLake } from './lake';
 import { type Fire, tickFires } from './fire';
 import { type Expected, tickTravel } from './travel';
+import { type Business, neighbourlyDinner } from './business';
 import { type Annal, type ChronicleEntry, tickChronicle } from './chronicle';
 import { tickSeasons } from './seasons';
 import { Rng } from './rng';
@@ -55,6 +56,10 @@ export class Sim {
   expected: Expected[] = [];
   /** Journeys that have already come here, so a file can't be imported twice. */
   travelSeen: string[] = [];
+  /** Privately run businesses, open or bought by the town. */
+  businesses: Business[] = [];
+  /** The last evening a well-off family had neighbours over. */
+  dinnerDay = -1;
   /** The town's purse: shop takings, taxes and trade in; town wages and building costs out. */
   treasury = 400;
   /** Today's money in and out, and yesterday's for the Town view. */
@@ -227,6 +232,7 @@ export class Sim {
     tickLake(this);
     tickFires(this, STEP);
     tickTravel(this);
+    neighbourlyDinner(this);
     tickMarket(this);
     tickPolitics(this);
     tickLife(this, STEP);

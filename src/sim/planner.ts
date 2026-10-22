@@ -4,6 +4,7 @@ import type { Household } from '../world/town';
 import { ageOf, hoursOf, makeSchedule, newTask, surnameOf } from './agents';
 import { ADULT_AGE, type Bill, billGoods, type Good, GOODS, MIN_PER_DAY, PRIORITY_SHARE, PRIORITY_WEIGHT, ROLES, SEASON_DAYS, type PriorityKey, type RoleKey, YEAR_DAYS } from './defs';
 import { foodBalance } from './economy';
+import { BUSINESSES, type BusinessKind, buildCost, founderFor, openBusiness } from './business';
 import { checkTier, EXTENSION_W, extensionSite, type ExtensionSite, stampExtension } from './growth';
 import { bury } from './life';
 import { projectCushion } from './market';
@@ -132,6 +133,8 @@ export interface Proposal {
   near?: { x: number; y: number };
   /** For extensions: where the wing goes. */
   extends?: ExtensionSite;
+  /** A private business: the founder pays and will run it. */
+  owner?: Agent;
   /** Time-critical: may start one project past the town's usual limit (the dock before the first frost). */
   rush?: boolean;
   /** Someone homeless, or the dead unburied: never left to the whims of a meeting. */
@@ -282,6 +285,17 @@ export function proposals(sim: Sim): Proposal[] {
   if (sim.firesEver > 0 && count('well') < Math.max(1, Math.ceil(homes / 8))) {
     // A priority, whatever the community lever says: ahead of new homes, and started even with another project going.
     out.push({ bp: 'well', score: 1.6, rush: true, reason: 'the fire showed we need water close at hand', forAgents: [], proposer: charismatic(), name: `${['Market', 'Green', 'Hill', 'Corner'][count('well') % 4]} Well` });
+  }
+  // Private businesses: someone with savings and the trade for it proposes a place of their own.
+  for (const kind of ['bakery', 'tavern'] as const) {
+    const def = BUSINESSES[kind];
+    // One once the town is big enough, a second past another 20 people; going up counts too, and so does a place the town took over.
+    const have = sim.businesses.filter((b) => b.kind === kind).length + sim.projects.filter((pr) => pr.blueprint === kind).length;
+    if (sim.agents.length < def.pop || have >= Math.min(2, 1 + Math.floor((sim.agents.length - def.pop) / 20))) continue;
+    const founder = founderFor(sim, kind);
+    if (!founder) continue;
+    const name = kind === 'bakery' ? `${first(founder)}'s Bakery` : `The ${['Old Oak', 'Copper Kettle', 'Red Lantern', 'Three Fiddles'][(sim.businesses.length + founder.id) % 4]}`;
+    out.push({ bp: kind, score: 0.72 + (founder.traits.includes('workaholic') || founder.traits.includes('competitive') ? 0.1 : 0), reason: kind === 'bakery' ? `${first(founder)} has saved up for a bakery of their own` : `${first(founder)} wants to give the town somewhere to go of an evening`, forAgents: [], proposer: founder, name, owner: founder });
   }
   // A workshop once the town is big enough to keep one busy and has the timber to spare.
   if (sim.agents.length >= c.workshopAt && count('workshop') === 0 && sim.stock.wood >= 40) {
@@ -554,19 +568,30 @@ export function unstick(sim: Sim): void {
   }
 }
 
-function startProject(sim: Sim, p: Proposal): Project | null {
+export function startProject(sim: Sim, p: Proposal): Project | null {
   const bp = BLUEPRINTS[p.bp];
   // The treasury has to be able to pay for it and still meet payroll; a home for the homeless gets built on credit,
   // and a cemetery for the unburied only has to be affordable.
   const urgent = p.bp === 'house' && p.forAgents.some((a) => sim.town.households[a.household].building < 0 || (a.partner !== null && sim.agent(a.partner)?.household !== a.household));
   const cushion = p.bp === 'cemetery' && sim.unburied.length ? 0 : projectCushion(sim);
+  // A founder pays for the plot and the materials themselves, and borrows what their savings don't cover.
+  const total = p.owner ? buildCost(p.bp as BusinessKind) : 0;
+  const own = p.owner ? Math.min(total, Math.max(0, Math.floor(p.owner.money - 20))) : 0;
+  const loan = total - own;
   // (A rush job, cheap and with the frost coming, only has to leave half the usual cushion.)
-  if (sim.treasury - bp.coins < (p.rush ? cushion / 2 : cushion) && !urgent) return null;
+  if (p.owner ? sim.treasury - loan < cushion : sim.treasury - bp.coins < (p.rush ? cushion / 2 : cushion) && !urgent) return null;
   const wing = p.extends;
   const site = wing ? { x: wing.x, y: wing.y, doorTop: true, path: [], cost: 0 } : findSite(sim, p.bp, p.near);
   if (!site) return null;
-  sim.treasury -= bp.coins;
-  sim.ledger.projects += bp.coins;
+  if (p.owner) {
+    p.owner.money -= own;
+    sim.treasury += own - loan;
+    sim.ledger.sales += own;
+    sim.ledger.loans -= loan;
+  } else {
+    sim.treasury -= bp.coins;
+    sim.ledger.projects += bp.coins;
+  }
   const pr: Project = {
     id: sim.nextProjectId++,
     blueprint: p.bp,
@@ -587,12 +612,15 @@ function startProject(sim: Sim, p: Proposal): Project | null {
     started: sim.time,
     builders: new Set(),
     extends: wing,
+    owner: p.owner?.id,
+    loan: p.owner ? loan : undefined,
     rush: p.rush,
   };
   sim.projects.push(pr);
   const who = p.proposer;
   const chair = sim.agent(sim.mayor ?? undefined);
   sim.log(`${chair ? `Mayor ${first(chair)}'s town meeting` : 'Town meeting'}: ${who ? first(who) : 'the town'} proposed ${bp.noun} because ${p.reason}`, 'build', 'good', who).weight = NOTABLE;
+  if (p.owner) sim.log(`${first(p.owner)} put $${own} of their savings into ${p.name}${loan > 0 ? ` and borrowed $${Math.round(loan)} from the town` : ''}`, 'event', 'neutral', p.owner).weight = NOTABLE;
   if (who) {
     addMemory(sim, who, 'proposed');
     think(sim, who, `They liked my idea: ${bp.noun}.`, 'good');
@@ -646,6 +674,7 @@ export function completeProject(sim: Sim, pr: Project): void {
   const names = residents.map(first);
   sim.log(`${pr.name} is finished${names.length ? `. ${names.join(', ')} moved in` : ''}`, 'build', 'good', residents[0]).weight = HEADLINE;
   sim.milestone(`Built ${pr.name}`);
+  if (pr.blueprint === 'bakery' || pr.blueprint === 'tavern') openBusiness(sim, pr.blueprint, b.id, pr.name, pr.owner, pr.loan ?? 0);
   if (pr.blueprint === 'cemetery') {
     const laid = sim.unburied.filter((id) => bury(sim, id));
     sim.unburied = sim.unburied.filter((id) => !laid.includes(id));

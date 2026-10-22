@@ -79,6 +79,10 @@ export function loadSim(text: string): Sim {
   sim.departed ??= [];
   sim.expected ??= [];
   sim.travelSeen ??= [];
+  sim.businesses ??= [];
+  sim.dinnerDay ??= -1;
+  sim.ledger.loans ??= 0;
+  if (sim.lastLedger) sim.lastLedger.loans ??= 0;
   for (const a of [...sim.agents, ...sim.deceased, ...sim.departed]) {
     backfillAgent(a);
     // Per-person backfills that set a need go before this generic fallback, or it would fill the need first.

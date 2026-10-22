@@ -1,3 +1,4 @@
+import { inherit, succession } from './business';
 import { ageOf, createAgent, surnameOf } from './agents';
 import { kidCap } from './character';
 import { ADULT_AGE, RETIRE_AGE, ROLES } from './defs';
@@ -48,6 +49,8 @@ function growUp(sim: Sim): void {
     } else if (a.role !== 'retired' && a.role !== 'child' && age >= RETIRE_AGE) {
       // Remember the trade they are leaving behind, for the obituary.
       a.career ??= a.role;
+      // A place of their own is handed on (to a partner or grown child) or sold to the town before they put their feet up.
+      succession(sim, a, 'retired');
       setRole(sim, a, 'retired', null);
       think(sim, a, 'Retirement. I could get used to this.', 'good');
       sim.log(`${a.name} retired at ${Math.floor(age)}`, 'family', 'neutral', a).weight = NOTABLE;
@@ -89,6 +92,10 @@ export function die(sim: Sim, a: Agent, cause: string): void {
   if (a.action.propId !== undefined && sim.reserved.get(a.action.propId) === a.id) sim.reserved.delete(a.action.propId);
   const wasMayor = sim.mayor === a.id;
   a.diedAt = sim.time;
+  // Their savings and any business pass to family before they're gone from the list.
+  // (the business first: if the town buys it, the owner's payout is part of what they leave)
+  succession(sim, a, 'died');
+  inherit(sim, a);
   sim.agents = sim.agents.filter((x) => x.id !== a.id);
   a.died = { at: sim.time, mayor: wasMayor };
   sim.deceased.push(a);

@@ -112,7 +112,7 @@ export const SKILL_LABEL: Record<SkillKey, string> = {
 export type RoleKey =
   | 'engineer' | 'designer' | 'writer' | 'manager' | 'receptionist' | 'barista' | 'shopkeeper' | 'librarian'
   | 'builder' | 'farmer' | 'woodcutter' | 'laborer' | 'teacher' | 'cook' | 'child' | 'retired'
-  | 'carpenter' | 'mason' | 'toolmaker' | 'doctor' | 'fisher';
+  | 'carpenter' | 'mason' | 'toolmaker' | 'doctor' | 'fisher' | 'baker' | 'innkeeper';
 
 export interface RoleDef {
   key: RoleKey;
@@ -172,6 +172,9 @@ export const ROLES: Record<RoleKey, RoleDef> = {
   toolmaker: { key: 'toolmaker', title: 'Toolmaker', craft: 'Toolmaking', workplace: 'outdoors', station: 'labor', tasks: [], flexible: true },
   teacher: { key: 'teacher', title: 'Teacher', craft: 'Teaching', workplace: 'building', station: 'counter', tasks: ['Morning lessons', 'Grade homework', 'Reading circle', 'Science hour'], flexible: true },
   cook: { key: 'cook', title: 'Diner Cook', craft: 'Cooking', workplace: 'building', station: 'counter', tasks: ['Breakfast service', 'Lunch rush', 'Prep the soup', 'Dinner service'], flexible: true },
+  // Owners run their own places; the town never reassigns them.
+  baker: { key: 'baker', title: 'Baker', craft: 'Baking', workplace: 'building', station: 'counter', tasks: ['Knead the dough', 'Morning loaves', 'Pastries for the window', 'Serve the lunch crowd'] },
+  innkeeper: { key: 'innkeeper', title: 'Innkeeper', craft: 'Hospitality', workplace: 'building', station: 'counter', tasks: ['Open the taps', 'Wipe down the bar', 'Serve the evening crowd', 'Settle the tabs'] },
   child: { key: 'child', title: 'Child', craft: 'Learning', workplace: 'none', station: 'none', tasks: [] },
   retired: { key: 'retired', title: 'Retired', craft: 'Wisdom', workplace: 'none', station: 'none', tasks: [] },
 };
@@ -238,7 +241,7 @@ export type MemoryKind =
   | 'feelingIll' | 'hurt' | 'recovered' | 'frail' | 'caredFor' | 'lookedAfter' | 'proudTown' | 'roomToBreathe'
   | 'wonElection' | 'lostElection' | 'myCandidateWon'
   | 'engaged' | 'married' | 'wedding' | 'heartbroken' | 'funeral'
-  | 'dreamCameTrue' | 'dreamFaded' | 'skated' | 'lakeside' | 'foughtFire' | 'houseFire' | 'missYou' | 'freshStart';
+  | 'dreamCameTrue' | 'dreamFaded' | 'skated' | 'lakeside' | 'foughtFire' | 'houseFire' | 'missYou' | 'freshStart' | 'ownBusiness' | 'businessFailed' | 'hostedDinner' | 'dinnerGuest' | 'musicNight' | 'tavernNight';
 
 export interface MemoryDef {
   label: string;
@@ -331,4 +334,10 @@ export const MEMORIES: Record<MemoryKind, MemoryDef> = {
   houseFire: { label: 'Our home caught fire', mood: -12, duration: 2 * D, major: true, maxStack: 1 },
   missYou: { label: 'Misses someone who moved away', mood: -5, duration: 2 * D, major: false, maxStack: 2 },
   freshStart: { label: 'A fresh start in a new town', mood: 6, duration: 2 * D, major: false, maxStack: 1 },
+  ownBusiness: { label: 'Running a place of my own', mood: 8, duration: 2 * D, major: true, maxStack: 1 },
+  businessFailed: { label: 'My business went under', mood: -14, duration: 3 * D, major: true, maxStack: 1 },
+  hostedDinner: { label: 'Had the neighbours over for dinner', mood: 5, duration: D, major: false, maxStack: 1 },
+  dinnerGuest: { label: 'A good dinner at the neighbours\'', mood: 7, duration: D, major: false, maxStack: 1 },
+  musicNight: { label: 'Music night at the tavern', mood: 6, duration: D, major: false, maxStack: 1 },
+  tavernNight: { label: 'A good night at the tavern', mood: 4, duration: D, major: false, maxStack: 1 },
 };

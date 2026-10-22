@@ -5,7 +5,7 @@ import type { Building, TownMap } from '../world/map';
 
 type Wall = 'brick' | 'stone' | 'sand' | 'glass' | 'plank';
 type Win = 'wood' | 'wood4' | 'steel' | 'steel4' | 'arch' | 'none';
-type Icon = 'book' | 'bell' | 'bowl' | 'crate' | 'hammer' | 'cross';
+type Icon = 'book' | 'bell' | 'bowl' | 'crate' | 'hammer' | 'cross' | 'bread' | 'mug';
 
 /** How one building looks from outside. */
 interface Look {
@@ -56,7 +56,10 @@ function lookFor(b: Building): Look | null {
       };
     case 'office':
       return { roof: 'flat', roofColor: 0xb4b8bc, wall: 'glass', window: 'none', door: 'glass', ac: 5, facade: 3 };
+    case 'tavern':
+      return { roof: 'pitched', roofColor: 0x6e3b32, wall: 'plank', window: 'wood4', door: 'wood', sign: 'mug', chimney: true, facade: 3 };
     case 'cafe':
+      if (b.name.includes('Bakery')) return { roof: 'pitched', roofColor: 0xc98b4a, wall: 'brick', window: 'wood4', door: 'green', awning: 'orange', sign: 'bread', chimney: true, facade: 3 };
       return b.name.includes('Diner')
         ? { roof: 'pitched', roofColor: 0xb8574a, wall: 'sand', window: 'steel4', door: 'glass', awning: 'orange', sign: 'bowl', facade: 3 }
         : { roof: 'flat', roofColor: 0xd9c39c, wall: 'sand', window: 'steel4', door: 'glass', awning: 'green', sign: EXTERIOR.signCafe, ac: 1, facade: 3 };
@@ -475,6 +478,20 @@ export class Exteriors {
         ic(-3, -6, 1, 2, 0x9a9590);
         ic(0, -7, 1, 3, 0x9a9590);
         ic(2, -6, 1, 2, 0x9a9590);
+        break;
+      case 'bread':
+        // A loaf with scored top.
+        ic(-4, -4, 8, 4, 0xc98b4a);
+        ic(-3, -5, 6, 1, 0xd9a464);
+        ic(-2, -4, 1, 1, 0x8a5a2e);
+        ic(1, -4, 1, 1, 0x8a5a2e);
+        break;
+      case 'mug':
+        // A frothy mug.
+        ic(-3, -6, 5, 6, 0xd9a43a);
+        ic(-3, -7, 5, 2, 0xf4ecd8);
+        ic(2, -5, 2, 1, 0xd9a43a);
+        ic(3, -5, 1, 3, 0xd9a43a);
         break;
       case 'crate':
         ic(-4, -6, 8, 6, 0xa97a47);

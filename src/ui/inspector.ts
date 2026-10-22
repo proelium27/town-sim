@@ -11,6 +11,7 @@ import type { Agent } from '../sim/types';
 import type { Sim } from '../sim/sim';
 import { RelationGraph } from './relgraph';
 import { cantTravel, partyFor, PURSE_MAX } from '../sim/travel';
+import { ownedBy, wealthWord } from '../sim/business';
 import { dayTime, duration, esc, hhmm, hourLabel } from './util';
 
 
@@ -210,7 +211,9 @@ export class Inspector {
     const ill = a.illness;
     const sickLine = ill ? `Has ${ILLNESS[ill.kind].label}${ill.treated ? ', seen by the doctor' : ''}${ill.medicine ? ', on medicine' : ''}${this.sim.time < ill.caredUntil ? ', family looking after them' : ''} · ` : '';
     const frail = frailty(this.sim, a) > 0.75 ? 'Frail · ' : '';
-    set('money', sickLine + frail + (a.role === 'child' ? `${duration(a.workedToday)} of chores today` : `$${Math.round(a.money)} · ${plural(a.tasksDone, 'task')} done · ${duration(a.workedToday)} worked today${tools}`));
+    const biz = ownedBy(this.sim, a);
+    const wealth = `${wealthWord(this.sim, a)} ($${Math.round(a.money)})`;
+    set('money', sickLine + frail + (a.role === 'child' ? `${duration(a.workedToday)} of chores today` : `${wealth[0].toUpperCase()}${wealth.slice(1)}${biz ? ` · runs ${esc(biz.name)}` : ''} · ${plural(a.tasksDone, 'task')} done · ${duration(a.workedToday)} worked today${tools}`));
     set('doing', a.action.stage === 'travel' && a.action.kind !== 'wander' && a.action.kind !== 'stroll' ? `→ ${a.action.label}` : a.action.label);
     set('why', a.action.reason || 'Just going with the flow');
     const th = a.thoughts[a.thoughts.length - 1];

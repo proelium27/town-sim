@@ -7,7 +7,7 @@ export type DrawnKey =
 
 export type RoomKind =
   | 'office' | 'meeting' | 'kitchen' | 'lounge' | 'lobby' | 'restroom'
-  | 'home' | 'cafe' | 'shop' | 'library' | 'storehouse' | 'school' | 'workshop' | 'clinic';
+  | 'home' | 'cafe' | 'shop' | 'library' | 'storehouse' | 'school' | 'workshop' | 'clinic' | 'tavern';
 
 export interface Room {
   id: number;
@@ -23,7 +23,7 @@ export interface Room {
 /** What an agent can do at a prop. */
 export type UseKind =
   | 'work' | 'meet' | 'eat' | 'coffee' | 'cook' | 'sleep' | 'toilet' | 'shower'
-  | 'sit' | 'play' | 'music' | 'read' | 'shop' | 'snack' | 'farm' | 'learn' | 'teach' | 'deposit' | 'craft' | 'rest' | 'fish';
+  | 'sit' | 'play' | 'music' | 'read' | 'shop' | 'snack' | 'farm' | 'learn' | 'teach' | 'deposit' | 'craft' | 'rest' | 'fish' | 'drink';
 
 export type ResourceKind = 'wood' | 'stone';
 
@@ -59,7 +59,7 @@ export interface Prop {
   label?: string;
 }
 
-export type BuildingKind = 'office' | 'cafe' | 'market' | 'library' | 'house' | 'farm' | 'storehouse' | 'school' | 'park' | 'workshop' | 'cemetery' | 'clinic' | 'dock' | 'well';
+export type BuildingKind = 'office' | 'cafe' | 'market' | 'library' | 'house' | 'farm' | 'storehouse' | 'school' | 'park' | 'workshop' | 'cemetery' | 'clinic' | 'dock' | 'well' | 'tavern';
 
 export interface Building {
   id: number;

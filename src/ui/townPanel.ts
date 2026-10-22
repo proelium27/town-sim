@@ -181,8 +181,8 @@ export class TownPanel {
   private treasurySection(): string {
     const sim = this.sim;
     const L = sim.lastLedger;
-    const income = L.sales + L.taxes + Math.max(0, L.trade);
-    const spent = L.wages + L.pensions + L.bonuses + L.projects + Math.max(0, -L.trade);
+    const income = L.sales + L.taxes + Math.max(0, L.trade) + Math.max(0, L.loans);
+    const spent = L.wages + L.pensions + L.bonuses + L.projects + Math.max(0, -L.trade) + Math.max(0, -L.loans);
     // Traders come on day 1, 4, 7... at 10:00.
     let d = (1 - (sim.day % TRADER_EVERY) + TRADER_EVERY) % TRADER_EVERY;
     if (d === 0 && sim.hour >= 10) d = TRADER_EVERY;
@@ -198,6 +198,24 @@ export class TownPanel {
         <h3>Treasury <small>trader ${when}</small></h3>
         <div class="purse"><b class="num">$${Math.round(sim.treasury)}</b><span>yesterday <span class="pos num">+$${Math.round(income)}</span> in, <span class="neg num">−$${Math.round(spent)}</span> out</span></div>
         <div class="prices">${priced}</div>
+      </section>${this.businessSection()}`;
+  }
+
+  /** Privately run places: who runs them, how they're doing, and what they still owe the town. */
+  private businessSection(): string {
+    const sim = this.sim;
+    if (!sim.businesses.length) return '';
+    const rows = sim.businesses.map((b) => {
+      const owner = sim.agent(b.owner ?? undefined);
+      const net = b.takings - b.costs;
+      const who = owner ? `run by <button class="linkish" data-act="person" data-id="${owner.id}">${esc(first(owner))}</button>` : 'bought by the town';
+      const owes = b.loan > 0.5 ? ` · owes the town <b class="num">$${Math.round(b.loan)}</b>` : '';
+      const books = owner ? ` · yesterday <span class="num">$${Math.round(b.yesterday)}</span> · this season <span class="num ${net < 0 ? 'neg' : 'pos'}">${net < 0 ? '−' : '+'}$${Math.round(Math.abs(net))}</span>` : '';
+      return `<li><b>${esc(b.name)}</b> <span class="meta">${who}${books}${owes}</span></li>`;
+    });
+    return `<section class="tp-sec">
+        <h3>Businesses</h3>
+        <ul class="tp-road">${rows.join('')}</ul>
       </section>`;
   }
 
@@ -246,7 +264,7 @@ export class TownPanel {
     const projects = sim.projects.map((p) => ({ p, stage: stageOf(sim, p) }));
     const sig = JSON.stringify([
       pop.length, kids, elders, beds, homeless, sick, sim.tier, sim.mayor, sim.agenda, sim.election?.stage, sim.lastElection?.year, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
-      sim.name, sim.expected.length, this.travelNote, sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
+      sim.name, sim.expected.length, this.travelNote, sim.businesses.map((b) => [b.owner, Math.round(b.yesterday), Math.round(b.takings - b.costs), Math.round(b.loan)]), sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
       sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), this.resetArmed, Math.round(sim.treasury / 5), sim.lastLedger, (['food', 'firewood', 'tools'] as const).map((g) => price(sim, g)), hasWorkshop(sim), chains(sim).map((c) => [c.have, c.target, c.stuck]), sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
       sim.season >= 2 && Math.round((1 - sim.seasonProgress) * SEASON_DAYS * 10),
     ]);
