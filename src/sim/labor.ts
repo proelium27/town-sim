@@ -2,6 +2,7 @@ import type { Facing } from '../assets/manifest';
 import type { Prop } from '../world/map';
 import { billGoods, type Good, GOODS, goodNoun, PRIORITY_WEIGHT } from './defs';
 import { buildCap, clutter, shortOf, stageOf, supplied } from './planner';
+import { gutted, GUTTED, REPAIR_AT } from './fire';
 import { paveFrontier } from './growth';
 import { chill, FIREWOOD_STOCK, HEARTH_FULL, SPLIT } from './seasons';
 import { canMake, CRAFT_ROLES, hasWorkshop, RECIPES, shortfall, stationProps } from './workshop';
@@ -23,6 +24,7 @@ export interface LaborPlan {
   timer: number;
   score: number;
   facing?: Facing;
+  building?: number;
 }
 
 export const CARRY = 6;
@@ -165,7 +167,8 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
     const r = mine[0];
     if (r) {
       add(1.2, () => {
-        const stations = stationProps(sim, r.station).filter((p) => free(sim, a, p));
+        // A workshop gutted by fire is out of use until it's repaired.
+        const stations = stationProps(sim, r.station).filter((p) => free(sim, a, p) && !gutted(sim.building(p.building)));
         for (const p of nearestTo(a, stations, 2)) {
           const cell = m.idx(p.spot!.x, p.spot!.y);
           const path = cell === a.at ? [] : sim.nav.findPath(a.at, cell, 40000);
@@ -304,6 +307,22 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
       }
       return null;
     });
+  }
+
+  // Repairing fire damage: a gutted home first (its family has nowhere to sleep), then anything scorched.
+  if (!storm && builderish && sim.stock.wood >= 2) {
+    const hurt = m.buildings.filter((b) => (b.damage ?? 0) >= REPAIR_AT && !sim.fires.some((f) => f.building === b.id));
+    const home = (b: (typeof hurt)[number]) => sim.town.households.some((h) => h.building === b.id);
+    for (const b of hurt.sort((x, y) => (y.damage ?? 0) - (x.damage ?? 0)).slice(0, 2)) {
+      // A family without a bed outranks any new build; a gutted workshop or shop comes next.
+      const score = (b.damage ?? 0) < GUTTED ? 0.6 : home(b) ? 1.4 : 1;
+      add(score, () => {
+        const cell = m.idx(b.door.x, b.door.y);
+        const path = cell === a.at ? [] : sim.nav.findPath(a.at, cell, 40000);
+        if (!path) return null;
+        return { kind: 'mend', label: `Repairing the ${b.name}`, reason: `The ${b.name} was damaged by fire`, dest: cell, path, building: b.id, timer: 60, score };
+      });
+    }
   }
 
   // Fishing off the end of the pier, in every season (through the ice in winter).

@@ -5,6 +5,7 @@ import { ADULT_AGE, type Good, MIN_PER_DAY, NEED_KEYS, ROLES, SKILL_KEYS, SKILL_
 import { FOOD_PER_CROP } from './economy';
 import { dreamLean } from './aspirations';
 import { catchFor, lakeCells } from './lake';
+import { burningAt, gutted, hearsAlarm, LINE_MAX, lineSize, mend } from './fire';
 import { birthdayNames } from './events';
 import { funeralOf, mourns, weddingNames, weddingOf, weddingRole } from './rites';
 import { CARRY, HAUL_PAUSE, laborPlan, siteEdges } from './labor';
@@ -37,6 +38,11 @@ export function stageOf(sim: Sim, a: Agent): Stage {
   return a.role === 'retired' ? 'elder' : 'adult';
 }
 
+/** Who the fire alarm calls out: grown-ups who aren't elderly or ill. The rest are left to sleep (or get out of the burning building). */
+export function canFight(sim: Sim, a: Agent): boolean {
+  return stageOf(sim, a) === 'adult' && !offSick(a);
+}
+
 // ------------------------------------------------------------------ time helpers
 
 /** Is hour h inside [from, to), allowing windows that wrap past midnight. */
@@ -58,7 +64,11 @@ export function isSleepTime(sim: Sim, a: Agent): boolean {
 }
 
 const isOffice = (a: Agent) => ROLES[a.role].workplace === 'office';
-const hasHome = (sim: Sim, a: Agent) => sim.town.households[a.household].building >= 0;
+/** A home they can sleep in: not one the fire has gutted. */
+const hasHome = (sim: Sim, a: Agent) => {
+  const b = sim.town.households[a.household].building;
+  return b >= 0 && !gutted(sim.building(b));
+};
 
 function where(sim: Sim, a: Agent): 'home' | 'work' | 'out' {
   const r = sim.roomOf(a);
@@ -249,6 +259,8 @@ interface Option {
 }
 
 function start(sim: Sim, a: Agent, kind: ActionKind, label: string, reason: string, t: Target, timer: number, score: number, extra: Partial<Action> = {}): boolean {
+  // Nobody heads into a burning building, whatever they'd planned there.
+  if (kind !== 'firefight' && sim.fires.length && burningAt(sim, t.cell)) return false;
   endAction(sim, a);
   a.walkWith = undefined;
   a.action = { kind, label, reason, stage: t.path.length ? 'travel' : 'perform', dest: t.cell, facing: t.facing, propId: t.prop?.id, timer, started: sim.time, score, ...extra };
@@ -426,6 +438,50 @@ function areaOption(sim: Sim, a: Agent, kind: ActionKind, score: number, reason:
   };
 }
 
+/** Walkable cells just outside a building's walls, nearest the person first. */
+function aroundBuilding(sim: Sim, a: Agent, b: { x: number; y: number; w: number; h: number }, ring = 1): number[] {
+  const m = sim.map;
+  const out: number[] = [];
+  for (let y = b.y - ring; y < b.y + b.h + ring; y++) {
+    for (let x = b.x - ring; x < b.x + b.w + ring; x++) {
+      const edge = x < b.x || x >= b.x + b.w || y < b.y || y >= b.y + b.h;
+      if (edge && m.walkable(x, y) && m.room[m.idx(x, y)] < 0) out.push(m.idx(x, y));
+    }
+  }
+  return out.sort((i, j) => Math.hypot(m.cx(i) - a.x, m.cy(i) - a.y) - Math.hypot(m.cx(j) - a.x, m.cy(j) - a.y));
+}
+
+/** To a spot by the burning building, facing it, until the fire is out. */
+function joinBucketLine(sim: Sim, a: Agent, b: { id: number; name: string; x: number; y: number; w: number; h: number }, score: number): boolean {
+  const m = sim.map;
+  const taken = new Set(sim.agents.filter((o) => o.action.kind === 'firefight').map((o) => o.action.dest));
+  for (const cell of aroundBuilding(sim, a, b).filter((c) => !taken.has(c)).slice(0, 4)) {
+    const path = cell === a.at ? [] : sim.nav.findPath(a.at, cell, 40000);
+    if (!path) continue;
+    const dx = b.x + b.w / 2 - m.cx(cell);
+    const dy = b.y + b.h / 2 - m.cy(cell);
+    const facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+    think(sim, a, `Fire at the ${b.name}! Grab a bucket!`, 'bad');
+    return start(sim, a, 'firefight', `Fighting the fire at the ${b.name}`, `Fire at the ${b.name}!`, { cell, path, cost: path.length }, 9999, score, { building: b.id, facing });
+  }
+  return false;
+}
+
+/** Out of a burning building to a safe distance. */
+function getOut(sim: Sim, a: Agent, b: { x: number; y: number; w: number; h: number }): boolean {
+  for (const cell of aroundBuilding(sim, a, b, 6).filter((c) => {
+    const x = sim.map.cx(c);
+    const y = sim.map.cy(c);
+    return x < b.x - 3 || x >= b.x + b.w + 3 || y < b.y - 3 || y >= b.y + b.h + 3;
+  }).slice(0, 4)) {
+    const path = sim.nav.findPath(a.at, cell, 40000);
+    if (!path) continue;
+    say(sim, a, 'fire!', 'alert', 3);
+    return start(sim, a, 'wander', 'Getting away from the fire', 'Fire!', { cell, path, cost: path.length }, 30, 3);
+  }
+  return false;
+}
+
 /** Out to a random spot on the ice or the shore (a few tries, in case one can't be reached). */
 function lakeOption(sim: Sim, a: Agent, cells: number[], score: number, reason: string, label: string): Option {
   return {
@@ -461,6 +517,25 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   const storm = !!sim.events.snowstorm;
   const indoors = (p: Prop) => !storm || p.room >= 0;
 
+  // ---- fire: everyone near enough comes running with buckets; children, the frail and the ill get out.
+  for (const f of sim.fires) {
+    const b = sim.building(f.building);
+    if (!b) continue;
+    const room = sim.roomOf(a);
+    const inside = !!room && b.rooms.includes(room.id);
+    const weak = little || offSick(a) || stage === 'elder';
+    if (inside && weak) {
+      o.push({ kind: 'wander', score: 3, reason: 'Fire!', begin: () => getOut(sim, a, b) });
+      continue;
+    }
+    if (weak) continue;
+    const d = Math.hypot(a.x - (b.x + b.w / 2), a.y - (b.y + b.h / 2));
+    // Asleep, only the shouting nearby wakes you; and a full bucket line has no room for more.
+    if (!inside && (!hearsAlarm(sim, a, b) || (a.action.kind !== 'firefight' && lineSize(sim, b.id) >= LINE_MAX))) continue;
+    const score = 2.3 - d * 0.004;
+    o.push({ kind: 'firefight', score, reason: `Fire at the ${b.name}!`, begin: () => joinBucketLine(sim, a, b, score) });
+  }
+
   // ---- sleep
   {
     const x = 1 - n.energy / 100;
@@ -491,6 +566,8 @@ function buildOptions(sim: Sim, a: Agent, stage: Stage): Option[] {
   const breakfast = inWindow(h, a.schedule.wake, a.schedule.wake + 1.2);
   const dinner = inWindow(h, 18, 20.5);
   const pantry = sim.pantry[a.household] ?? 0;
+  // A plate that was cooked for someone who has since eaten (or been called away from the table) goes cold.
+  if (a.mealReady && n.hunger >= 90 && a.action.kind !== 'eat') a.mealReady = false;
   if (a.mealReady) {
     o.push(spotOption(sim, a, 'eat', 1.4, 'Food is ready', ['eat'], () => 'Eating at home', 22, homeOnly));
   } else if (n.hunger < 75) {
@@ -837,7 +914,7 @@ function workOptions(sim: Sim, a: Agent, o: Option[], workTime: boolean, h: numb
         const target: Target = { cell: plan.dest, path: plan.path, cost: plan.path.length };
         const prop = sim.prop(plan.propId);
         if (prop && sim.reserved.has(prop.id) && sim.reserved.get(prop.id) !== a.id && plan.kind !== 'deposit') return false;
-        const ok = start(sim, a, plan.kind, plan.label, plan.reason, target, plan.timer, s, { propId: plan.propId, projectId: plan.projectId, leg: plan.leg, material: plan.material, household: plan.household, facing: plan.facing });
+        const ok = start(sim, a, plan.kind, plan.label, plan.reason, target, plan.timer, s, { propId: plan.propId, projectId: plan.projectId, leg: plan.leg, material: plan.material, household: plan.household, facing: plan.facing, building: plan.building });
         // Pick up a fresh set of tools on the way out, if the workshop has made any.
         if (ok && a.tool <= 0 && sim.stock.tools >= 1 && TOOL_WORK.includes(plan.kind)) {
           sim.stock.tools -= 1;
@@ -938,6 +1015,8 @@ function thoughtFor(a: Agent, o: Option, stage: Stage): string {
     case 'stoke': return `${o.reason}. I'll bring them some firewood.`;
     case 'build': return `${a.action.label}. Let's get this up.`;
     case 'fish': return 'Off to the pier. The fish should be biting.';
+    case 'firefight': return `${o.reason} Grab a bucket!`;
+    case 'mend': return `${o.reason}. Let's get it fixed up.`;
     case 'farm': return o.reason === 'The crop is ripe' ? 'The crop looks ready. Harvest time.' : 'Watering and weeding.';
     case 'deposit': return 'Dropping this off at the storehouse.';
     default: return o.reason;
@@ -960,7 +1039,7 @@ function urgent(sim: Sim, a: Agent): boolean {
 }
 
 /** What someone off sick stops doing at once, whatever stage it's at. */
-const SICK_STOPS: ActionKind[] = ['work', 'teach', 'learn', 'build', 'chop', 'mine', 'farm', 'fish', 'haul', 'split', 'stoke', 'craft', 'pave', 'meet'];
+const SICK_STOPS: ActionKind[] = ['work', 'teach', 'learn', 'build', 'chop', 'mine', 'farm', 'fish', 'firefight', 'mend', 'haul', 'split', 'stoke', 'craft', 'pave', 'meet'];
 
 // ------------------------------------------------------------------ performing
 
@@ -1387,6 +1466,33 @@ function perform(sim: Sim, a: Agent, dt: number, stage: Stage): void {
       return performFarm(sim, a, dt, tick);
     case 'fish':
       return performFish(sim, a, dt, tick);
+    case 'firefight': {
+      if (!sim.fires.some((f) => f.building === act.building)) return finish(sim, a);
+      if (act.facing) a.facing = act.facing;
+      n.energy = Math.max(0, n.energy - 0.15 * dt);
+      n.hygiene = Math.max(0, n.hygiene - 0.2 * dt);
+      if (sim.rng.chance(0.03 * dt)) say(sim, a, sim.rng.pick(['water!', 'buckets!', 'over here!', 'hurry!']), 'alert', 2);
+      if (sim.rng.chance(0.0004 * dt)) {
+        fallIll(sim, a, 'injury', 'burned their hands fighting the fire');
+        return finish(sim, a);
+      }
+      return;
+    }
+    case 'mend': {
+      const b = sim.building(act.building);
+      if (!b) return finish(sim, a);
+      a.workedToday += dt;
+      payWage(sim, a, 0.35 * dt);
+      a.needs.work = Math.min(100, a.needs.work + 0.45 * dt);
+      gainXp(sim, a, 'craft', dt * 0.3);
+      if (sim.rng.chance(0.02 * dt)) say(sim, a, sim.rng.pick(['tap tap', 'new beams', 'nearly!']), 'neutral', 1.5);
+      if (mend(sim, b, laborRate(a) * dt)) {
+        if (!b.damage) think(sim, a, `The ${b.name} is good as new.`, 'good');
+        return finish(sim, a);
+      }
+      if (tick() || !isWorkTime(sim, a)) finish(sim, a);
+      return;
+    }
     case 'split':
       gainXp(sim, a, 'craft', dt * 0.2);
       a.workedToday += dt;

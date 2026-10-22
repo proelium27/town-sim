@@ -7,7 +7,7 @@ import type { DrawnKey, Prop, TownMap } from '../world/map';
 import { Cell } from '../world/map';
 import { Exteriors, wallTone } from './exteriors';
 import { Lighting } from './lighting';
-import { Smoke } from './particles';
+import { Flames, Smoke } from './particles';
 import { chill } from '../sim/seasons';
 import { Puddles } from './puddles';
 import { Shading } from './shading';
@@ -45,6 +45,8 @@ export class WorldView {
   readonly exteriors: Exteriors;
   /** Chimney smoke, above roofs. */
   readonly smoke = new Smoke();
+  /** Burning roofs, above the night grade so a fire lights up the dark. */
+  readonly flames = new Flames();
   /** Rain puddles on paths and pavement; faded in by how wet the ground is. */
   readonly puddles: Puddles;
   /** Season the ground and trees were last painted for. */
@@ -70,7 +72,7 @@ export class WorldView {
     this.shading = new Shading(m);
     this.puddles = new Puddles(m);
     this.lighting = new Lighting(m);
-    this.root.addChild(new Sprite(this.groundTex), this.puddles.layer, this.shading.layer, this.walls, this.flat, this.sites, this.entities, this.smoke.layer, this.lighting.layer, this.overlay);
+    this.root.addChild(new Sprite(this.groundTex), this.puddles.layer, this.shading.layer, this.walls, this.flat, this.sites, this.entities, this.smoke.layer, this.lighting.layer, this.flames.layer, this.overlay);
     this.parkCars();
     this.exteriors = new Exteriors(art, m, this.entities);
     this.sync();
@@ -248,6 +250,9 @@ export class WorldView {
       }
     }
     this.smoke.update(dt, this.exteriors.chimneys().filter((c) => fires.has(c.id)));
+    const burning = sim.fires.map((f) => ({ f, b: sim.building(f.building) })).filter((x) => !!x.b);
+    // Over the roof: the footprint less the front wall's last couple of rows.
+    this.flames.update(dt, burning.map(({ f, b }) => ({ id: b!.id, x: b!.x * TILE, y: b!.y * TILE + 6, w: b!.w * TILE, h: Math.max(1, b!.h - 2) * TILE, heat: f.heat })));
     const wet = sim.events.wet ?? 0;
     const layer = this.puddles.layer;
     layer.visible = wet > 0.02;

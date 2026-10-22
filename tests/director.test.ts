@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { candidates, pickShot, type Shot, urgent } from '../src/sim/director';
+import { breaking, candidates, FIRE_SHOT, pickShot, type Shot, urgent } from '../src/sim/director';
 import { triggerWorldEvent } from '../src/sim/events';
+import { startFire } from '../src/sim/fire';
 import { Sim } from '../src/sim/sim';
 import { HEADLINE } from '../src/sim/types';
 
@@ -64,6 +65,24 @@ describe('director', () => {
     const all = candidates(sim, () => 0.5);
     expect(all.some((s) => s.kind === 'establishing')).toBe(true);
     expect(all.some((s) => s.kind === 'quiet')).toBe(true);
+  }, 60_000);
+
+  it('a fire outranks every other shot, even a fresh headline, and cuts in at once', () => {
+    const sim = new Sim(7);
+    sim.run(60);
+    const [a, b] = sim.agents;
+    sim.log(`${a.name.split(' ')[0]} and ${b.name.split(' ')[0]} welcomed a baby`, 'family', 'good', a, b).weight = HEADLINE;
+    const home = sim.map.buildings.find((x) => x.kind === 'house')!;
+    startFire(sim, home, 'a lamp knocked over');
+    const shot = pickShot(sim, new Map(), undefined, () => 0.5)!;
+    expect(shot.key).toBe(`fire:${home.id}`);
+    expect(shot.score).toBe(FIRE_SHOT);
+    expect(urgent(sim, shot, new Map())).toBe(true);
+    // Breaking: it may cut in on a shot that was itself urgent (a wedding scores 28), which nothing else may.
+    expect(breaking(shot)).toBe(true);
+    const news = candidates(sim, () => 0.5).find((s) => s.kind === 'news')!;
+    expect(news.score).toBeLessThan(shot.score);
+    expect(breaking(news)).toBe(false);
   }, 60_000);
 
   it('really excludes what it showed in the last 150 minutes while anything else exists', () => {

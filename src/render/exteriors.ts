@@ -34,6 +34,12 @@ const hash = (n: number, salt: number): number => {
 };
 const pick = <T>(arr: readonly T[], n: number, salt: number): T => arr[Math.floor(hash(n, salt) * arr.length)];
 
+/** White toward a sooty brown-gray as damage goes from 0 to 1. */
+function soot(d: number): number {
+  const ch = (to: number) => Math.round(255 + (to - 255) * d);
+  return (ch(0x5a) << 16) | (ch(0x4c) << 8) | ch(0x44);
+}
+
 /** Multiplies an RGB hex by f (0..2), clamped. */
 function shade(c: number, f: number): number {
   const ch = (s: number) => Math.max(0, Math.min(255, Math.round(((c >> s) & 255) * f)));
@@ -217,6 +223,9 @@ export class Exteriors {
       e.view.visible = e.alpha > 0.01;
       e.snow.alpha = e.alpha;
       e.snow.visible = this.snowing && e.view.visible;
+      // Soot from a fire, fading as builders repair it.
+      const d = Math.min(1, (e.b.damage ?? 0) * 1.2);
+      e.view.tint = d > 0 ? soot(d) : 0xffffff;
     }
   }
 

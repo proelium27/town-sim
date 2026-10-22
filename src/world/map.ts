@@ -3,7 +3,7 @@ import type { Facing, GroundKey, PropKey } from '../assets/manifest';
 export type DrawnKey =
   | 'monitor' | 'toilet' | 'basin' | 'whiteboard' | 'coffee' | 'shower' | 'net'
   | 'rock' | 'stump' | 'crop0' | 'crop1' | 'crop2' | 'crop3' | 'crate' | 'logs' | 'stones' | 'chalkboard' | 'deskKid'
-  | 'cake' | 'grave' | 'bonfire' | 'sawbench' | 'kiln' | 'workbench' | 'bucket';
+  | 'cake' | 'grave' | 'bonfire' | 'sawbench' | 'kiln' | 'workbench' | 'bucket' | 'well';
 
 export type RoomKind =
   | 'office' | 'meeting' | 'kitchen' | 'lounge' | 'lobby' | 'restroom'
@@ -59,7 +59,7 @@ export interface Prop {
   label?: string;
 }
 
-export type BuildingKind = 'office' | 'cafe' | 'market' | 'library' | 'house' | 'farm' | 'storehouse' | 'school' | 'park' | 'workshop' | 'cemetery' | 'clinic' | 'dock';
+export type BuildingKind = 'office' | 'cafe' | 'market' | 'library' | 'house' | 'farm' | 'storehouse' | 'school' | 'park' | 'workshop' | 'cemetery' | 'clinic' | 'dock' | 'well';
 
 export interface Building {
   id: number;
@@ -75,6 +75,10 @@ export interface Building {
   built: number;
   /** Bumped when the building grows (a house extension), so views redraw it. */
   extended?: number;
+  /** Built of planks and bricks (the workshop's), so it burns slower. */
+  sturdy?: boolean;
+  /** Fire damage, 0..1; builders repair it. */
+  damage?: number;
 }
 
 export const enum Cell {
