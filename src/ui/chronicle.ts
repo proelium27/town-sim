@@ -4,7 +4,7 @@ import { esc } from './util';
 
 type View = 'years' | 'family';
 
-/** The Northwind Chronicle: year pages written from the town's records, obituaries, and family trees. */
+/** The town's chronicle: year pages written from the town's records, obituaries, and family trees. */
 export class ChronicleBook {
   private el: HTMLElement;
   private view: View = 'years';
@@ -18,7 +18,7 @@ export class ChronicleBook {
   ) {
     this.el = Object.assign(document.createElement('section'), { className: 'book panel', hidden: true });
     this.el.setAttribute('role', 'dialog');
-    this.el.setAttribute('aria-label', 'The Northwind Chronicle');
+    this.el.setAttribute('aria-label', 'The town chronicle');
     document.body.appendChild(this.el);
     this.el.addEventListener('click', (e) => {
       const t = (e.target as HTMLElement).closest('[data-act], [data-tree]') as HTMLElement | null;
@@ -66,7 +66,7 @@ export class ChronicleBook {
     const scroll = this.el.querySelector('.bk-body')?.scrollTop ?? 0;
     this.el.innerHTML = `
       <header class="bk-head">
-        <h2>The Northwind Chronicle</h2>
+        <h2>The ${esc(s.name)} Chronicle</h2>
         <div class="seg" role="tablist" aria-label="Chronicle">
           <button role="tab" data-act="view" data-view="years" aria-selected="${this.view === 'years'}">Years</button>
           <button role="tab" data-act="view" data-view="family" aria-selected="${this.view === 'family'}">Families</button>
@@ -130,7 +130,7 @@ export class ChronicleBook {
       const living = [...s.agents].sort((a, b) => a.name.localeCompare(b.name));
       return `
         <h3>In memoriam</h3>
-        ${dead.length ? `<ul class="bk-obits">${dead.map((d) => `<li>${this.linked(obituary(s, d), [d.id])}</li>`).join('')}</ul>` : '<p class="bk-sum">Nobody has died in Northwind yet.</p>'}
+        ${dead.length ? `<ul class="bk-obits">${dead.map((d) => `<li>${this.linked(obituary(s, d), [d.id])}</li>`).join('')}</ul>` : `<p class="bk-sum">Nobody has died in ${esc(s.name)} yet.</p>`}
         <h3>Start from anyone</h3>
         <div class="bk-chips">${living.map((a) => `<button class="bk-chip" data-tree="${a.id}">${esc(a.name)}</button>`).join('')}</div>`;
     }
@@ -150,6 +150,6 @@ export class ChronicleBook {
       ${this.chips('Siblings', t.siblings)}
       ${this.chips('Children', t.children)}
       ${this.chips('Grandchildren', t.grandchildren)}
-      ${!t.parents.length && !t.children.length && !t.partner && !t.siblings.length ? '<p class="bk-sum">No family recorded in Northwind.</p>' : ''}`;
+      ${!t.parents.length && !t.children.length && !t.partner && !t.siblings.length ? `<p class="bk-sum">No family recorded in ${esc(this.sim.name)}.</p>` : ''}`;
   }
 }

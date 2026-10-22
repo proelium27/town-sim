@@ -2,6 +2,7 @@ import type { Building, Prop, Room } from '../world/map';
 import { type Town, buildTown } from '../world/town';
 import { tickAgents } from './ai';
 import { createAgents } from './agents';
+import { type Character, rollCharacter } from './character';
 import { DAY_NAMES, emptyStock, MIN_PER_DAY, type PriorityKey, SEASON_DAYS, SEASONS, type Season, type Stock, YEAR_DAYS } from './defs';
 import { tickEconomy } from './economy';
 import { tickEvents, type EventState, initialEvents } from './events';
@@ -18,7 +19,7 @@ import { Rng } from './rng';
 import { type Car, tickTraffic } from './traffic';
 import type { Activity, ActivityKind, Agent, Project, Tone } from './types';
 
-/** Game minutes per simulation step. At 1x the sim runs 20 steps per real second (1 game minute/s). */
+/** Game minutes per simulation step: 20 steps per game minute, however fast the game is running (see main.ts). */
 export const STEP = 0.05;
 
 export type { Stock } from './defs';
@@ -34,6 +35,8 @@ export class Sim {
   nav: Nav;
   readonly rng: Rng;
   readonly seed: number;
+  /** Where the town sits, what it was founded on, what its people value: why it grows the way it does. */
+  character: Character;
   /** Game minutes since Monday 00:00 of week one. */
   time = 6 * 60 + 30;
   /** The living. */
@@ -96,15 +99,24 @@ export class Sim {
   /** Countdown timers (game minutes) for periodic systems. */
   timers = { plan: 30, roles: 0, regrow: 0, life: 60, arrival: 1.5 * 1440 };
 
-  constructor(seed = 7, opts: { agents?: boolean } = {}) {
+  constructor(seed = 7, opts: { agents?: boolean; character?: Character } = {}) {
     this.seed = seed;
     this.rng = new Rng(seed);
-    this.town = buildTown(seed);
+    this.character = opts.character ?? rollCharacter(seed);
+    this.town = buildTown(seed, this.character);
+    const { treasury, ...stores } = this.character.start;
+    this.treasury += treasury ?? 0;
+    for (const [g, n] of Object.entries(stores)) this.stock[g as keyof Stock] += n;
     this.nav = new Nav(this.town.map);
     this.pantry = this.town.households.map(() => 5);
     this.fuel = this.town.households.map(() => 8);
     if (opts.agents !== false) createAgents(this);
-    this.milestone(`${this.agents.length} townsfolk call Northwind home`);
+    this.milestone(`${this.agents.length} townsfolk call ${this.name} home`);
+  }
+
+  /** The town's name. */
+  get name(): string {
+    return this.character.name;
   }
 
   get map() {

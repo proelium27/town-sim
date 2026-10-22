@@ -92,7 +92,7 @@ export const DREAMS: Record<DreamKey, DreamDef> = {
   },
   mayor: {
     text: () => 'being elected mayor',
-    came: () => 'was elected mayor of Northwind',
+    came: (sim) => `was elected mayor of ${sim.name}`,
     weight: (sim, a) => (working(a) && sim.mayor !== a.id ? 0.25 + a.skills.charisma.level * 0.15 + trait(a, 'extrovert', 0.5) + trait(a, 'competitive', 0.6) - trait(a, 'introvert', 0.2) : 0),
     done: (sim, a) => sim.mayor === a.id,
     lost: (_s, a) => (a.role === 'retired' ? 'retired without ever winning an election' : ''),
@@ -140,8 +140,8 @@ export const DREAMS: Record<DreamKey, DreamDef> = {
     leans: { socialize: 0.1 },
   },
   city: {
-    text: () => 'seeing Northwind become a city',
-    came: () => 'saw Northwind become a city',
+    text: (sim) => `seeing ${sim.name} become a city`,
+    came: (sim) => `saw ${sim.name} become a city`,
     // Only once the town is plausibly on its way: already a town, and nearly the people a city needs.
     weight: (sim, a) => (sim.tier === 1 && sim.agents.length >= TIER_AT[2][0] * CITY_HOPE ? 0.5 + (ageOf(sim, a) >= 40 ? 0.3 : 0) : 0),
     progress: (sim) => `${sim.agents.length} of ${TIER_AT[2][0]} people`,
@@ -220,7 +220,7 @@ export function tickAspirations(sim: Sim): void {
   // A dream the whole town shares comes true for everyone at once: one line, a memory for each.
   for (const a of cityDreamers) fulfil(sim, a, a.dream!, cityDreamers.length > 1);
   if (cityDreamers.length > 1) {
-    sim.log(`${cityDreamers.length} people saw their dream come true: Northwind is a city`, 'life', 'good', cityDreamers[0]).weight = HEADLINE;
+    sim.log(`${cityDreamers.length} people saw their dream come true: ${sim.name} is a city`, 'life', 'good', cityDreamers[0]).weight = HEADLINE;
   }
 }
 

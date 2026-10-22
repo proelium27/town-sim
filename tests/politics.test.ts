@@ -3,6 +3,7 @@ import { ageOf } from '../src/sim/agents';
 import { ADULT_AGE, PRIORITY_KEYS } from '../src/sim/defs';
 import { die } from '../src/sim/life';
 import { agendaWeight, AGENDA_WEIGHT, concernOf, concernsOf, TERM_FATIGUE, voteScore } from '../src/sim/politics';
+import { CLASSIC } from '../src/sim/character';
 import { Sim } from '../src/sim/sim';
 import { kinship } from '../src/sim/social';
 
@@ -147,7 +148,8 @@ describe('elections across towns', () => {
     results.push({ platform: L.platform, reelected, landslide: L.votes[0][1] > 2 * (L.votes[1]?.[1] ?? 0) });
   for (const seed of [1, 3, 5, 7]) {
     it(`seed ${seed} holds two elections`, () => {
-      const sim = new Sim(seed);
+      // The original town with different casts: the vote is what's under test, not how each town grows.
+      const sim = new Sim(seed, { character: CLASSIC });
       at(sim, 2, 19.5);
       const first = sim.lastElection!;
       record(first, false);
