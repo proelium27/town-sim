@@ -144,4 +144,18 @@ describe('the lake', () => {
     expect(sim.map.ice).toBe(false);
     expect(sim.agents.some((a) => sim.map.ground[a.at] === 'water')).toBe(false);
   }, 300_000);
+
+  it('a rush dock goes up alongside a home rather than in its place', () => {
+    // Seed 6 starts its dock in late summer on a lot that takes days to clear, with one builder to spare.
+    const sim = new Sim(6);
+    const houses = () => sim.map.buildings.filter((b) => b.kind === 'house').length;
+    while (!sim.projects.some((p) => p.blueprint === 'dock') && sim.time < 5 * 1440) sim.run(30);
+    const dock = sim.projects.find((p) => p.blueprint === 'dock');
+    expect(dock?.rush).toBe(true);
+    const before = houses();
+    at(sim, 5, 12);
+    expect(sim.projects.some((p) => p.blueprint === 'dock')).toBe(true);
+    // Its slot is outside the town's limit, so the home the town wants is under way (or done) too.
+    expect(sim.projects.some((p) => p.blueprint === 'house') || houses() > before).toBe(true);
+  }, 300_000);
 });

@@ -207,6 +207,8 @@ export interface Project {
   /** A private business: who paid for it and will run it, and what they borrowed. */
   owner?: number;
   loan?: number;
+  /** Started as a rush job, outside the town's usual project limit. */
+  rush?: boolean;
 }
 
 export type ActivityKind = 'work' | 'social' | 'life' | 'event' | 'build' | 'family';

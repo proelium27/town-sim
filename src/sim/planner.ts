@@ -538,6 +538,7 @@ export function startProject(sim: Sim, p: Proposal): Project | null {
     extends: wing,
     owner: p.owner?.id,
     loan: p.owner ? loan : undefined,
+    rush: p.rush,
   };
   sim.projects.push(pr);
   const who = p.proposer;
@@ -843,13 +844,18 @@ export function tickPlanner(sim: Sim, dt: number): void {
   checkTier(sim);
   // A bigger town can take on more at once.
   const capacityProjects = Math.min(3 + sim.tier, 1 + Math.floor(builders / 2));
-  // Past the usual limit: a rush job (the dock before the frost, wells after a fire) by one, and families with no
-  // roof over their heads by up to HOMELESS_EXTRA at once.
-  const full = sim.projects.length >= capacityProjects;
-  if (sim.projects.length >= capacityProjects + Math.max(1, HOMELESS_EXTRA)) return;
+  // A rush job (the dock before the frost, wells after a fire) doesn't wait for a big project like the school to
+  // finish, and doesn't hold up the rest either while it's going: it sits outside the limit, one at a time. (Counted
+  // inside it, a dock whose lot took three days to clear kept a town of 18 from building a single home.) Families with
+  // no roof over their heads may push past the limit by up to HOMELESS_EXTRA at once.
+  const regular = sim.projects.filter((pr) => !pr.rush).length;
+  const rushing = sim.projects.length - regular;
+  const full = regular >= capacityProjects;
+  const roomForHomeless = regular < capacityProjects + HOMELESS_EXTRA;
+  if (!roomForHomeless && rushing) return;
   for (const p of proposals(sim)) {
     if (p.score < 0.5) break;
-    if (full && !(p.rush && sim.projects.length <= capacityProjects) && !homelessHouse(sim, p)) continue;
+    if (p.rush ? rushing > 0 : full && !(roomForHomeless && homelessHouse(sim, p))) continue;
     if (startProject(sim, p)) return;
   }
 }
