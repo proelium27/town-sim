@@ -199,7 +199,14 @@ export interface Activity {
   tone: Tone;
   agentId?: number;
   otherId?: number;
+  /** How much this belongs in the "while you were away" digest: NOTABLE or HEADLINE. Unset for everyday chatter. */
+  weight?: number;
 }
+
+/** Worth a line in the away digest if there's room (love, coming of age, a town meeting's pick). */
+export const NOTABLE = 2;
+/** Always in the away digest (births, deaths, elections, new buildings, disasters). */
+export const HEADLINE = 3;
 
 /** Which use spots each action draws on. */
 export const ACTION_USE: Partial<Record<ActionKind, UseKind[]>> = {

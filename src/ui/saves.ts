@@ -7,6 +7,33 @@ const KEY = 'townsfolk.save';
 export const BACKUP_KEY = 'townsfolk.save.unreadable';
 /** Never autosave more often than this, however fast the clock runs. */
 const MIN_GAP_MS = 15_000;
+/** When the town was last saved, how fast it was running and its game minute, so reopening it can catch up. */
+const AWAY_KEY = 'townsfolk.away';
+
+export interface AwayRecord {
+  /** Date.now() at the save. */
+  at: number;
+  speed: number;
+  /** sim.time at the save, to check the record belongs to the town that was loaded. */
+  time: number;
+}
+
+export function readAway(): AwayRecord | null {
+  try {
+    const r = JSON.parse(localStorage.getItem(AWAY_KEY) ?? 'null') as AwayRecord | null;
+    return r && Number.isFinite(r.at) && Number.isFinite(r.speed) && Number.isFinite(r.time) ? r : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearAway(): void {
+  try {
+    localStorage.removeItem(AWAY_KEY);
+  } catch {
+    // Storage blocked: nothing to clear.
+  }
+}
 
 export interface Unreadable {
   /** Why it couldn't be loaded. */
@@ -55,6 +82,8 @@ export class Saves {
   private resetting = false;
   /** The save that couldn't be read, for Export backup: from this boot, or left over from an earlier one. */
   private backup: string | null = null;
+  /** The clock speed, kept up to date by main, saved alongside so a return catches up at the pace the town was going. */
+  speed = 1;
 
   constructor(
     private sim: Sim,
@@ -101,6 +130,7 @@ export class Saves {
       localStorage.setItem(KEY, saveSim(this.sim));
       this.savedAt = this.sim.time;
       this.error = '';
+      localStorage.setItem(AWAY_KEY, JSON.stringify({ at: Date.now(), speed: this.speed, time: this.sim.time } satisfies AwayRecord));
     } catch {
       this.error = 'Browser storage is full or blocked; use Export';
     }
@@ -153,6 +183,8 @@ export class Saves {
       this.error = 'Browser storage is full or blocked';
       return;
     }
+    // An imported town picks up where its file left off; it wasn't "away".
+    clearAway();
     location.href = location.pathname;
   }
 
@@ -168,6 +200,7 @@ export class Saves {
     } catch {
       // Nothing saved to remove.
     }
+    clearAway();
     location.href = location.pathname;
   }
 }

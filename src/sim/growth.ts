@@ -3,6 +3,7 @@ import { type Building, Cell } from '../world/map';
 import { startFestival } from './events';
 import { addMemory } from './social';
 import type { Sim } from './sim';
+import { HEADLINE } from './types';
 
 /** Extensions add a 4-tile-wide bedroom wing along one side of a house. */
 export const EXTENSION_W = 4;
@@ -128,13 +129,13 @@ export function checkTier(sim: Sim): void {
     if (seasonal && seasonal.at < ev.festival!.until) {
       // Tonight's seasonal festival would land mid-charter: fold it in rather than drop it.
       ev.seasonal = null;
-      sim.log(`${sim.name} is now a ${tier}! Tonight's ${seasonal.name.toLowerCase()} in the park becomes a charter day`, 'event', 'good');
-    } else sim.log(`${sim.name} is now a ${tier}! There's a charter day in the park`, 'event', 'good');
+      sim.log(`${sim.name} is now a ${tier}! Tonight's ${seasonal.name.toLowerCase()} in the park becomes a charter day`, 'event', 'good').weight = HEADLINE;
+    } else sim.log(`${sim.name} is now a ${tier}! There's a charter day in the park`, 'event', 'good').weight = HEADLINE;
   } else if (fest.name === CHARTER_DAY) {
-    sim.log(`${sim.name} is now a ${tier}! The charter day in the park goes on`, 'event', 'good');
+    sim.log(`${sim.name} is now a ${tier}! The charter day in the park goes on`, 'event', 'good').weight = HEADLINE;
   } else {
     // Everyone's already out in the park: the festival becomes the charter day.
-    sim.log(`${sim.name} is now a ${tier}! The ${(fest.name ?? 'festival').toLowerCase()} in the park becomes a charter day`, 'event', 'good');
+    sim.log(`${sim.name} is now a ${tier}! The ${(fest.name ?? 'festival').toLowerCase()} in the park becomes a charter day`, 'event', 'good').weight = HEADLINE;
     fest.name = CHARTER_DAY;
   }
 }

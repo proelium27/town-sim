@@ -4,7 +4,7 @@ import { die } from './life';
 import { chill } from './seasons';
 import { addMemory, first, kinship, say, think } from './social';
 import type { Sim } from './sim';
-import type { Agent } from './types';
+import { NOTABLE, type Agent } from './types';
 
 export type IllnessKind = 'cold' | 'flu' | 'injury';
 
@@ -61,7 +61,7 @@ export function fallIll(sim: Sim, a: Agent, kind: IllnessKind, how: string): voi
   a.illness = { kind, severity: 0.08, age: 0, treated: false, medicine: false, caredUntil: 0 };
   addMemory(sim, a, kind === 'injury' ? 'hurt' : 'feelingIll');
   think(sim, a, kind === 'injury' ? `Ow. ${how}.` : `I think I'm coming down with ${ILLNESS[kind].label}.`, 'bad');
-  sim.log(`${first(a)} ${kind === 'injury' ? `got hurt (${how})` : `came down with ${ILLNESS[kind].label}${how ? ` (${how})` : ''}`}`, 'life', 'bad', a);
+  sim.log(`${first(a)} ${kind === 'injury' ? `got hurt (${how})` : `came down with ${ILLNESS[kind].label}${how ? ` (${how})` : ''}`}`, 'life', 'bad', a).weight = kind === 'injury' ? NOTABLE : undefined;
 }
 
 /** Close contact with someone sick: they might pass it on. */
@@ -132,7 +132,7 @@ export function tickTownHealth(sim: Sim): void {
       a.frailSince = sim.time;
       addMemory(sim, a, 'frail');
       think(sim, a, "I'm not as strong as I was.", 'neutral');
-      sim.log(`${first(a)} is growing frail; the family is visiting more`, 'family', 'neutral', a);
+      sim.log(`${first(a)} is growing frail; the family is visiting more`, 'family', 'neutral', a).weight = NOTABLE;
     }
   }
 }

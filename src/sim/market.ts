@@ -1,7 +1,7 @@
 import { type Good, GOOD_KEYS, goodNoun, MIN_PER_DAY, ROLES, SEASON_DAYS } from './defs';
 import { addMemory, first, kinship, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
-import type { Agent } from './types';
+import { HEADLINE, NOTABLE, type Agent } from './types';
 import type { Household } from '../world/town';
 import { targetOf } from './workshop';
 
@@ -153,7 +153,7 @@ export function trade(sim: Sim): string {
 export function traderVisit(sim: Sim): void {
   const short = tradeList(sim).buy.length > 0;
   const done = trade(sim);
-  if (done !== NO_TRADE) sim.log(`The trader stopped at the market: ${done}`, 'event', 'good');
+  if (done !== NO_TRADE) sim.log(`The trader stopped at the market: ${done}`, 'event', 'good').weight = NOTABLE;
   else sim.log(`The trader came by, but the town had nothing to sell and ${short ? 'no money to spare' : 'needed nothing'}`, 'event', 'neutral');
 }
 
@@ -247,10 +247,10 @@ function leaveTown(sim: Sim, fam: Agent[], h: Household): void {
   sim.departed.push(...fam);
   sim.populationVersion++;
   const names = fam.map(first).join(', ');
-  sim.log(`Hard times: ${names} packed up and left the ${home}`, 'family', 'bad', fam[0]);
+  sim.log(`Hard times: ${names} packed up and left the ${home}`, 'family', 'bad', fam[0]).weight = HEADLINE;
   if (fam.some((a) => a.id === sim.mayor)) {
     sim.mayor = null;
-    sim.log(`${sim.name} is without a mayor until the next election`, 'event', 'bad');
+    sim.log(`${sim.name} is without a mayor until the next election`, 'event', 'bad').weight = HEADLINE;
   }
   sim.milestone(`${names} left ${sim.name}`);
 }

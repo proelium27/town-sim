@@ -11,7 +11,7 @@ import { agendaWeight } from './politics';
 import { kidCap, nthName } from './character';
 import { canSupply, CRAFT_ROLES, hasWorkshop, rawOf, RECIPES, targetOf, wanted } from './workshop';
 import { addMemory, first, think } from './social';
-import type { Agent, Project } from './types';
+import { HEADLINE, NOTABLE, type Agent, type Project } from './types';
 import type { Sim } from './sim';
 
 // ------------------------------------------------------------------ households
@@ -507,7 +507,7 @@ function startProject(sim: Sim, p: Proposal): Project | null {
   sim.projects.push(pr);
   const who = p.proposer;
   const chair = sim.agent(sim.mayor ?? undefined);
-  sim.log(`${chair ? `Mayor ${first(chair)}'s town meeting` : 'Town meeting'}: ${who ? first(who) : 'the town'} proposed ${bp.noun} because ${p.reason}`, 'build', 'good', who);
+  sim.log(`${chair ? `Mayor ${first(chair)}'s town meeting` : 'Town meeting'}: ${who ? first(who) : 'the town'} proposed ${bp.noun} because ${p.reason}`, 'build', 'good', who).weight = NOTABLE;
   if (who) {
     addMemory(sim, who, 'proposed');
     think(sim, who, `They liked my idea: ${bp.noun}.`, 'good');
@@ -556,12 +556,12 @@ export function completeProject(sim: Sim, pr: Project): void {
   }
   for (const a of sim.agents) addMemory(sim, a, 'townGrowing');
   const names = residents.map(first);
-  sim.log(`${pr.name} is finished${names.length ? `. ${names.join(', ')} moved in` : ''}`, 'build', 'good', residents[0]);
+  sim.log(`${pr.name} is finished${names.length ? `. ${names.join(', ')} moved in` : ''}`, 'build', 'good', residents[0]).weight = HEADLINE;
   sim.milestone(`Built ${pr.name}`);
   if (pr.blueprint === 'cemetery') {
     const laid = sim.unburied.filter((id) => bury(sim, id));
     sim.unburied = sim.unburied.filter((id) => !laid.includes(id));
-    if (laid.length) sim.log(`${laid.map((id) => sim.person(id)!.name).join(', ')} ${laid.length > 1 ? 'were' : 'was'} laid to rest at ${pr.name}`, 'family', 'neutral');
+    if (laid.length) sim.log(`${laid.map((id) => sim.person(id)!.name).join(', ')} ${laid.length > 1 ? 'were' : 'was'} laid to rest at ${pr.name}`, 'family', 'neutral').weight = NOTABLE;
   }
   if (pr.blueprint !== 'house') allocateRoles(sim);
 }
@@ -594,7 +594,7 @@ function finishExtension(sim: Sim, pr: Project, wing: ExtensionSite): void {
   }
   const fam = members(sim, hh.id);
   for (const a of fam) addMemory(sim, a, 'roomToBreathe');
-  sim.log(`The ${hh.name} has a new wing: ${EXTENSION_W} tiles wider and two more beds`, 'build', 'good', fam[0]);
+  sim.log(`The ${hh.name} has a new wing: ${EXTENSION_W} tiles wider and two more beds`, 'build', 'good', fam[0]).weight = HEADLINE;
   sim.milestone(`Built ${pr.name}`);
 }
 

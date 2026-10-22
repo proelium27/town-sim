@@ -290,9 +290,33 @@ body.inspecting .activity { width: min(620px, calc(100vw - var(--roster-w) - var
 .feed .family .tag { color: var(--n-social); }
 .feed .bad .txt { color: oklch(0.85 0.08 35); }
 .feed .txt { min-width: 0; }
-.feed .name { color: var(--text); font-weight: 600; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
-.feed .name:hover { color: var(--accent); text-decoration-color: currentColor; }
+.feed .name, .digest .name { color: var(--text); font-weight: 600; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
+.feed .name:hover, .digest .name:hover { color: var(--accent); text-decoration-color: currentColor; }
 .feed .empty { display: block; color: var(--text-3); padding: 10px 0; }
+
+/* ------------------------------------------------------------ away digest */
+.digest {
+  top: calc(var(--gap) * 2 + var(--hud-h)); left: 50%; transform: translateX(-50%); z-index: 4;
+  width: min(460px, calc(100vw - var(--gap) * 2)); padding: 10px 12px 12px 14px;
+  animation: digest-in 200ms var(--ease);
+}
+@keyframes digest-in { from { opacity: 0; transform: translate(-50%, -6px); } }
+.dg-head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+.dg-head h2 { font-size: 15px; font-weight: 600; }
+.dg-head > :last-child { margin-left: auto; }
+.digest .sub { color: var(--text-3); font-size: 12px; }
+.dg-lines { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 5px; }
+.dg-lines li { display: grid; grid-template-columns: 62px 1fr; gap: 8px; align-items: baseline; color: var(--text-2); }
+.dg-lines time { color: var(--text-3); font-size: 11px; }
+.dg-lines .good .txt { color: var(--text); }
+.dg-lines .bad .txt { color: oklch(0.85 0.08 35); }
+.dg-quiet { margin-top: 8px; color: var(--text-3); }
+.dg-worry { margin-top: 10px; padding: 6px 10px; border-radius: var(--r-sm); background: var(--panel-2); color: var(--warn); font-size: 12px; }
+.dg-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12px; color: var(--text-3); }
+.dg-foot label { margin-left: auto; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.dg-foot input { accent-color: var(--accent); margin: 0; }
+.dg-bar { height: 8px; margin: 8px 0 2px; border: 1.5px solid var(--edge); border-radius: 999px; background: var(--panel-3); overflow: hidden; }
+.dg-bar i { display: block; height: 100%; background: var(--accent); }
 
 /* ------------------------------------------------------------ inspector */
 .inspector {

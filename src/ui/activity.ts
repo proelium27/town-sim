@@ -1,7 +1,7 @@
 import { first } from '../sim/social';
-import type { Activity, ActivityKind } from '../sim/types';
+import type { ActivityKind } from '../sim/types';
 import type { Sim } from '../sim/sim';
-import { esc, hhmm } from './util';
+import { esc, hhmm, linkNames } from './util';
 
 type Filter = 'all' | ActivityKind;
 const KIND_LABEL: Record<ActivityKind, string> = { work: 'Work', social: 'Social', life: 'Life', event: 'Town', build: 'Build', family: 'Family' };
@@ -74,18 +74,6 @@ export class ActivityLog {
     this.list.scrollTop = 0;
   }
 
-  private line(e: Activity): string {
-    let html = esc(e.text);
-    // Turn first names into links to that person.
-    for (const id of [e.agentId, e.otherId]) {
-      const a = this.sim.agent(id);
-      if (!a) continue;
-      const n = esc(first(a));
-      html = html.replace(new RegExp(`\\b${n}\\b`), `<button class="name" data-id="${a.id}">${n}</button>`);
-    }
-    return html;
-  }
-
   update(selected: number | null): void {
     const who = selected === null ? undefined : this.sim.agent(selected);
     this.selBtn.hidden = !who;
@@ -101,7 +89,7 @@ export class ActivityLog {
       .slice(-150)
       .reverse();
     this.list.innerHTML = items.length
-      ? items.map((e) => `<li class="${e.kind} ${e.tone}"><time class="num">${hhmm(e.t)}</time><span class="tag">${KIND_LABEL[e.kind]}</span><span class="txt">${this.line(e)}</span></li>`).join('')
+      ? items.map((e) => `<li class="${e.kind} ${e.tone}"><time class="num">${hhmm(e.t)}</time><span class="tag">${KIND_LABEL[e.kind]}</span><span class="txt">${linkNames(this.sim, e)}</span></li>`).join('')
       : `<li class="empty">${this.emptyText(who)}</li>`;
   }
 

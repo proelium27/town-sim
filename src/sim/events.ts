@@ -8,7 +8,7 @@ import { FRIEND, kinship } from './social';
 import { newcomers } from './life';
 import { addMemory, first, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
-import type { Agent } from './types';
+import { HEADLINE, NOTABLE, type Agent } from './types';
 
 export interface EventState {
   standup: { until: number; attendees: Set<number> } | null;
@@ -192,11 +192,11 @@ export function tickEvents(sim: Sim, dt: number): void {
   if (ev.party && sim.time >= ev.party.until) endParty(sim);
   if (ev.drought && sim.time >= ev.drought.until) {
     ev.drought = null;
-    sim.log('The drought broke. The crops can grow again', 'event', 'good');
+    sim.log('The drought broke. The crops can grow again', 'event', 'good').weight = NOTABLE;
   }
   // A blizzard holds the festival back until it blows over; one that lasts the evening snows it off.
   if (ev.seasonal && sim.time >= ev.seasonal.at && !ev.snowstorm) {
-    if (!ev.festival && sim.time - ev.seasonal.at > 4 * 60) sim.log(`The blizzard snowed off the ${ev.seasonal.name.toLowerCase()}`, 'event', 'bad');
+    if (!ev.festival && sim.time - ev.seasonal.at > 4 * 60) sim.log(`The blizzard snowed off the ${ev.seasonal.name.toLowerCase()}`, 'event', 'bad').weight = NOTABLE;
     else if (!ev.festival) {
       startFestival(sim, ev.seasonal.name);
       sim.log(`${ev.seasonal.name} in the park tonight!`, 'event', 'good');
@@ -214,7 +214,7 @@ export function tickEvents(sim: Sim, dt: number): void {
     ev.festival = null;
     for (const a of people) addMemory(sim, a, 'festival');
     for (const a of people) for (const b of people) if (a.id !== b.id && Math.abs(a.x - b.x) < 8) shiftOpinion(sim, a, b, sim.rng.range(0, 3));
-    sim.log(`The festival is over. ${plural(people.length, 'person', 'townsfolk')} ${sim.season === 3 ? 'warmed up together' : 'danced the night away'}`, 'event', 'good');
+    sim.log(`The festival is over. ${plural(people.length, 'person', 'townsfolk')} ${sim.season === 3 ? 'warmed up together' : 'danced the night away'}`, 'event', 'good').weight = NOTABLE;
   }
   if (ev.rain && sim.time >= ev.rain.until) {
     ev.rain = null;
@@ -401,7 +401,7 @@ export function triggerWorldEvent(sim: Sim, key: WorldEventKey): void {
     case 'outbreak': {
       const well = sim.agents.filter((a) => !a.illness);
       for (let k = 0; k < 3 && well.length; k++) fallIll(sim, well.splice(sim.rng.int(0, well.length - 1), 1)[0], 'flu', '');
-      sim.log('A flu is going around town', 'event', 'bad');
+      sim.log('A flu is going around town', 'event', 'bad').weight = HEADLINE;
       sim.outbreak = sim.time;
       break;
     }
@@ -410,11 +410,11 @@ export function triggerWorldEvent(sim: Sim, key: WorldEventKey): void {
       ev.rain = { until: sim.time + 360 };
       ev.snowstorm = { until: sim.time + 360 };
       for (const a of sim.agents) addMemory(sim, a, 'blizzard');
-      sim.log('A blizzard is blowing in. Everyone hurries indoors', 'event', 'bad');
+      sim.log('A blizzard is blowing in. Everyone hurries indoors', 'event', 'bad').weight = HEADLINE;
       break;
     case 'harvest':
       for (const p of m.props) if (p.use === 'farm') p.growth = 1;
-      sim.log('A bumper harvest! Every field is ripe', 'event', 'good');
+      sim.log('A bumper harvest! Every field is ripe', 'event', 'good').weight = HEADLINE;
       break;
     case 'newcomers':
       newcomers(sim, 3, true);
@@ -422,7 +422,7 @@ export function triggerWorldEvent(sim: Sim, key: WorldEventKey): void {
     case 'drought':
       ev.drought = { until: sim.time + 2 * 1440 };
       for (const a of sim.agents) if (a.role === 'farmer' || a.needs.hunger < 50) addMemory(sim, a, 'drought');
-      sim.log('A drought has begun. Nothing will grow for two days', 'event', 'bad');
+      sim.log('A drought has begun. Nothing will grow for two days', 'event', 'bad').weight = HEADLINE;
       break;
     case 'storm': {
       ev.rain = { until: sim.time + 240 };
@@ -441,7 +441,7 @@ export function triggerWorldEvent(sim: Sim, key: WorldEventKey): void {
       for (const a of sim.agents) addMemory(sim, a, 'storm');
       for (const a of sim.agents) if (m.room[a.at] < 0 && sim.rng.chance(0.12)) fallIll(sim, a, 'injury', 'caught out in the storm');
       const damage = [hit && `flattening ${hit.name}`, fallen && `toppling ${plural(fallen, 'tree')}`].filter(Boolean).join(' and ');
-      sim.log(`A storm rolled through${damage ? `, ${damage}` : ''}`, 'event', 'bad');
+      sim.log(`A storm rolled through${damage ? `, ${damage}` : ''}`, 'event', 'bad').weight = HEADLINE;
       break;
     }
   }

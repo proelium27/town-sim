@@ -3,7 +3,7 @@ import { ADULT_AGE, ELECTION_DAY, plural, PRIORITY_LABEL, type PriorityKey, RALL
 import { foodBalance } from './economy';
 import { addMemory, first, kinship, say, shiftOpinion, think } from './social';
 import type { Sim } from './sim';
-import type { Agent } from './types';
+import { HEADLINE, type Agent } from './types';
 
 /** How much the mayor's agenda leans the town meetings, on top of the player's priorities. */
 export const AGENDA_WEIGHT = 1.25;
@@ -103,7 +103,7 @@ function dropAbsent(sim: Sim, e: ElectionState): boolean {
   for (const id of gone.map((c) => c.id)) e.attendees.delete(id);
   if (e.candidates.length) return true;
   e.stage = 'done';
-  sim.log(`With no candidates left, this year's election is called off`, 'event', 'bad');
+  sim.log(`With no candidates left, this year's election is called off`, 'event', 'bad').weight = HEADLINE;
   return false;
 }
 
@@ -204,7 +204,7 @@ function vote(sim: Sim, e: ElectionState): void {
   }
   for (const [voter, cand] of backed) if (cand === winnerId && voter !== winnerId) addMemory(sim, sim.agent(voter)!, 'myCandidateWon');
   const others = votes.slice(1).map(([id, n]) => `${first(sim.agent(id)!)} ${n}`).join(', ');
-  sim.log(`${winner.name} ${was === winnerId ? 'was re-elected' : 'was elected'} mayor with ${plural(votes[0][1], 'vote')}${others ? ` (${others})` : ', unopposed'}, promising ${PITCH[platform]}`, 'event', 'good', winner);
+  sim.log(`${winner.name} ${was === winnerId ? 'was re-elected' : 'was elected'} mayor with ${plural(votes[0][1], 'vote')}${others ? ` (${others})` : ', unopposed'}, promising ${PITCH[platform]}`, 'event', 'good', winner).weight = HEADLINE;
   sim.milestone(`${winner.name} became mayor`);
 }
 

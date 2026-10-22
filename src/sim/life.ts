@@ -6,7 +6,7 @@ import { beginCareer, chooseCareer, finishApprenticeships } from './careers';
 import { tickTownHealth } from './health';
 import { allocateRoles, capacity, familyOf, members, moveTo, newHousehold, setRole } from './planner';
 import { addMemory, first, kinship, rel, say, think } from './social';
-import type { Agent } from './types';
+import { HEADLINE, NOTABLE, type Agent } from './types';
 import type { Sim } from './sim';
 
 const related = (a: Agent, b: Agent) =>
@@ -47,7 +47,7 @@ function growUp(sim: Sim): void {
     } else if (a.role !== 'retired' && a.role !== 'child' && age >= RETIRE_AGE) {
       setRole(sim, a, 'retired', null);
       think(sim, a, 'Retirement. I could get used to this.', 'good');
-      sim.log(`${a.name} retired at ${Math.floor(age)}`, 'family', 'neutral', a);
+      sim.log(`${a.name} retired at ${Math.floor(age)}`, 'family', 'neutral', a).weight = NOTABLE;
       allocateRoles(sim);
     }
   }
@@ -74,14 +74,14 @@ function romance(sim: Sim): void {
       say(sim, b, '♥', 'good', 20);
       think(sim, a, `${first(b)} and I are together now.`, 'good');
       think(sim, b, `I think ${first(a)} might be the one.`, 'good');
-      sim.log(`${first(a)} and ${first(b)} fell in love`, 'family', 'good', a, b);
+      sim.log(`${first(a)} and ${first(b)} fell in love`, 'family', 'good', a, b).weight = NOTABLE;
       // Move in together right away if one of their homes has room for the other.
       for (const [stay, go] of [[a, b], [b, a]] as const) {
         const fam = familyOf(sim, go).filter((x) => x.id !== stay.id && x.household === go.household);
         if (sim.town.households[stay.household].building >= 0 && capacity(sim, stay.household) - members(sim, stay.household).length >= fam.length) {
           moveTo(sim, fam, stay.household);
           for (const f of fam) addMemory(sim, f, 'movedIn');
-          sim.log(`${first(go)} moved in with ${first(stay)}`, 'family', 'good', go, stay);
+          sim.log(`${first(go)} moved in with ${first(stay)}`, 'family', 'good', go, stay).weight = NOTABLE;
           break;
         }
       }
@@ -113,7 +113,7 @@ function births(sim: Sim): void {
       think(sim, p, `Welcome to the world, little ${first(baby)}.`, 'good');
     }
     for (const gp of [...a.parents, ...b.parents].map((id) => sim.agent(id)).filter(Boolean) as Agent[]) addMemory(sim, gp, 'newBaby', baby);
-    sim.log(`${first(a)} and ${first(b)} welcomed a baby, ${first(baby)}`, 'family', 'good', a, b);
+    sim.log(`${first(a)} and ${first(b)} welcomed a baby, ${first(baby)}`, 'family', 'good', a, b).weight = HEADLINE;
     sim.milestone(`${baby.name} was born`);
   }
 }
@@ -132,10 +132,10 @@ export function die(sim: Sim, a: Agent, cause: string): void {
       think(sim, o, `I can't believe ${first(a)} is gone.`, 'bad');
     }
   }
-  sim.log(`${a.name} passed away (${cause})`, 'family', 'bad', a);
+  sim.log(`${a.name} passed away (${cause})`, 'family', 'bad', a).weight = HEADLINE;
   if (sim.mayor === a.id) {
     sim.mayor = null;
-    sim.log(`${sim.name} is without a mayor until the next election`, 'event', 'bad');
+    sim.log(`${sim.name} is without a mayor until the next election`, 'event', 'bad').weight = HEADLINE;
   }
   sim.milestone(`${a.name} passed away`);
   if (!bury(sim, a.id)) sim.unburied.push(a.id);
@@ -183,7 +183,7 @@ export function takeInChildren(sim: Sim): void {
     const names = kids.map(first).join(' and ');
     const host = best.host;
     for (const k of kids) think(sim, k, host ? `I'm going to live with ${first(host)} now.` : 'A new home, with new people.', 'neutral');
-    sim.log(host ? `${names} went to live with ${KIN_WORD[best.rank]} ${first(host)}` : `${names} went to live at ${sim.town.households[best.hh].name}`, 'family', 'neutral', kids[0], host);
+    sim.log(host ? `${names} went to live with ${KIN_WORD[best.rank]} ${first(host)}` : `${names} went to live at ${sim.town.households[best.hh].name}`, 'family', 'neutral', kids[0], host).weight = NOTABLE;
   }
 }
 
@@ -247,7 +247,7 @@ export function newcomers(sim: Sim, n: number, force: boolean): Agent[] {
   sim.populationVersion++;
   const names = made.map(first);
   const where = sim.town.households[made[0].household];
-  sim.log(`${family ? 'A family' : names.length > 1 ? 'Newcomers' : 'A newcomer'} arrived: ${names.join(', ')}${where.building < 0 ? ', with nowhere to live yet' : ''}`, 'family', 'good', made[0], made[1]);
+  sim.log(`${family ? 'A family' : names.length > 1 ? 'Newcomers' : 'A newcomer'} arrived: ${names.join(', ')}${where.building < 0 ? ', with nowhere to live yet' : ''}`, 'family', 'good', made[0], made[1]).weight = HEADLINE;
   allocateRoles(sim);
   return made;
 }
