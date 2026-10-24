@@ -2,7 +2,7 @@ import { ageOf } from './agents';
 import { ADULT_AGE, ELECTION_DAY, plural, PRIORITY_LABEL, type PriorityKey, RALLY_HOUR, RALLY_LENGTH, type TraitKey, YEAR_DAYS } from './defs';
 import { foodBalance } from './economy';
 import { addMemory, first, kinship, say, shiftOpinion, think } from './social';
-import { judgePromise, recordPull, takeOffice } from './civic';
+import { approvalPull, judgePromise, recordPull, takeOffice } from './civic';
 import type { Sim } from './sim';
 import { HEADLINE, type Agent } from './types';
 
@@ -156,14 +156,15 @@ export const CAMPAIGN_SWING = 0.15;
 
 /**
  * How much a voter warms to a candidate: how well they like them, whether the platform speaks to them, family, and
- * for a sitting mayor, how long they have held the office and whether they kept last term's promise.
+ * for a sitting mayor, how long they have held the office, whether they kept last term's promise and how the voter
+ * rates their time in office.
  */
 export function voteScore(sim: Sim, v: Agent, c: Candidate, wants: PriorityKey[] = concernsOf(sim, v)): number {
   if (c.id === v.id) return 9;
   const cand = sim.agent(c.id);
   const rank = wants.indexOf(c.platform);
   const fatigue = c.id === sim.mayor ? TERM_FATIGUE * Math.max(0, sim.mayorTerms - 1) : 0;
-  return (v.relations.get(c.id)?.opinion ?? 0) / OPINION_SCALE + (PLATFORM_PULL[rank] ?? 0) + (cand && kinship(sim, v, cand) ? KIN_PULL : 0) - fatigue + recordPull(sim, c.id);
+  return (v.relations.get(c.id)?.opinion ?? 0) / OPINION_SCALE + (PLATFORM_PULL[rank] ?? 0) + (cand && kinship(sim, v, cand) ? KIN_PULL : 0) - fatigue + recordPull(sim, c.id) + approvalPull(sim, v, c.id);
 }
 
 /** Each adult backs the candidate they like best, weighed by whether the platform speaks to them. */

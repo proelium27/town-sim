@@ -164,7 +164,9 @@ export function judgePromise(sim: Sim): void {
     pr.platform === 'housing' ? now - pr.baseline >= 3
       : pr.platform === 'food' ? now >= Math.max(1.5, pr.baseline * 0.9)
         : pr.platform === 'materials' ? now >= pr.baseline * 1.3
-          : now - pr.baseline >= 8;
+          // A year's festivals and a couple more, or a new place to gather: with every fête the town holds it's 8 at
+          // best, and fêtes give way to weddings, rallies and blizzards (5-7 is a typical year; 8 kept 1 of 4).
+          : now - pr.baseline >= 6;
   pr.kept = kept;
   c.verdict = { mayor: pr.mayor, platform: pr.platform, kept, year: sim.year };
   const how =
@@ -181,6 +183,16 @@ export function recordPull(sim: Sim, candidate: number): number {
   const pr = sim.civic.promise;
   if (!pr || pr.mayor !== candidate || pr.kept === undefined) return 0;
   return pr.kept ? 0.12 : -0.12;
+}
+
+/** Vote score at most this far either way from how a voter rates the sitting mayor's time in office. */
+export const APPROVAL_PULL = 0.5;
+
+/** A voter's approval of the sitting mayor, as vote score for them: 50 is neutral, a fan adds up to APPROVAL_PULL. */
+export function approvalPull(sim: Sim, v: Agent, candidate: number): number {
+  if (candidate !== sim.mayor) return 0;
+  const a = sim.civic.approval.get(v.id);
+  return a === undefined ? 0 : ((a - 50) / 50) * APPROVAL_PULL;
 }
 
 // ---------------------------------------------------------------- approval

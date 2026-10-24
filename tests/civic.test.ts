@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ageOf } from '../src/sim/agents';
-import { approvalLine, approvalOf, BONUS_RATE, callProtest, DEFAULT_POLICIES, FETE_COST, judgePromise, recallVote, recordPull, takeOffice, TAX_RATE, townApproval } from '../src/sim/civic';
+import { APPROVAL_PULL, approvalLine, approvalOf, BONUS_RATE, callProtest, DEFAULT_POLICIES, FETE_COST, judgePromise, recallVote, recordPull, takeOffice, TAX_RATE, townApproval } from '../src/sim/civic';
 import { priceMood } from '../src/sim/business';
 import { Rng } from '../src/sim/rng';
 import { ADULT_AGE, ELECTION_DAY, MIN_PER_DAY, ROLES, SEASON_DAYS, YEAR_DAYS } from '../src/sim/defs';
@@ -198,6 +198,34 @@ describe('mayors with real power', () => {
     // A new term replaces the promise; the verdict stays on show.
     takeOffice(sim, m, 'housing', true);
     expect(sim.civic.verdict).toEqual({ mayor: m.id, platform: 'housing', kept: false, year: sim.year });
+  }, 60_000);
+
+  it("a voter's approval of the sitting mayor counts at the ballot box, and only for the mayor", () => {
+    const sim = town();
+    const m = sim.agent(sim.mayor!)!;
+    const voter = adults(sim).find((a) => a.id !== m.id)!;
+    const rival = adults(sim).find((a) => a.id !== m.id && a.id !== voter.id)!;
+    const mine = { id: m.id, platform: 'housing' as const };
+    const theirs = { id: rival.id, platform: 'housing' as const };
+    sim.civic.approval.set(voter.id, 50);
+    const [even, other] = [voteScore(sim, voter, mine), voteScore(sim, voter, theirs)];
+    sim.civic.approval.set(voter.id, 100);
+    expect(voteScore(sim, voter, mine)).toBeCloseTo(even + APPROVAL_PULL);
+    sim.civic.approval.set(voter.id, 0);
+    expect(voteScore(sim, voter, mine)).toBeCloseTo(even - APPROVAL_PULL);
+    expect(voteScore(sim, voter, theirs)).toBeCloseTo(other);
+  }, 60_000);
+
+  it('a community promise is kept with six more festivals and places to gather in the year', () => {
+    for (const [more, kept] of [[6, true], [5, false]] as const) {
+      const sim = town();
+      const m = sim.agent(sim.mayor!)!;
+      takeOffice(sim, m, 'community', false);
+      sim.civic.promise!.since -= 3 * MIN_PER_DAY;
+      sim.civic.festivalsHeld += more;
+      judgePromise(sim);
+      expect(sim.civic.promise!.kept, `${more} more`).toBe(kept);
+    }
   }, 60_000);
 
   it('a food promise is counted in days of eating', () => {
