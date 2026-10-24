@@ -140,7 +140,7 @@ export function tickTownHealth(sim: Sim): void {
 /** Who this person might go and look after: ill or frail family, most in need first. */
 export function needsCare(sim: Sim, a: Agent): Agent | undefined {
   return sim.agents
-    .filter((o) => o.id !== a.id && kinship(sim, a, o) && ((o.illness?.severity ?? 0) > 0.15 || o.frailSince !== undefined))
+    .filter((o) => ((o.illness?.severity ?? 0) > 0.15 || o.frailSince !== undefined) && o.id !== a.id && kinship(sim, a, o))
     .filter((o) => !a.memories.some((m) => m.kind === 'lookedAfter' && m.about === o.id))
     .sort((x, y) => (y.illness?.severity ?? 0) + frailty(sim, y) - ((x.illness?.severity ?? 0) + frailty(sim, x)))[0];
 }

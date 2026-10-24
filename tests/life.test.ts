@@ -66,9 +66,11 @@ describe('birthday on a festival evening', () => {
     expect(sim.events.festival).not.toBeNull();
     expect(sim.events.birthdays).toHaveLength(0);
     at(sim, 3, 20.25);
-    expect(sim.events.birthdays.map((b) => b.hosts)).toEqual([[host.id]]);
+    // Only the host's party matters: someone who arrives or is born after the setup above may share the day.
+    const hosted = () => sim.events.birthdays.filter((b) => b.hosts.includes(host.id));
+    expect(hosted().map((b) => b.hosts)).toEqual([[host.id]]);
     at(sim, 3, 22.6);
-    expect(sim.events.birthdays).toHaveLength(0);
+    expect(hosted()).toHaveLength(0);
     const end = sim.activity.find((e) => e.text.startsWith(`${host.name.split(' ')[0]}'s birthday wound down`))?.text;
     expect(end).toMatch(/: \d+ relatives? /);
     expect(sim.agents.some((o) => kinship(sim, o, host) && o.memories.some((m) => m.kind === 'birthday' && m.about === host.id))).toBe(true);

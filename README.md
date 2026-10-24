@@ -11,7 +11,10 @@ npm install
 npm run dev        # http://localhost:5173
 npm test           # sim + pathfinding tests
 npm run build      # typecheck + production bundle
+npm run bench -- crowd 200   # sim cost per step with 200 people, plus a state fingerprint
 ```
+
+Fastest needs a sim step to cost about 0.5ms or less. The bench's fingerprint is a hash of the whole town state. It changes whenever the sim does, so there is no fixed value to aim for: run the same bench command before and after a change that shouldn't alter behaviour, and the two fingerprints must match.
 
 `?seed=42` in the URL opens that town from its first day (the Town view shows each town's seed).
 

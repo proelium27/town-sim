@@ -121,8 +121,8 @@ describe('career openings', () => {
   }, 120_000);
 
   it('people settle into their jobs instead of being rotated every few hours', () => {
-    // A seed whose town builds its workshop early, so the trades are in the mix.
-    const sim = new Sim(3);
+    // The original town, on a seed that builds its workshop early (about day 6), so the trades are in the mix.
+    const sim = new Sim(3, { character: CLASSIC });
     const days = 14;
     const was = new Map(sim.agents.map((a) => [a.id, { role: a.role, since: sim.time, from: '' }]));
     let moves = 0;
