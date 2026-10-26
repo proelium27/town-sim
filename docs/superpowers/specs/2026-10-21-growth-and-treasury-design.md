@@ -71,6 +71,15 @@ A real town is not everyone's employer. Most people work for private businesses;
 - **Keep the surplus** as a rainy-day fund and project money. Stop paying it out every midnight as bonuses.
 - **Borrowing (optional):** the town can take a loan to build homes ahead of demand, then repay it from taxes, as real towns do with bonds.
 
+#### Treasury details (agreed 2026-10-26)
+
+- **Businesses own their goods.** Each farm, workshop and shop keeps its own stock and sells it. Residents buy from them and pay sales tax on top. The town buys what public works need (planks, bricks, firewood, building stone and timber) at market price, so its spending shows up in the ledger.
+- **New money comes from outside, two ways:**
+  - The trader buys surplus from the businesses, and buys more and pays better for what the town's trade is good at: stone from a quarry town, timber from a timber town, food from a farming town, goods from a market town.
+  - Arriving families bring savings, which they spend in town and are taxed on.
+- **Jobs grow with demand.** New farms when food runs short, more shops and diners per head, more workshop stations, and a bigger office. Anyone without a job helps build, paid by the town as public work.
+- **Keep the safety net, paid from taxes.** Pensions stay: retirees with under $60 saved get $12 a day. The hardship top-up stays and now covers everyone working, not just town workers. Anyone nearly broke is topped up to $12 while the treasury can spare it.
+
 ### Growth: land, housing ahead of demand, immigration, births
 
 - **Land.** Both of these:
