@@ -260,8 +260,11 @@ describe('seasons', () => {
 
   it('a cold worker warms up at home even with the seat by the fire taken, and stays in until warm', () => {
     const sim = winterTown();
-    at(sim, 6, 11);
-    const a = sim.agents.find((x) => !sim.roomOf(x) && ['builder', 'laborer', 'woodcutter'].includes(x.role) && sim.town.households[x.household].building >= 0 && sim.fuel[x.household] > 1)!;
+    at(sim, 6, 8);
+    // The first outdoor worker to step out today: this small a town has only a couple, and one may be ill by mid-morning.
+    const outdoors = () => sim.agents.find((x) => !sim.roomOf(x) && ['builder', 'laborer', 'woodcutter'].includes(x.role) && sim.town.households[x.household].building >= 0 && sim.fuel[x.household] > 1);
+    while (!outdoors() && sim.hour < 16) sim.run(5);
+    const a = outdoors()!;
     expect(a).toBeDefined();
     const hh = sim.town.households[a.household];
     sim.fuel[hh.id] = 12;

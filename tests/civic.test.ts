@@ -75,9 +75,12 @@ describe('mayors with real power', () => {
     sim.events.funerals = [];
     sim.events.snowstorm = null;
     const spent = sim.ledger.projects;
+    const going = new Set(sim.projects.map((p) => p.id));
     at(sim, next + SEASON_DAYS, 17.3);
     expect(sim.events.festival?.name).toBe("Mayor's fête");
-    expect(sim.ledger.projects - spent).toBe(FETE_COST);
+    // The same line in the ledger as building: a site the town breaks ground on that half hour isn't the fête's.
+    const broke = sim.projects.filter((p) => !going.has(p.id)).reduce((s, p) => s + BLUEPRINTS[p.blueprint].coins, 0);
+    expect(sim.ledger.projects - spent - broke).toBe(FETE_COST);
   }, 120_000);
 
   it('approval follows how policy lands on each person: high tax costs the mayor the office workers', () => {

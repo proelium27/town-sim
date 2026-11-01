@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { ageOf, createAgent } from '../src/sim/agents';
 import { triggerWorldEvent } from '../src/sim/events';
-import { laborPlan } from '../src/sim/labor';
+import { laborPlan, WAIT_PULL } from '../src/sim/labor';
 import { die } from '../src/sim/life';
-import { allocateRoles, clutter, findSite, setRole, stageOf } from '../src/sim/planner';
+import { allocateRoles, buildCap, clutter, findSite, setRole, stageOf } from '../src/sim/planner';
+import { MIN_PER_DAY } from '../src/sim/defs';
 import { Sim, STEP } from '../src/sim/sim';
 import { kinship, rel, relationLabel, shiftOpinion } from '../src/sim/social';
 import type { Action, Agent, Project } from '../src/sim/types';
@@ -63,6 +64,44 @@ describe('construction', () => {
     expect(plan?.kind).toBe('build');
     expect(plan?.projectId).toBe(pr.id);
   });
+
+  /** Seed 7 run on until two sites are going at once, at least `lots` of them still to clear, and a builder free to choose. */
+  const twoSites = (lots: number) => {
+    const sim = new Sim(7);
+    while (sim.projects.filter((p) => clutter(sim, p).length).length < lots || sim.projects.length < 2) sim.run(30);
+    const b = sim.agents.find((a) => a.role === 'builder')!;
+    b.carry = null;
+    return { sim, b };
+  };
+
+  it('stone for a cleared site that is waiting on it comes before clearing the next site', () => {
+    const { sim, b } = twoSites(1);
+    const lot = sim.projects.find((p) => clutter(sim, p).length)!;
+    const pr = sim.projects.find((p) => p !== lot)!;
+    // Cleared, built as far as its timber goes, and still owed all its stone.
+    for (const p of clutter(sim, pr)) sim.map.removeProp(p);
+    pr.need = { wood: 40, stone: 20 };
+    pr.delivered = { wood: 40 };
+    pr.progress = buildCap(pr);
+    sim.stock.stone = 100;
+    sim.projects.splice(0, sim.projects.length, pr, lot);
+    expect(stageOf(sim, pr)).not.toBe('clearing');
+    const plan = laborPlan(sim, b);
+    expect(plan?.kind).toBe('haul');
+    expect(plan?.projectId).toBe(pr.id);
+    expect(plan?.material).toBe('stone');
+  }, 60_000);
+
+  it('a site that has waited is cleared before a newer one nearer at hand', () => {
+    const { sim, b } = twoSites(2);
+    const [near, far] = sim.projects.filter((p) => clutter(sim, p).length).slice(0, 2).sort((p, q) => Math.hypot(p.x - b.x, p.y - b.y) - Math.hypot(q.x - b.x, q.y - b.y));
+    sim.projects.splice(0, sim.projects.length, near, far);
+    near.started = far.started = sim.time;
+    expect(laborPlan(sim, b)?.projectId).toBe(near.id);
+    const gap = Math.hypot(far.x - b.x, far.y - b.y) - Math.hypot(near.x - b.x, near.y - b.y);
+    far.started = sim.time - (gap / WAIT_PULL + 0.5) * MIN_PER_DAY;
+    expect(laborPlan(sim, b)?.projectId).toBe(far.id);
+  }, 60_000);
 });
 
 describe('player influence', () => {

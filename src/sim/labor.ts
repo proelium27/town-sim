@@ -1,6 +1,6 @@
 import type { Facing } from '../assets/manifest';
 import type { Prop } from '../world/map';
-import { billGoods, type Good, GOODS, goodNoun, PRIORITY_WEIGHT } from './defs';
+import { billGoods, type Good, GOODS, goodNoun, MIN_PER_DAY, PRIORITY_WEIGHT } from './defs';
 import { buildCap, clutter, shortOf, stageOf, supplied } from './planner';
 import { gutted, GUTTED, REPAIR_AT } from './fire';
 import { paveFrontier } from './growth';
@@ -134,6 +134,9 @@ export function gatherKind(a: Agent, woodShort: number, stoneShort: number): 'wo
   return ((a.id * 0.618034) % 1) < toStone ? 'stone' : 'wood';
 }
 
+/** Tiles closer a building site counts for each day it has waited, when builders pick which site to work. */
+export const WAIT_PULL = 20;
+
 /** Best outdoor job for this worker right now, or null if there's nothing useful to do. */
 export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
   const role = a.role;
@@ -181,7 +184,10 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
   }
   // In a blizzard the outdoor work waits (the workshop is indoors), except a hearth about to go out.
   const storm = !!sim.events.snowstorm;
-  const projects = storm ? [] : [...sim.projects].sort((p, q) => Math.hypot(p.x - a.x, p.y - a.y) - Math.hypot(q.x - a.x, q.y - a.y));
+  // Nearest first, but a site that has waited counts as WAIT_PULL tiles closer for every day: jobs of equal worth go
+  // to the first site, and a far one (a workshop in the woods) lost every tie to the homes going up near the center.
+  const reach = (pr: Project) => Math.hypot(pr.x - a.x, pr.y - a.y) - ((sim.time - pr.started) / MIN_PER_DAY) * WAIT_PULL;
+  const projects = storm ? [] : [...sim.projects].sort((p, q) => reach(p) - reach(q));
   for (const pr of projects) {
     if (!builderish && role !== 'woodcutter') break;
     const stage = stageOf(sim, pr);
@@ -202,13 +208,16 @@ export function laborPlan(sim: Sim, a: Agent): LaborPlan | null {
     if (!builderish) continue;
     // No fetching for a site nobody can walk onto (still hemmed in by trees, or walled off).
     const paused = (pr.haulPause ?? 0) > sim.time;
+    // Loads for a site already cleared come before clearing the next one (but after building): with a big lot to clear
+    // across town, a house stood at 77% for four days waiting on 14 stone the storehouse had.
+    const haulScore = (stage === 'clearing' ? 0.95 : 1.08) * mult;
     for (const mat of billGoods(pr.need)) {
       const short = shortOf(pr, mat) - inFlight(sim, pr, mat);
       if (short > 0 && sim.stock[mat] >= 1 && !paused) {
-        add(0.95 * mult, () => {
+        add(haulScore, () => {
           const d = storehouse();
           if (!d || !siteReachable(sim, pr, d.cell)) return null;
-          return { kind: 'haul', label: `Hauling ${mat} to ${pr.name}`, reason: `${pr.name} needs ${Math.ceil(short)} more ${goodNoun(Math.ceil(short), mat)}`, dest: d.cell, path: d.path, projectId: pr.id, leg: 'pickup', material: mat, timer: 2, score: 0.95 * mult };
+          return { kind: 'haul', label: `Hauling ${mat} to ${pr.name}`, reason: `${pr.name} needs ${Math.ceil(short)} more ${goodNoun(Math.ceil(short), mat)}`, dest: d.cell, path: d.path, projectId: pr.id, leg: 'pickup', material: mat, timer: 2, score: haulScore };
         });
       }
     }

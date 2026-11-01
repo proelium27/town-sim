@@ -127,6 +127,8 @@ describe('private businesses', () => {
   it('prices float: cheaper than the café in a glut, dearer in a shortage', () => {
     const sim = town();
     const biz = open(sim, 'bakery', founder(sim, 'bakery'));
+    // Whoever is mayor by now may have capped shop prices; the cap has its own test.
+    sim.civic.policies.priceCap = false;
     sim.stock.food = 5000;
     expect(priceAt(sim, biz.building, 'meal')).toBeLessThan(townMeal(sim));
     sim.stock.food = 0;
@@ -315,6 +317,8 @@ describe('private businesses', () => {
     expect(founderFor(sim, 'bakery')).toBe(rich);
     // A founder short of the full cost borrows the rest.
     ageTo(sim, fit, 30);
+    // (The town can stand the loan, whatever this run's treasury has come to.)
+    sim.treasury = Math.max(sim.treasury, 2000);
     const pr = startProject(sim, { bp: 'bakery', score: 1, reason: 'test', forAgents: [], proposer: fit, name: 'Fit Bakery', owner: fit })!;
     expect(pr.owner).toBe(fit.id);
     expect(pr.loan).toBe(buildCost('bakery') - 130);
