@@ -241,7 +241,7 @@ export type MemoryKind =
   | 'feelingIll' | 'hurt' | 'recovered' | 'frail' | 'caredFor' | 'lookedAfter' | 'proudTown' | 'roomToBreathe'
   | 'wonElection' | 'lostElection' | 'myCandidateWon'
   | 'engaged' | 'married' | 'wedding' | 'heartbroken' | 'funeral'
-  | 'dreamCameTrue' | 'dreamFaded' | 'skated' | 'lakeside' | 'foughtFire' | 'houseFire' | 'missYou' | 'freshStart' | 'ownBusiness' | 'businessFailed' | 'hostedDinner' | 'dinnerGuest' | 'musicNight' | 'tavernNight';
+  | 'dreamCameTrue' | 'dreamFaded' | 'skated' | 'lakeside' | 'foughtFire' | 'houseFire' | 'missYou' | 'freshStart' | 'ownBusiness' | 'businessFailed' | 'hostedDinner' | 'dinnerGuest' | 'musicNight' | 'tavernNight' | 'protested' | 'recalled';
 
 export interface MemoryDef {
   label: string;
@@ -340,4 +340,6 @@ export const MEMORIES: Record<MemoryKind, MemoryDef> = {
   dinnerGuest: { label: 'A good dinner at the neighbours\'', mood: 7, duration: D, major: false, maxStack: 1 },
   musicNight: { label: 'Music night at the tavern', mood: 6, duration: D, major: false, maxStack: 1 },
   tavernNight: { label: 'A good night at the tavern', mood: 4, duration: D, major: false, maxStack: 1 },
+  protested: { label: 'Made my voice heard', mood: 3, duration: D, major: false, maxStack: 1 },
+  recalled: { label: 'Recalled as mayor', mood: -16, duration: 3 * D, major: true, maxStack: 1 },
 };

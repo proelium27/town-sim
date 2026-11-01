@@ -177,6 +177,31 @@ function stampTavern(m: TownMap, x: number, y: number, doorTop: boolean, name: s
   return b;
 }
 
+/** The town hall: a council table down the middle, the town's records on the shelves, benches for the public. */
+function stampTownHall(m: TownMap, x: number, y: number, doorTop: boolean, name: string, time = 0): Building {
+  const [s, b] = begin(m, 'townhall', name, x, y, 11, 8, 5, doorTop, time);
+  s.wallRect(0, 0, 11, 8);
+  const r = s.room(name, 'hall', 1, 1, 9, 6, 'floorWood', name);
+  b.rooms.push(r.id);
+  s.door(5, 0, 'floorWood');
+  s.prop('bookshelf', 1, 1, 1, 1);
+  s.prop('bookshelf2', 2, 1, 1, 1);
+  // (Not on column 5: that's the tile inside the door.)
+  s.prop('painting', 7, 1, 1, 1);
+  s.prop('bookshelf', 8, 1, 1, 1);
+  s.prop('bookshelf2', 9, 1, 1, 1);
+  for (let dx = 3; dx <= 7; dx++) s.prop('tableLong', dx, 3, 1, 1);
+  for (let dx = 3; dx <= 7; dx++) {
+    s.seat('chairDown', dx, 2, 'down', 'sit');
+    s.seat('chairUp', dx, 4, 'up', 'sit');
+  }
+  s.prop('bench', 2, 6, 1, 1);
+  s.prop('bench', 8, 6, 1, 1);
+  s.prop('plant', 1, 6, 1, 1);
+  s.prop('plant2', 9, 6, 1, 1);
+  return b;
+}
+
 function stampPark(m: TownMap, x: number, y: number, doorTop: boolean, name: string, time = 0): Building {
   const [s, b] = begin(m, 'park', name, x, y, 8, 8, 3, doorTop, time);
   s.fill(0, 0, 8, 8, 'grass');
@@ -285,7 +310,7 @@ export function graveSlots(b: Building): { x: number; y: number }[] {
   return out;
 }
 
-export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park' | 'cemetery' | 'workshop' | 'clinic' | 'extension' | 'dock' | 'well' | 'bakery' | 'tavern', Blueprint> = {
+export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'diner' | 'park' | 'cemetery' | 'workshop' | 'clinic' | 'extension' | 'dock' | 'well' | 'bakery' | 'tavern' | 'townhall', Blueprint> = {
   house: {
     kind: 'house', noun: 'a new home', coins: 40, w: 11, h: 8, cost: { wood: 40, stone: 20 }, refined: { wood: 16, stone: 10, planks: 16, bricks: 8, furniture: 2 }, work: 300, doorX: 4, outdoor: false,
     stamp: (m, x, y, top, name, hh) => stampHouse(m, x, y, top, name, hh ?? 0, true),
@@ -307,6 +332,7 @@ export const BLUEPRINTS: Record<'house' | 'farm' | 'storehouse' | 'school' | 'di
   cemetery: { kind: 'cemetery', noun: 'a cemetery', coins: 15, w: 9, h: 7, cost: { wood: 4, stone: 10 }, work: 100, doorX: 4, outdoor: true, stamp: (m, x, y, top, name) => stampCemetery(m, x, y, top, name) },
   bakery: { kind: 'cafe', noun: 'a bakery', coins: 150, w: 9, h: 7, cost: { wood: 28, stone: 18 }, work: 260, doorX: 7, outdoor: false, stamp: (m, x, y, top, name) => stampBakery(m, x, y, top, name) },
   tavern: { kind: 'tavern', noun: 'a tavern', coins: 170, w: 11, h: 8, cost: { wood: 34, stone: 18 }, work: 320, doorX: 9, outdoor: false, stamp: (m, x, y, top, name) => stampTavern(m, x, y, top, name) },
+  townhall: { kind: 'townhall', noun: 'a town hall', coins: 120, w: 11, h: 8, cost: { wood: 30, stone: 40 }, refined: { wood: 10, stone: 14, planks: 16, bricks: 22, furniture: 2 }, work: 420, doorX: 5, outdoor: false, stamp: (m, x, y, top, name) => stampTownHall(m, x, y, top, name) },
   well: { kind: 'well', noun: 'a well', coins: 10, w: 3, h: 3, cost: { wood: 4, stone: 12 }, work: 70, doorX: 1, outdoor: true, stamp: (m, x, y, top, name) => stampWell(m, x, y, top, name) },
   dock: { kind: 'dock', noun: 'a fishing dock', coins: 20, w: 5, h: 3, cost: { wood: 18, stone: 0 }, work: 120, doorX: 2, outdoor: true, stamp: (m, x, y, top, name) => stampDock(m, x, y, top, name) },
 };

@@ -13,6 +13,7 @@ import { first } from '../sim/social';
 import type { Sim } from '../sim/sim';
 import { expectCart, fromName, partyName, readTravelers } from '../sim/travel';
 import { NOTABLE } from '../sim/types';
+import { approvalLine, hallName, policyText, PROMISED, townApproval } from '../sim/civic';
 import type { Saves } from './saves';
 import { esc, hhmm } from './util';
 
@@ -163,9 +164,22 @@ export class TownPanel {
     };
     let body = mayor
       ? `<p class="mayor-line">Mayor ${who(mayor.id)}, elected on <b>${PRIORITY_LABEL[sim.agenda!].toLowerCase()}</b>.${sim.agenda && sim.priorities[sim.agenda] === 0 ? ` <span class="neg">You have ${PRIORITY_LABEL[sim.agenda].toLowerCase()} set to Low; the mayor disagrees.</span>` : ''}</p>`
-      : sim.lastElection
-        ? `<p class="mayor-line">The mayor's office is empty until the next election.</p>`
-        : `<p class="mayor-line">No mayor yet.</p>`;
+      : race
+        ? `<p class="mayor-line">The mayor's office is empty until tonight's vote.</p>`
+        : sim.snapElection !== null
+          ? `<p class="mayor-line">The mayor's office is empty until the special election ${sim.snapElection === sim.day ? 'today' : 'tomorrow'}.</p>`
+          : sim.lastElection
+            ? `<p class="mayor-line">The mayor's office is empty until the next election.</p>`
+            : `<p class="mayor-line">No mayor yet.</p>`;
+    const c = sim.civic;
+    if (mayor) {
+      body += `<p class="mayor-line">${esc(approvalLine(sim) ?? '')}</p>`;
+      body += `<ul class="tp-road policies">${policyText(c.policies).map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`;
+    }
+    if (c.protest) body += `<p class="mayor-line neg">${c.protest.on ? `Protest under way outside ${esc(hallName(sim))}: ${c.protest.attendees.size} there` : `Protest planned outside ${esc(hallName(sim))} at ${hhmm(c.protest.at)}`}.</p>`;
+    if (c.recallAt !== null) body += `<p class="mayor-line neg">Recall vote at ${hhmm(c.recallAt)}.</p>`;
+    const v = c.verdict;
+    if (v) body += `<p class="mayor-line meta">Year ${v.year}: Mayor ${esc(sim.person(v.mayor)?.name.split(' ')[0] ?? '?')} promised ${PROMISED[v.platform]}. Promise ${v.kept ? 'kept' : 'broken'}.</p>`;
     if (race) {
       body += `<p class="mayor-line">Standing today: ${race.candidates.map((c) => `${who(c.id)} (${PRIORITY_LABEL[c.platform].toLowerCase()})`).join(', ')}. ${race.stage === 'rally' ? 'The rally is on; votes are counted at 19:00.' : 'Rally in the park at 17:00.'}</p>`;
     } else if (sim.lastElection) {
@@ -174,7 +188,7 @@ export class TownPanel {
     } else {
       body += `<p class="mayor-line meta">First election: Summer 1, Year ${next.year}.</p>`;
     }
-    return `<section class="tp-sec"><h3>Mayor <small>leans town meetings toward their agenda</small></h3>${body}</section>`;
+    return `<section class="tp-sec"><h3>Mayor <small>sets policy, leans meetings toward their agenda</small></h3>${body}</section>`;
   }
 
   /** The town's purse: balance, yesterday's money in and out, today's prices, the next trader. */
@@ -264,7 +278,7 @@ export class TownPanel {
     const projects = sim.projects.map((p) => ({ p, stage: stageOf(sim, p) }));
     const sig = JSON.stringify([
       pop.length, kids, elders, beds, homeless, sick, sim.tier, sim.mayor, sim.agenda, sim.election?.stage, sim.lastElection?.year, GOOD_KEYS.map((g) => Math.round(sim.stock[g])), Math.round(net), sim.date(),
-      sim.name, sim.expected.length, this.travelNote, sim.businesses.map((b) => [b.owner, Math.round(b.yesterday), Math.round(b.takings - b.costs), Math.round(b.loan)]), sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
+      sim.name, sim.expected.length, this.travelNote, Math.round(townApproval(sim)), sim.civic.policies, sim.civic.verdict, sim.civic.protest?.on, sim.civic.protest?.attendees.size, sim.civic.recallAt, sim.snapElection, sim.businesses.map((b) => [b.owner, Math.round(b.yesterday), Math.round(b.takings - b.costs), Math.round(b.loan)]), sim.priorities, projects.map(({ p, stage }) => [p.id, stage, Math.floor((p.progress / p.work) * 50), p.delivered, p.builders.size]),
       sim.history.length, !!sim.events.drought, !!sim.events.festival, this.saves.status(), this.resetArmed, Math.round(sim.treasury / 5), sim.lastLedger, (['food', 'firewood', 'tools'] as const).map((g) => price(sim, g)), hasWorkshop(sim), chains(sim).map((c) => [c.have, c.target, c.stuck]), sim.season, Math.round(winterReadiness(sim).firewood * 4), Math.round(winterReadiness(sim).food * 4),
       sim.season >= 2 && Math.round((1 - sim.seasonProgress) * SEASON_DAYS * 10),
     ]);

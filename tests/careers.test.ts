@@ -121,10 +121,10 @@ describe('career openings', () => {
   }, 120_000);
 
   it('people settle into their jobs instead of being rotated every few hours', () => {
-    // A seed whose town builds its workshop early, so the trades are in the mix: seed 7's (Alderwood) goes up on day
-    // 7.4. Seed 3, the old choice, is Larkford now that towns have characters, with its workshop on day 11.5 and five
-    // builder-woodcutter swaps (no craft involved).
-    const sim = new Sim(7);
+    // A seed whose town builds its workshop early, so the trades are in the mix: seed 8's (Tealbay) goes up on day
+    // 8.4. With mayors in, seed 7's (Alderwood) is still being built on day 16, its builders spread over a bakery, a
+    // wing, a well and a house.
+    const sim = new Sim(8);
     const days = 16;
     const was = new Map(sim.agents.map((a) => [a.id, { role: a.role, since: sim.time, from: '' }]));
     let moves = 0;
@@ -146,12 +146,14 @@ describe('career openings', () => {
     // Before, four to six moves a day, with crafters stood down to labor and taken back within hours.
     expect(sim.map.buildings.some((b) => b.kind === 'workshop')).toBe(true);
     expect(flips).toBe(0);
-    // A builder lent to a short-handed craft and back within the day now and then is fine; seed-tuned (2 to 4). Four since
+    // A builder lent to a short-handed craft and back within the day now and then is fine; seed-tuned (2 to 5). Four since
     // the lake: autumn's fishers are promised ahead of the building crew, and one builder-woodcutter swap (day 5.5 to 5.8,
     // no craft involved) comes of that; with private businesses in, a carpenter can also be sent to the woods and back
-    // when the workshop's second carpenter slot comes and goes with the plank stock. There are still no crafter flips.
-    expect(backs).toBeLessThanOrEqual(4);
-    // 2.57 a day with the lake's seasonal fishers (autumn's go on, spring's come off), well under the four to six of before.
+    // when the workshop's second carpenter slot comes and goes with the plank stock. Five once builders stopped leaving
+    // sites half supplied (a woodcutter lent to fishing and to the crew, each for half a day, late in the run). There are
+    // still no crafter flips.
+    expect(backs).toBeLessThanOrEqual(5);
+    // 1.56 a day now, 2.57 before that with the lake's seasonal fishers (autumn's go on, spring's come off), well under the four to six of before.
     expect(moves / days).toBeLessThan(3);
   }, 300_000);
 
